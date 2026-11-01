@@ -9,6 +9,7 @@
 #include "c/cexpr_int.h"
 #include "c/eval.h"
 #include "c/symx.h"
+#include "idxset.h"
 
 typedef struct EvOpts {
     long fuel;                  /* node evaluations before "step limit" */
@@ -135,10 +136,10 @@ struct Ev {
     /* --eval-link: one Ev for all files.  Index of the functions, by (file, symbol) and, for external
      * definitions, by name; filled up to fi_done. */
     bool link;
-    uint32_t *fi_id, *fi_nm;
-    size_t fi_cap, fi_done;
-    uint32_t *si_id, *si_nm;    /* ... and of the static objects, filled up to si_done */
-    size_t si_cap, si_done;
+    IdxSet fi_id, fi_nm;
+    size_t fi_done;
+    IdxSet si_id, si_nm;        /* ... and of the static objects, filled up to si_done */
+    size_t si_done;
     const char *dup_def;        /* a name with two external definitions, or NULL */
     long fuel;
     size_t objlim;              /* obj.len at which "object limit" ends the evaluation; 0: none */

@@ -46,8 +46,6 @@ void srcmgr_init(SrcMgr *sm, Arena *a)
     sm->region_size = REGION_SIZE;
     sm->next_base = (SrcLoc)page_size(); /* location 0 stays invalid */
     mutex_init(&sm->m);
-    sm->path_cap = 256;
-    sm->path_slots = xcalloc(sm->path_cap, sizeof(SrcFile *));
 }
 
 void srcmgr_free(SrcMgr *sm)
@@ -58,7 +56,8 @@ void srcmgr_free(SrcMgr *sm)
         free(srcmgr_file(sm, i)->linemap);
     for (i = 0; i < FILE_CHUNKS; i++)
         free(sm->fchunks[i]);
-    free(sm->path_slots);
+    idxset_free(&sm->paths);
+    vec_free(&sm->pathfiles);
     mutex_destroy(&sm->m);
     if (sm->region && sm->region != MAP_FAILED)
         munmap(sm->region, sm->region_size);
@@ -113,45 +112,38 @@ static SrcFile *new_file(SrcMgr *sm, const char *path, const char *name,
     return f;
 }
 
-static size_t path_hash(const char *p)
+typedef struct PathKey {
+    SrcMgr *sm;
+    const char *path;
+} PathKey;
+
+static bool path_eq(void *ctx, uint32_t i)
 {
+    PathKey *k = ctx;
+    return !strcmp(k->sm->pathfiles.data[i]->path, k->path);
+}
+
+static uint64_t path_hash(void *ctx, uint32_t i)
+{
+    const char *p = ((PathKey *)ctx)->sm->pathfiles.data[i]->path;
     return hash_bytes(p, strlen(p));
 }
 
+/* A path is inserted only after path_find missed it (under sm->m). */
 static void path_insert(SrcMgr *sm, SrcFile *f)
 {
-    size_t k;
-    if ((sm->path_count + 1) * 2 > sm->path_cap) {
-        size_t nc = sm->path_cap * 2, i;
-        SrcFile **ns = xcalloc(nc, sizeof(SrcFile *));
-        for (i = 0; i < sm->path_cap; i++) {
-            SrcFile *g = sm->path_slots[i];
-            if (!g)
-                continue;
-            for (k = path_hash(g->path) & (nc - 1); ns[k]; k = (k + 1) & (nc - 1))
-                ;
-            ns[k] = g;
-        }
-        free(sm->path_slots);
-        sm->path_slots = ns;
-        sm->path_cap = nc;
-    }
-    for (k = path_hash(f->path) & (sm->path_cap - 1); sm->path_slots[k];
-         k = (k + 1) & (sm->path_cap - 1))
-        ;
-    sm->path_slots[k] = f;
-    sm->path_count++;
+    PathKey k = {sm, f->path};
+    idxset_reserve(&sm->paths, sm->paths.n + 1, path_hash, &k);
+    idxset_set(&sm->paths, idxset_probe(&sm->paths, hash_bytes(f->path, strlen(f->path)), path_eq, &k),
+               (uint32_t)sm->pathfiles.len);
+    vec_push(&sm->pathfiles, f);
 }
 
 static SrcFile *path_find(SrcMgr *sm, const char *path)
 {
-    size_t k;
-    SrcFile *f;
-    for (k = path_hash(path) & (sm->path_cap - 1); (f = sm->path_slots[k]) != NULL;
-         k = (k + 1) & (sm->path_cap - 1))
-        if (!strcmp(f->path, path))
-            return f;
-    return NULL;
+    PathKey k = {sm, path};
+    uint32_t e = *idxset_probe(&sm->paths, hash_bytes(path, strlen(path)), path_eq, &k);
+    return e ? sm->pathfiles.data[e - 1] : NULL;
 }
 
 /* Paths known not to exist share this sentinel in the path map. */

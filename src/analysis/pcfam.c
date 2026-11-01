@@ -2,6 +2,7 @@
  * target), the language standard and its mode (the language field), and
  * their macros. */
 #include "pcfam.h"
+#include "idxset.h"
 #include "pcq.h"
 #include "thread.h"
 
@@ -162,26 +163,33 @@ static const Row rows[] = {
 };
 #define NROWS (sizeof rows / sizeof rows[0])
 
-/* name -> row, open addressing over hash_bytes; built on first use.  Two
- * threads may both build it: the same table, and the loser's is dropped. */
-#define ROW_SLOTS 512                   /* a power of two above 2 * NROWS */
-_Static_assert(NROWS * 2 < ROW_SLOTS, "row table too small");
+/* name -> row, built on first use.  Two threads may both build it: the same
+ * table, and the loser's is dropped. */
 static void *row_index;
 
-static const uint16_t *row_table(void)
+static bool row_eq(void *ctx, uint32_t i)
 {
-    uint16_t *t = atomic_load_ptr(&row_index), *n;
-    size_t i, k;
+    return !strcmp(rows[i].name, ctx);
+}
+
+static uint64_t row_hash(void *ctx, uint32_t i)
+{
+    (void)ctx;
+    return hash_bytes(rows[i].name, strlen(rows[i].name));
+}
+
+static const IdxSet *row_table(void)
+{
+    IdxSet *t = atomic_load_ptr(&row_index), *n;
+    size_t i;
     if (t)
         return t;
-    n = xcalloc(ROW_SLOTS, sizeof *n);
-    for (i = 0; i < NROWS; i++) {
-        k = hash_bytes(rows[i].name, strlen(rows[i].name)) & (ROW_SLOTS - 1);
-        while (n[k])
-            k = (k + 1) & (ROW_SLOTS - 1);
-        n[k] = (uint16_t)(i + 1);
-    }
+    n = xcalloc(1, sizeof *n);
+    idxset_reserve(n, NROWS, row_hash, NULL);
+    for (i = 0; i < NROWS; i++)
+        idxset_set(n, idxset_probe(n, row_hash(NULL, (uint32_t)i), row_eq, (void *)rows[i].name), (uint32_t)i);
     if (!atomic_cas_ptr(&row_index, NULL, n)) {
+        idxset_free(n);
         free(n);
         return atomic_load_ptr(&row_index);
     }
@@ -190,12 +198,8 @@ static const uint16_t *row_table(void)
 
 static const Row *row_of(const char *name)
 {
-    const uint16_t *t = row_table();
-    size_t k = hash_bytes(name, strlen(name)) & (ROW_SLOTS - 1);
-    for (; t[k]; k = (k + 1) & (ROW_SLOTS - 1))
-        if (!strcmp(rows[t[k] - 1].name, name))
-            return &rows[t[k] - 1];
-    return NULL;
+    uint32_t e = *idxset_probe(row_table(), hash_bytes(name, strlen(name)), row_eq, (void *)name);
+    return e ? &rows[e - 1] : NULL;
 }
 
 bool pc_fam_macro(const char *name)

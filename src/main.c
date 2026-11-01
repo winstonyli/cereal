@@ -8,6 +8,7 @@
 #include "analysis/pcq.h"
 #include "index.h"
 #include "fparith.h"
+#include "idxset.h"
 #include "intarith.h"
 #include "cell.h"
 #include "toks.h"
@@ -1603,6 +1604,8 @@ int main(int argc, char **argv)
         return intarith_selftest();
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "fparith"))
         return fparith_selftest();
+    if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "idxset"))
+        return idxset_selftest();
     for (i = 1; i < argc; i++)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {

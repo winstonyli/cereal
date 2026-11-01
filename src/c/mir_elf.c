@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "c/mir.h"
+#include "idxset.h"
 
 typedef struct Enc {
     uint8_t b[16];
@@ -354,8 +355,7 @@ struct MObj {
     uint64_t bss;               /* .bss's size: it has no bytes */
     uint32_t salign[NSEC];      /* each section's alignment */
     VEC(ObjSym) syms;           /* [0..NSEC): the section symbols */
-    uint32_t *hash;             /* open addressing over named symbols: index + 1 */
-    size_t hcap;
+    IdxSet names;               /* the named symbols: indices into syms */
 };
 
 static char *dup_str(const char *s)
@@ -366,45 +366,39 @@ static char *dup_str(const char *s)
     return p;
 }
 
-static size_t name_hash(const char *s)
+typedef struct SymKey {
+    const MObj *o;
+    const char *name;
+} SymKey;
+
+static bool sym_eq(void *ctx, uint32_t i)
 {
-    size_t h = 1469598103u;
-    while (*s)
-        h = (h ^ (uint8_t)*s++) * 16777619u;
-    return h;
+    SymKey *k = ctx;
+    return !strcmp(k->o->syms.data[i].name, k->name);
 }
 
-static void hash_put(MObj *o, uint32_t id)
+static uint64_t sym_hash(void *ctx, uint32_t i)
 {
-    size_t h = name_hash(o->syms.data[id].name) & (o->hcap - 1);
-    while (o->hash[h])
-        h = (h + 1) & (o->hcap - 1);
-    o->hash[h] = id + 1;
+    const char *n = ((SymKey *)ctx)->o->syms.data[i].name;
+    return hash_bytes(n, strlen(n));
 }
 
 /* The symbol called name, made (undefined, global) when new. */
 static uint32_t sym_named(MObj *o, const char *name)
 {
-    size_t h;
+    SymKey k = {o, name};
+    uint32_t *e;
     ObjSym s;
-    if (o->syms.len * 2 >= o->hcap) {
-        size_t i;
-        free(o->hash);
-        o->hcap = o->hcap ? o->hcap * 2 : 64;
-        o->hash = xcalloc(o->hcap, sizeof *o->hash);
-        for (i = 0; i < o->syms.len; i++)
-            if (o->syms.data[i].name)
-                hash_put(o, (uint32_t)i);
-    }
-    for (h = name_hash(name) & (o->hcap - 1); o->hash[h]; h = (h + 1) & (o->hcap - 1))
-        if (!strcmp(o->syms.data[o->hash[h] - 1].name, name))
-            return o->hash[h] - 1;
+    idxset_reserve(&o->names, o->names.n + 1, sym_hash, &k);
+    e = idxset_probe(&o->names, hash_bytes(name, strlen(name)), sym_eq, &k);
+    if (*e)
+        return *e - 1;
     memset(&s, 0, sizeof s);
     s.name = dup_str(name);
     s.sec = -1;
     s.global = true;
     vec_push(&o->syms, s);
-    hash_put(o, (uint32_t)(o->syms.len - 1));
+    idxset_set(&o->names, e, (uint32_t)(o->syms.len - 1));
     return (uint32_t)(o->syms.len - 1);
 }
 
@@ -827,6 +821,6 @@ void mobj_free(MObj *o)
         vec_free(&o->rels[s]);
     }
     vec_free(&o->syms);
-    free(o->hash);
+    idxset_free(&o->names);
     free(o);
 }

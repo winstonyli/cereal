@@ -16,6 +16,7 @@
 #include "c/csymidx.h"
 #include "c/frontend.h"
 #include "hash.h"
+#include "idxset.h"
 
 #define TAG(a, b, c, d) \
     ((uint32_t)(a) | (uint32_t)(b) << 8 | (uint32_t)(c) << 16 | (uint32_t)(d) << 24)
@@ -233,44 +234,9 @@ uint64_t crec_tukey(const char *main_path, uint64_t flag_hash, uint64_t build_id
 
 /* ---- the writer ------------------------------------------------------------ */
 
-typedef struct StrTab {          /* deduplicated strings; offset 0 is "" */
-    StrBuf b;
-    uint32_t *slot;
-    size_t cap, n;
-} StrTab;
-
-static uint32_t st_add(StrTab *t, const char *s)
+static uint32_t st_add(StrPool *t, const char *s)   /* offset 0 is "" */
 {
-    size_t len = strlen(s), i, mask;
-    uint32_t off;
-    if (!len)
-        return 0;
-    if (!t->b.len)
-        sb_putc(&t->b, 0);
-    if ((t->n + 1) * 2 > t->cap) {
-        size_t nc = t->cap ? t->cap * 2 : 64, k;
-        uint32_t *ns = xcalloc(nc, sizeof *ns);
-        for (k = 0; k < t->cap; k++)
-            if (t->slot[k]) {
-                const char *str = t->b.data + t->slot[k];
-                size_t j = hash_bytes(str, strlen(str)) & (nc - 1);
-                while (ns[j])
-                    j = (j + 1) & (nc - 1);
-                ns[j] = t->slot[k];
-            }
-        free(t->slot);
-        t->slot = ns;
-        t->cap = nc;
-    }
-    mask = t->cap - 1;
-    for (i = hash_bytes(s, len) & mask; t->slot[i]; i = (i + 1) & mask)
-        if (!strcmp(t->b.data + t->slot[i], s))
-            return t->slot[i];
-    off = (uint32_t)t->b.len;
-    sb_putn(&t->b, s, len + 1);
-    t->slot[i] = off;
-    t->n++;
-    return off;
+    return strpool_add(t, s, strlen(s));
 }
 
 typedef struct Sec {
@@ -281,7 +247,7 @@ typedef struct Sec {
 typedef struct Wr {
     Sec s[9];
     int n;
-    StrTab st;
+    StrPool st;
 } Wr;
 
 static Sec *wr_sec(Wr *w, uint32_t tag, size_t esz)
@@ -303,8 +269,7 @@ static void wr_free(Wr *w)
     int i;
     for (i = 0; i < w->n; i++)
         sb_free(&w->s[i].b);
-    sb_free(&w->st.b);
-    free(w->st.slot);
+    strpool_free(&w->st);
 }
 
 /* Header, directory and the sections (the string blob last), 8-aligned and

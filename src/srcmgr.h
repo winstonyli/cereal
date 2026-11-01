@@ -9,6 +9,7 @@
 #define CEREAL_SRCMGR_H
 
 #include "common.h"
+#include "idxset.h"
 #include "thread.h"
 
 typedef uint32_t SrcLoc;   /* 0 is invalid */
@@ -83,8 +84,8 @@ typedef struct SrcMgr {
     SrcLoc next_base;
     SrcFile **fchunks[FILE_CHUNKS];
     uint32_t nfiles;       /* atomic */
-    SrcFile **path_slots;  /* open-addressing map path -> file */
-    size_t path_cap, path_count;
+    IdxSet paths;          /* path -> file: indices into pathfiles */
+    VEC(SrcFile *) pathfiles;
     const char *cwd;       /* absolute directory relative paths are read from
                             * (a compile_commands entry's); NULL: the process's */
     ScratchCursor scratch; /* the main thread's cursor */

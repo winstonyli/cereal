@@ -4,6 +4,7 @@
 #include <errno.h>
 
 #include "driver.h"
+#include "idxset.h"
 
 extern const char host_preinclude[];
 
@@ -20,31 +21,37 @@ typedef struct Deps {
     VEC(const char *) stack;        /* spelled path of each open file */
     const char *cur;                /* what the last include event opened */
     VEC(DepEnt) list;               /* first lookup of each key, in order */
-    uint32_t *slots;                /* hash set of the keys: index + 1 */
-    size_t nslots;
+    IdxSet keys;                    /* the keys: indices into list */
     bool failed;                    /* a header was missing (and not -MG) */
 } Deps;
 
-/* True when `key` is new. */
+typedef struct DepKey {
+    const Deps *d;
+    const char *key;
+} DepKey;
+
+static bool dep_eq(void *ctx, uint32_t i)
+{
+    DepKey *k = ctx;
+    return !strcmp(k->d->list.data[i].id, k->key);
+}
+
+static uint64_t dep_hash(void *ctx, uint32_t i)
+{
+    const char *id = ((DepKey *)ctx)->d->list.data[i].id;
+    return hash_bytes(id, strlen(id));
+}
+
+/* True when `key` is new (the caller then pushes its entry on list). */
 static bool deps_add_key(Deps *d, const char *key)
 {
-    size_t i, h = hash_bytes(key, strlen(key));
-    if (d->list.len * 2 >= d->nslots) {
-        size_t n = d->nslots ? d->nslots * 2 : 64, k;
-        free(d->slots);
-        d->slots = xcalloc(n, sizeof *d->slots);
-        d->nslots = n;
-        for (k = 0; k < d->list.len; k++) {
-            i = hash_bytes(d->list.data[k].id, strlen(d->list.data[k].id));
-            while (d->slots[i & (n - 1)])
-                i++;
-            d->slots[i & (n - 1)] = (uint32_t)k + 1;
-        }
-    }
-    for (i = h; d->slots[i & (d->nslots - 1)]; i++)
-        if (!strcmp(d->list.data[d->slots[i & (d->nslots - 1)] - 1].id, key))
-            return false;
-    d->slots[i & (d->nslots - 1)] = (uint32_t)d->list.len + 1;
+    DepKey k = {d, key};
+    uint32_t *e;
+    idxset_reserve(&d->keys, d->list.len + 1, dep_hash, &k);
+    e = idxset_probe(&d->keys, hash_bytes(key, strlen(key)), dep_eq, &k);
+    if (*e)
+        return false;
+    idxset_set(&d->keys, e, (uint32_t)d->list.len);
     return true;
 }
 
@@ -130,7 +137,7 @@ void deps_free(TU *tu)
         return;
     vec_free(&d->stack);
     vec_free(&d->list);
-    free(d->slots);
+    idxset_free(&d->keys);
     free(d);
     tu->deps = NULL;
 }

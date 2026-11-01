@@ -686,14 +686,6 @@ static uint64_t hash_id(const Checker *c, uint32_t fsym)
     return ((uint64_t)(uintptr_t)c * 0x9e3779b97f4a7c15ull ^ fsym) * 0xff51afd7ed558ccdull;
 }
 
-static uint64_t hash_name(const char *s)
-{
-    uint64_t h = 1469598103934665603ull;
-    for (; *s; s++)
-        h = (h ^ (unsigned char)*s) * 1099511628211ull;
-    return h;
-}
-
 bool ev_fn_external(Checker *c, uint32_t fsym)
 {
     return !(fsym & SYM_LOCAL) && csym(c, fsym)->linkage == LK_EXTERNAL;
@@ -704,36 +696,64 @@ const char *ev_fn_name(Checker *c, uint32_t fsym)
     return cident(c, csym(c, fsym)->name);
 }
 
-/* Add the functions pushed since the last call; both tables are open addressing, entry = index + 1. */
+/* The key of a lookup in either function index: by (file, symbol) or by name. */
+typedef struct FnKey {
+    Ev *v;
+    const Checker *c;
+    uint32_t fsym;
+    const char *nm;
+} FnKey;
+
+static bool fi_id_eq(void *x, uint32_t i)
+{
+    const FnKey *k = x;
+    const Fn *f = &k->v->fn.data[i];
+    return f->fsym == k->fsym && f->c == k->c;
+}
+
+static uint64_t fi_id_hash(void *x, uint32_t i)
+{
+    const Fn *f = &((FnKey *)x)->v->fn.data[i];
+    return hash_id(f->c, f->fsym);
+}
+
+static bool fi_nm_eq(void *x, uint32_t i)
+{
+    const FnKey *k = x;
+    const Fn *f = &k->v->fn.data[i];
+    return !strcmp(ev_fn_name(f->c, f->fsym), k->nm);
+}
+
+static uint64_t fi_nm_hash(void *x, uint32_t i)
+{
+    const Fn *f = &((FnKey *)x)->v->fn.data[i];
+    const char *nm = ev_fn_name(f->c, f->fsym);
+    return hash_bytes(nm, strlen(nm));
+}
+
+/* Add the functions pushed since the last call to both indexes. */
 static void fn_sync(Ev *v)
 {
     size_t i;
-    if (v->fi_cap < 4 * v->fn.len + 8) {
-        free(v->fi_id);
-        free(v->fi_nm);
-        for (v->fi_cap = 64; v->fi_cap < 8 * v->fn.len + 8;)
-            v->fi_cap *= 2;
-        v->fi_id = xcalloc(v->fi_cap, sizeof *v->fi_id);
-        v->fi_nm = xcalloc(v->fi_cap, sizeof *v->fi_nm);
-        v->fi_done = 0;
-    }
     for (i = v->fi_done; i < v->fn.len; i++) {
         const Fn *f = &v->fn.data[i];
-        size_t k;
+        FnKey k = {v, f->c, f->fsym, NULL};
+        uint32_t *e;
         if (f->fsym == SYM_NONE)
             continue;
-        for (k = hash_id(f->c, f->fsym) & (v->fi_cap - 1); v->fi_id[k]; k = (k + 1) & (v->fi_cap - 1))
-            ;
-        v->fi_id[k] = (uint32_t)i + 1;
+        idxset_reserve(&v->fi_id, v->fi_id.n + 1, fi_id_hash, &k);
+        idxset_set(&v->fi_id, idxset_probe(&v->fi_id, hash_id(f->c, f->fsym), fi_id_eq, &k), (uint32_t)i);
         /* an external definition: not an inline one, which each file has its own copy of (the intrinsics of
          * <emmintrin.h>) */
         if (!v->link || !f->user || !ev_fn_external(f->c, f->fsym) || (csym(f->c, f->fsym)->flags & CSF_INLINE))
             continue;
-        for (k = hash_name(ev_fn_name(f->c, f->fsym)) & (v->fi_cap - 1); v->fi_nm[k]; k = (k + 1) & (v->fi_cap - 1))
-            if (!strcmp(ev_fn_name(v->fn.data[v->fi_nm[k] - 1].c, v->fn.data[v->fi_nm[k] - 1].fsym),
-                        ev_fn_name(f->c, f->fsym)))
-                v->dup_def = ev_fn_name(f->c, f->fsym);
-        v->fi_nm[k] = (uint32_t)i + 1;
+        k.nm = ev_fn_name(f->c, f->fsym);
+        idxset_reserve(&v->fi_nm, v->fi_nm.n + 1, fi_nm_hash, &k);
+        e = idxset_probe(&v->fi_nm, hash_bytes(k.nm, strlen(k.nm)), fi_nm_eq, &k);
+        if (*e)
+            v->dup_def = k.nm;      /* the first definition stays the one found */
+        else
+            idxset_set(&v->fi_nm, e, (uint32_t)i);
     }
     v->fi_done = v->fn.len;
 }
@@ -741,29 +761,24 @@ static void fn_sync(Ev *v)
 /* The body of function fsym of file c, in that file. */
 static Fn *find_fn(Ev *v, const Checker *c, uint32_t fsym)
 {
-    size_t k;
+    FnKey k = {v, c, fsym, NULL};
+    uint32_t e;
     fn_sync(v);
-    for (k = hash_id(c, fsym) & (v->fi_cap - 1); v->fi_id[k]; k = (k + 1) & (v->fi_cap - 1))
-        if (v->fn.data[v->fi_id[k] - 1].fsym == fsym && v->fn.data[v->fi_id[k] - 1].c == c)
-            return &v->fn.data[v->fi_id[k] - 1];
-    return NULL;
+    e = *idxset_probe(&v->fi_id, hash_id(c, fsym), fi_id_eq, &k);
+    return e ? &v->fn.data[e - 1] : NULL;
 }
 
 /* ... or, linking, the external definition of its name in another file. */
 static Fn *find_def(Ev *v, Checker *c, uint32_t fsym)
 {
     Fn *g = find_fn(v, c, fsym);
-    const char *nm;
-    size_t k;
+    FnKey k = {v, c, fsym, NULL};
+    uint32_t e;
     if (g || !v->link || !ev_fn_external(c, fsym))
         return g;
-    nm = ev_fn_name(c, fsym);
-    for (k = hash_name(nm) & (v->fi_cap - 1); v->fi_nm[k]; k = (k + 1) & (v->fi_cap - 1)) {
-        Fn *d = &v->fn.data[v->fi_nm[k] - 1];
-        if (!strcmp(ev_fn_name(d->c, d->fsym), nm))
-            return d;
-    }
-    return NULL;
+    k.nm = ev_fn_name(c, fsym);
+    e = *idxset_probe(&v->fi_nm, hash_bytes(k.nm, strlen(k.nm)), fi_nm_eq, &k);
+    return e ? &v->fn.data[e - 1] : NULL;
 }
 
 /* A function's object: one per definition (a declaration without a body in this file takes the
@@ -1178,42 +1193,70 @@ static uint64_t hash_sd(const Checker *c, uint32_t ref, uint32_t fn)
     return (hash_id(c, ref) ^ fn) * 0xc4ceb9fe1a85ec53ull;
 }
 
+/* The key of a lookup in either static-object index: by (file, ref, function) or by name. */
+typedef struct SdKey {
+    Ev *v;
+    const Checker *c;
+    uint32_t ref, fn;
+    const char *nm;
+} SdKey;
+
+static uint32_t sd_fn(const Sd *d)
+{
+    return d->local ? d->fn : SD_GLOBAL;
+}
+
+static const char *sd_name(const Sd *d)
+{
+    return cident(d->c, csym(d->c, d->ref)->name);
+}
+
+static bool si_id_eq(void *x, uint32_t i)
+{
+    const SdKey *k = x;
+    const Sd *o = &k->v->sd.data[i];
+    return o->c == k->c && o->ref == k->ref && sd_fn(o) == k->fn;
+}
+
+static uint64_t si_id_hash(void *x, uint32_t i)
+{
+    const Sd *o = &((SdKey *)x)->v->sd.data[i];
+    return hash_sd(o->c, o->ref, sd_fn(o));
+}
+
+static bool si_nm_eq(void *x, uint32_t i)
+{
+    const SdKey *k = x;
+    return !strcmp(sd_name(&k->v->sd.data[i]), k->nm);
+}
+
+static uint64_t si_nm_hash(void *x, uint32_t i)
+{
+    const char *nm = sd_name(&((SdKey *)x)->v->sd.data[i]);
+    return hash_bytes(nm, strlen(nm));
+}
+
 /* Add the Sds pushed since the last call: by (file, ref, function) keeping the defined one over a
  * tentative one, and, linking, by name for the external ones, keeping the best (defined, else the
- * first tentative one).  Open addressing, entry = index + 1. */
+ * first tentative one). */
 static void sd_sync(Ev *v)
 {
     size_t i;
-    if (v->si_cap < 4 * v->sd.len + 8) {
-        free(v->si_id);
-        free(v->si_nm);
-        for (v->si_cap = 64; v->si_cap < 8 * v->sd.len + 8;)
-            v->si_cap *= 2;
-        v->si_id = xcalloc(v->si_cap, sizeof *v->si_id);
-        v->si_nm = xcalloc(v->si_cap, sizeof *v->si_nm);
-        v->si_done = 0;
-    }
     for (i = v->si_done; i < v->sd.len; i++) {
         const Sd *d = &v->sd.data[i];
-        uint32_t fn = d->local ? d->fn : SD_GLOBAL;
-        size_t k;
-        for (k = hash_sd(d->c, d->ref, fn) & (v->si_cap - 1); v->si_id[k]; k = (k + 1) & (v->si_cap - 1)) {
-            const Sd *o = &v->sd.data[v->si_id[k] - 1];
-            if (o->c == d->c && o->ref == d->ref && (o->local ? o->fn : SD_GLOBAL) == fn)
-                break;
-        }
-        if (!v->si_id[k] || (v->sd.data[v->si_id[k] - 1].node == TN && d->node != TN))
-            v->si_id[k] = (uint32_t)i + 1;
+        SdKey k = {v, d->c, d->ref, sd_fn(d), NULL};
+        uint32_t *e;
+        idxset_reserve(&v->si_id, v->si_id.n + 1, si_id_hash, &k);
+        e = idxset_probe(&v->si_id, hash_sd(d->c, d->ref, k.fn), si_id_eq, &k);
+        if (!*e || (v->sd.data[*e - 1].node == TN && d->node != TN))
+            idxset_set(&v->si_id, e, (uint32_t)i);
         if (!v->link || d->local || d->stub || d->alias || csym(d->c, d->ref)->linkage != LK_EXTERNAL)
             continue;
-        for (k = hash_name(cident(d->c, csym(d->c, d->ref)->name)) & (v->si_cap - 1); v->si_nm[k];
-             k = (k + 1) & (v->si_cap - 1)) {
-            const Sd *o = &v->sd.data[v->si_nm[k] - 1];
-            if (!strcmp(cident(o->c, csym(o->c, o->ref)->name), cident(d->c, csym(d->c, d->ref)->name)))
-                break;
-        }
-        if (!v->si_nm[k] || (v->sd.data[v->si_nm[k] - 1].node == TN && d->node != TN))
-            v->si_nm[k] = (uint32_t)i + 1;
+        k.nm = sd_name(d);
+        idxset_reserve(&v->si_nm, v->si_nm.n + 1, si_nm_hash, &k);
+        e = idxset_probe(&v->si_nm, hash_bytes(k.nm, strlen(k.nm)), si_nm_eq, &k);
+        if (!*e || (v->sd.data[*e - 1].node == TN && d->node != TN))
+            idxset_set(&v->si_nm, e, (uint32_t)i);
     }
     v->si_done = v->sd.len;
 }
@@ -1221,27 +1264,19 @@ static void sd_sync(Ev *v)
 /* The Sd of (file, ref, function), NULL if none. */
 static Sd *sd_find(Ev *v, const Checker *c, uint32_t ref, uint32_t fn)
 {
-    size_t k;
+    SdKey k = {v, c, ref, fn, NULL};
+    uint32_t e;
     sd_sync(v);
-    for (k = hash_sd(c, ref, fn) & (v->si_cap - 1); v->si_id[k]; k = (k + 1) & (v->si_cap - 1)) {
-        Sd *o = &v->sd.data[v->si_id[k] - 1];
-        if (o->c == c && o->ref == ref && (o->local ? o->fn : SD_GLOBAL) == fn)
-            return o;
-    }
-    return NULL;
+    e = *idxset_probe(&v->si_id, hash_sd(c, ref, fn), si_id_eq, &k);
+    return e ? &v->sd.data[e - 1] : NULL;
 }
 
 /* The best external Sd of a name (index + 1), 0: none. */
 static size_t sd_named(Ev *v, const char *nm)
 {
-    size_t k;
+    SdKey k = {v, NULL, 0, 0, nm};
     sd_sync(v);
-    for (k = hash_name(nm) & (v->si_cap - 1); v->si_nm[k]; k = (k + 1) & (v->si_cap - 1)) {
-        const Sd *o = &v->sd.data[v->si_nm[k] - 1];
-        if (!strcmp(cident(o->c, csym(o->c, o->ref)->name), nm))
-            return v->si_nm[k];
-    }
-    return 0;
+    return *idxset_probe(&v->si_nm, hash_bytes(nm, strlen(nm)), si_nm_eq, &k);
 }
 
 /* The object of Sd i, made on first use; its contents wait for the first access. */
@@ -2158,10 +2193,10 @@ void ev_free(Ev *v)
     }
     vec_free(&v->fn);
     vec_free(&v->sd);
-    free(v->fi_id);
-    free(v->fi_nm);
-    free(v->si_id);
-    free(v->si_nm);
+    idxset_free(&v->fi_id);
+    idxset_free(&v->fi_nm);
+    idxset_free(&v->si_id);
+    idxset_free(&v->si_nm);
     vec_free(&v->rec);
     vec_free(&v->lab);
     vec_free(&v->dict);

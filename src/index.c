@@ -3,6 +3,7 @@
 #include "json.h"
 #include "cell.h"
 #include "hash.h"
+#include "idxset.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -688,55 +689,6 @@ static void blob_tables(IxBlob *b, Arena *a)
     vec_free(&ed);
 }
 
-/* A cell's string pool while encoding: repeats stored once. */
-typedef struct StrPool {
-    StrBuf sb;
-    uint32_t *slot;             /* offsets + 1; 0 empty */
-    uint32_t cap, n;
-} StrPool;
-
-static void pool_init_strs(StrPool *p)
-{
-    memset(p, 0, sizeof *p);
-    sb_putc(&p->sb, 0); /* offset 0: "" */
-    p->cap = 256;
-    p->slot = xcalloc(p->cap, sizeof *p->slot);
-}
-
-static uint32_t pool_str(StrPool *p, const char *s, size_t n)
-{
-    uint64_t h;
-    uint32_t i, off;
-    if (!n)
-        return 0;
-    if ((p->n + 1) * 2 > p->cap) {
-        uint32_t cap = p->cap * 2, k, *ns = xcalloc(cap, sizeof *ns);
-        for (k = 0; k < p->cap; k++)
-            if (p->slot[k]) {
-                const char *t = p->sb.data + p->slot[k] - 1;
-                for (i = (uint32_t)hash64(t, strlen(t), 0) & (cap - 1); ns[i];
-                     i = (i + 1) & (cap - 1))
-                    ;
-                ns[i] = p->slot[k];
-            }
-        free(p->slot);
-        p->slot = ns;
-        p->cap = cap;
-    }
-    h = hash64(s, n, 0);
-    for (i = (uint32_t)h & (p->cap - 1); p->slot[i]; i = (i + 1) & (p->cap - 1)) {
-        const char *t = p->sb.data + p->slot[i] - 1;
-        if (!memcmp(t, s, n) && !t[n])
-            return p->slot[i] - 1;
-    }
-    off = (uint32_t)p->sb.len;
-    sb_putn(&p->sb, s, n);
-    sb_putc(&p->sb, 0);
-    p->slot[i] = off + 1;
-    p->n++;
-    return off;
-}
-
 /* Expansion ids [lo, hi) holding every expansion with key in [from, to):
  * keys do not decrease with ids in a worker (NULL slots: none). */
 static void exp_range(Index *w, uint32_t from, uint32_t to, size_t *lo,
@@ -805,7 +757,7 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
     size_t i, k = 0, nr = 0;
     size_t lo, hi, rlo, rhi;
     uint32_t *local;
-    StrPool sp;
+    StrPool sp = {0};        /* the cell's strings, repeats stored once */
     VEC(uint32_t) argv = {0}, idents = {0};
     (void)ctx;
     /* a worker records in plan order: keys never decrease with ids, and
@@ -818,7 +770,7 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
                                                              : UINT32_MAX;
     }
 #define LOCAL(id) ((id) >= lo && (id) < hi ? local[(id) - lo] : UINT32_MAX)
-    pool_init_strs(&sp);
+    sb_putc(&sp.b, 0);          /* offset 0: "" */
     b->nexps = (uint32_t)k;
     b->exps = NEW_ARRAY(a, CExp, k + 1);
     for (i = lo; i < hi; i++) {
@@ -847,9 +799,9 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
         c->args = (uint32_t)argv.len;
         c->nargs = (uint32_t)x->nargs;
         for (j = 0; j < (size_t)x->nargs; j++)
-            vec_push(&argv, pool_str(&sp, x->args[j], strlen(x->args[j])));
+            vec_push(&argv, strpool_add(&sp, x->args[j], strlen(x->args[j])));
         c->text_len = (uint32_t)x->text.len;
-        c->text = pool_str(&sp, x->text.data, x->text.len);
+        c->text = strpool_add(&sp, x->text.data, x->text.len);
         c->names = (uint32_t)idents.len;
         c->nnames = (uint32_t)x->arg_names.len;
         for (j = 0; j < x->arg_names.len; j++)
@@ -879,15 +831,14 @@ static void *ix_encode(void *ctx, void *wctx, uint32_t from, uint32_t to,
     }
 #undef LOCAL
     /* the pools, at their final sizes */
-    b->strs = arena_strndup(a, sp.sb.data, sp.sb.len);
+    b->strs = arena_strndup(a, sp.b.data, sp.b.len);
     b->argv = NEW_ARRAY(a, uint32_t, argv.len + 1);
     if (argv.len)
         memcpy(b->argv, argv.data, sizeof(uint32_t) * argv.len);
     b->idents = NEW_ARRAY(a, uint32_t, idents.len + 1);
     if (idents.len)
         memcpy(b->idents, idents.data, sizeof(uint32_t) * idents.len);
-    sb_free(&sp.sb);
-    free(sp.slot);
+    strpool_free(&sp);
     vec_free(&argv);
     vec_free(&idents);
     blob_tables(b, a);

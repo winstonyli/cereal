@@ -3,6 +3,7 @@
 #include "c/csymidx.h"
 #include "c/cdecl_int.h"
 #include "hash.h"
+#include "idxset.h"
 #include "pp.h"
 #include "thread.h"
 
@@ -63,9 +64,8 @@ struct SymIdxB {
     U32V enhover;            /* enum index -> hover offset (csx_enum) */
     VEC(BScope) scopes;      /* every unit's root and the checker's scopes */
     U32V open;               /* the open scopes (ids), the unit's root first */
-    StrBuf hs;               /* hover texts, deduplicated: the final string
+    StrPool hs;              /* hover texts, deduplicated: the final string
                                 pool's start (offset 0 is "") */
-    uint32_t *hset, hcap, hcount;   /* hash set of hs offsets + 1 */
     StrBuf tmp;
     size_t unit_ev0;         /* the unit's first event */
     const SrcFile *cf;       /* the last file asked about */
@@ -102,9 +102,8 @@ void csx_free(SymIdxB *b)
     vec_free(&b->scopes);
     vec_free(&b->open);
     vec_free(&b->seen);
-    sb_free(&b->hs);
+    strpool_free(&b->hs);
     sb_free(&b->tmp);
-    free(b->hset);
     free(b);
 }
 
@@ -139,17 +138,11 @@ static uint32_t new_decl(SymIdxB *b, uint32_t name, int kind, int linkage,
 
 /* ---- hover texts (copied out of the checker while its tables live) ------- */
 
-static uint32_t hash_str(const char *s, size_t n)
-{
-    return (uint32_t)hash64(s, n, 0x686f76u);
-}
-
 /* The offset of text s (cut to CIX_HOVER_MAX bytes) in b->hs, added if new;
  * 0 for an empty text.  The two spaces type_print puts after a parameter
  * ending in a word (gcc's diagnostic text) read as one here. */
 static uint32_t hover_add(SymIdxB *b, StrBuf *s)
 {
-    uint32_t i, off;
     size_t n = 0, j;
     for (j = 0; j < s->len; j++)
         if (!(n >= 2 && s->data[j] == ' ' && s->data[n - 1] == ' ' &&
@@ -169,35 +162,7 @@ static uint32_t hover_add(SymIdxB *b, StrBuf *s)
         n = s->len;
     }
     s->len = n;
-    if (!b->hs.len)
-        sb_putc(&b->hs, 0);
-    if (2 * (b->hcount + 1) > b->hcap) {        /* grow and rehash */
-        uint32_t cap = b->hcap ? 2 * b->hcap : 1024, k, *set;
-        set = xcalloc(cap, sizeof *set);
-        for (k = 0; k < b->hcap; k++)
-            if (b->hset[k]) {
-                const char *t = b->hs.data + b->hset[k] - 1;
-                for (i = hash_str(t, strlen(t)) & (cap - 1); set[i];
-                     i = (i + 1) & (cap - 1))
-                    ;
-                set[i] = b->hset[k];
-            }
-        free(b->hset);
-        b->hset = set;
-        b->hcap = cap;
-    }
-    for (i = hash_str(s->data, n) & (b->hcap - 1); b->hset[i];
-         i = (i + 1) & (b->hcap - 1)) {
-        off = b->hset[i] - 1;
-        if (!strncmp(b->hs.data + off, s->data, n) && !b->hs.data[off + n])
-            return off;
-    }
-    off = (uint32_t)b->hs.len;
-    sb_putn(&b->hs, s->data, n);
-    sb_putc(&b->hs, 0);
-    b->hset[i] = off + 1;
-    b->hcount++;
-    return off;
+    return strpool_add(&b->hs, s->data, n);
 }
 
 /* Whether type t is const, arrays stripped (`const int a[3]`, through
@@ -1173,11 +1138,9 @@ CIndex *csx_finish(Checker *c)
     ix->excused = b->excused;
     memset(&pool, 0, sizeof pool);
     pool.by_ident = xcalloc(interner_count(c->in) + 1, sizeof *pool.by_ident);
-    pool.sb = b->hs;         /* the hover texts start the pool */
-    memset(&b->hs, 0, sizeof b->hs);
-    free(b->hset);
-    b->hset = NULL;
-    b->hcap = b->hcount = 0;
+    pool.sb = b->hs.b;       /* the hover texts start the pool */
+    memset(&b->hs.b, 0, sizeof b->hs.b);
+    idxset_free(&b->hs.set);
     b->enhover.len = 0;
     if (!pool.sb.len)
         sb_putc(&pool.sb, 0);
