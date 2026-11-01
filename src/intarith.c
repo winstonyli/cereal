@@ -14,10 +14,10 @@ static Wide t_hi(unsigned bits, bool sg)
 static bool t_fits(unsigned bits, bool sg, Wide v) { return v >= t_lo(bits, sg) && v <= t_hi(bits, sg); }
 
 /* the canonical encoding of v modulo 2^bits */
-static uint64_t t_wrap(unsigned bits, bool sg, Wide v)
+static uint64_t t_wrap(unsigned bits, bool sg, UWide v)
 {
     UWide m = bits == 64 ? (((UWide)1 << 64) - 1) : (((UWide)1 << bits) - 1);
-    return ia_canon((IaTy){(uint8_t)bits, sg, false}, (uint64_t)((UWide)v & m));
+    return ia_canon((IaTy){(uint8_t)bits, sg, false}, (uint64_t)(v & m));
 }
 
 static int t_fail(const char *what, unsigned bits, bool sg, Wide x, Wide y, uint64_t got, unsigned fl)
@@ -67,9 +67,11 @@ int intarith_selftest(void)
                     a = t_wrap(bits, sg, x);
                     b = t_wrap(bits, sg, y);
                     for (k = 0; k < 3; k++) {
-                        Wide e = arith[k] == P_PLUS ? x + y : arith[k] == P_MINUS ? x - y : x * y;
+                        UWide e = arith[k] == P_PLUS ? (UWide)x + (UWide)y
+                                  : arith[k] == P_MINUS ? (UWide)x - (UWide)y : (UWide)x * (UWide)y;
+                        bool fit = !sg || t_fits(bits, sg, (Wide)e);    /* signed operands: |e| < 2^127 */
                         r = ia_binop(arith[k], t, a, b, &fl);
-                        if (r != t_wrap(bits, sg, e) || fl != (sg && !t_fits(bits, sg, e) ? IA_OVF : 0u))
+                        if (r != t_wrap(bits, sg, e) || fl != (fit ? 0u : IA_OVF))
                             bad += t_fail("+-*", bits, sg, x, y, r, fl);
                     }
                     if (y == 0) {

@@ -17,6 +17,7 @@
  * gcc only finds when it folds the full expression (c_fully_fold) is
  * K_FOLD; EF_INTOPS is C_MAYBE_CONST_EXPR_INT_OPERANDS. */
 #include "c/cexpr_int.h"
+#include "intarith.h"
 #include "c/fuzzy.h"
 #include "c/tast.h"
 
@@ -115,20 +116,18 @@ TypeId common_type(Checker *c, TypeId a, TypeId b)
 
 /* ---- integer values ------------------------------------------------------ */
 
+static IaTy ia_ty(Checker *c, TypeId t)
+{
+    unsigned bits = int_bits(c, t);
+    return (IaTy){(uint8_t)(bits == 0 || bits > 64 ? 64 : bits), is_signed(c, t),
+                  tkind(c, t) == TY_BOOL};
+}
+
 uint64_t cexpr_trunc(Checker *c, TypeId t, uint64_t v)
 {
-    unsigned bits;
-    if (tkind(c, t) == TY_BOOL)
-        return v != 0;
-    if (!is_int(c, t) && !is_ptr(c, t))
+    if (tkind(c, t) != TY_BOOL && !is_int(c, t) && !is_ptr(c, t))
         return v;
-    bits = int_bits(c, t);
-    if (bits == 0 || bits >= 64)
-        return v;
-    v &= (UINT64_C(1) << bits) - 1;
-    if (is_int(c, t) && is_signed(c, t) && (v >> (bits - 1)) & 1)
-        v |= ~((UINT64_C(1) << bits) - 1);
-    return v;
+    return ia_canon(ia_ty(c, t), v);
 }
 
 int64_t cexpr_sval(Checker *c, uint32_t i)
@@ -167,89 +166,6 @@ bool cexpr_fits(Checker *c, uint64_t v, TypeId from, TypeId to)
 bool ival_neg(Checker *c, TypeId t, uint64_t v)
 {
     return is_int(c, t) && is_signed(c, t) && (int64_t)v < 0;
-}
-
-/* Integer arithmetic in type t (promoted; at most 64 bits).  Sets *ovf on
- * signed overflow, *zdiv on division by zero. */
-static uint64_t int_op(Checker *c, int op, TypeId t, uint64_t a, uint64_t b,
-                       bool *ovf, bool *zdiv)
-{
-    bool sg = is_signed(c, t);
-    unsigned bits = int_bits(c, t);
-    uint64_t r = 0;
-    int64_t sa = (int64_t)a, sb = (int64_t)b;
-    *ovf = false;
-    *zdiv = false;
-    if (bits > 64 || bits == 0)
-        bits = 64;
-    switch (op) {
-    case P_PLUS:
-        r = a + b;
-        if (sg && bits == 64)
-            *ovf = (int64_t)((a ^ r) & (b ^ r)) < 0;
-        break;
-    case P_MINUS:
-        r = a - b;
-        if (sg && bits == 64)
-            *ovf = (int64_t)((a ^ b) & (a ^ r)) < 0;
-        break;
-    case P_STAR:
-        if (sg && bits == 64) {
-            r = a * b;
-            if (sa != 0 && sb != 0) {
-                if ((sa == -1 && sb == INT64_MIN) ||
-                    (sb == -1 && sa == INT64_MIN))
-                    *ovf = true;
-                else
-                    *ovf = (int64_t)r / sb != sa;
-            }
-        } else if (sg) {
-            r = (uint64_t)(sa * sb);   /* |a|, |b| < 2^32: exact */
-        } else {
-            r = a * b;
-        }
-        break;
-    case P_SLASH: case P_PERCENT:
-        if (b == 0) {
-            *zdiv = true;
-            return 0;
-        }
-        if (sg) {
-            int64_t min = bits == 64 ? INT64_MIN : -(INT64_C(1) << (bits - 1));
-            if (sa == min && sb == -1) {
-                *ovf = true;
-                r = op == P_SLASH ? (uint64_t)min : 0;
-            } else {
-                r = (uint64_t)(op == P_SLASH ? sa / sb : sa % sb);
-            }
-        } else {
-            r = op == P_SLASH ? a / b : a % b;
-        }
-        break;
-    case P_AMP: r = a & b; break;
-    case P_PIPE: r = a | b; break;
-    case P_CARET: r = a ^ b; break;
-    case P_SHL:
-        r = b >= 64 ? 0 : a << b;
-        break;
-    case P_SHR:
-        if (b >= 64)
-            r = sg && sa < 0 ? ~UINT64_C(0) : 0;
-        else if (sg && sa < 0)
-            r = ~(~a >> b);
-        else
-            r = a >> b;
-        break;
-    default:
-        break;
-    }
-    if (bits < 64) {
-        uint64_t tr = cexpr_trunc(c, t, r);
-        if (sg && op != P_SHL && tr != r)
-            *ovf = true;
-        r = tr;
-    }
-    return r;
 }
 
 /* ---- floating values ----------------------------------------------------- */
@@ -6241,9 +6157,8 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         }
     }
     {
-        bool ovf, zdiv;
-        uint64_t v = int_op(c, op, ta, cexpr_trunc(c, ta, c->cv[a]), c->cv[b],
-                            &ovf, &zdiv);
+        unsigned fl;
+        uint64_t v = ia_binop(op, ia_ty(c, ta), cexpr_trunc(c, ta, c->cv[a]), c->cv[b], &fl);
         bin_value(c, i, a, b, v, false, int_const, loc);
     }
 }
@@ -6521,10 +6436,10 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (is_int(c, rt)) {
         if (!zero_div && int_bits(c, rt) <= 64 && has_ival(c, a) &&
             has_ival(c, b)) {
-            bool ovf, zd;
-            uint64_t v = int_op(c, op, rt, cexpr_trunc(c, rt, c->cv[a]),
-                                cexpr_trunc(c, rt, c->cv[b]), &ovf, &zd);
-            bin_value(c, i, a, b, v, ovf, true, loc);
+            unsigned fl;
+            uint64_t v = ia_binop(op, ia_ty(c, rt), cexpr_trunc(c, rt, c->cv[a]),
+                                  cexpr_trunc(c, rt, c->cv[b]), &fl);
+            bin_value(c, i, a, b, v, fl & IA_OVF, true, loc);
             return;
         }
         /* fold's identities make x * 0, 0 & x and x - x constants (not

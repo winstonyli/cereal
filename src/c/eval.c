@@ -11,6 +11,7 @@
  * float and pointer subset).
  * No mutable globals: the state is the Ev. */
 #include "c/eval_int.h"
+#include "intarith.h"
 #include "c/cintrin.h"
 /* ---- failure -------------------------------------------------------------- */
 
@@ -72,15 +73,14 @@ bool ev_tinfo(Ev *v, TypeId t, Ti *ti)
     return true;
 }
 
+static IaTy ev_iaty(const Ti *ti)
+{
+    return (IaTy){(uint8_t)(ti->bytes >= 8 ? 64 : 8 * ti->bytes), ti->sg, ti->boolean};
+}
+
 uint64_t ev_canon(const Ti *ti, uint64_t x)
 {
-    unsigned sh;
-    if (ti->boolean)
-        return x != 0;
-    if (ti->bytes >= 8)
-        return x;
-    sh = 64 - 8 * ti->bytes;
-    return ti->sg ? (uint64_t)((int64_t)(x << sh) >> sh) : (x << sh) >> sh;
+    return ia_canon(ev_iaty(ti), x);
 }
 
 static bool size_of(Ev *v, TypeId t, uint64_t *sz)
@@ -610,61 +610,32 @@ static bool fits(const Ti *ti, int64_t x)
 static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
 {
     Ti ti;
-    int64_t sa = (int64_t)a, sb = (int64_t)b, r = 0;
-    bool ovf = false;
+    unsigned fl;
+    uint64_t r;
     if (!ev_tinfo(v, ty, &ti))
         return 0;
-    switch (p) {
-    case P_PLUS:
-    case P_MINUS:
-    case P_STAR:
-        if (ti.sg && !ti.boolean) {
-            ovf = p == P_PLUS ? __builtin_add_overflow(sa, sb, &r)
-                  : p == P_MINUS ? __builtin_sub_overflow(sa, sb, &r)
-                                 : __builtin_mul_overflow(sa, sb, &r);
-            if ((ovf || !fits(&ti, r)) && !v->o.wrap) {
-                TRAP(v, "signed integer overflow");
-                return 0;
-            }
-        }
-        return ev_canon(&ti, p == P_PLUS ? a + b : p == P_MINUS ? a - b : a * b);
-    case P_SLASH:
-    case P_PERCENT:
-        if (b == 0) {
-            TRAP(v, "division by zero");
-            return 0;
-        }
-        if (ti.sg) {
-            if (sb == -1) {
-                if (p == P_SLASH && !v->o.wrap && !fits(&ti, (int64_t)(0 - a)) ) {
-                    TRAP(v, "signed integer overflow");
-                    return 0;
-                }
-                return p == P_SLASH ? ev_canon(&ti, 0 - a) : 0;
-            }
-            return ev_canon(&ti, (uint64_t)(p == P_SLASH ? sa / sb : sa % sb));
-        }
-        return ev_canon(&ti, p == P_SLASH ? a / b : a % b);
-    case P_AMP: return ev_canon(&ti, a & b);
-    case P_PIPE: return ev_canon(&ti, a | b);
-    case P_CARET: return ev_canon(&ti, a ^ b);
-    case P_SHL:
-    case P_SHR:
-        if (b >= 8 * ti.bytes) {        /* also negative counts */
-            TRAP(v, "shift count out of range");
-            return 0;
-        }
-        if (p == P_SHR)
-            return ev_canon(&ti, ti.sg ? (uint64_t)(sa >> b) : a >> b);
-        if (ti.sg && sa < 0 && !v->o.wrap) {
-            TRAP(v, "left shift of a negative value");
-            return 0;
-        }
-        return ev_canon(&ti, a << b);
-    default:
+    if (!ia_is_arith(p)) {
         UNSUP(v, "binary operator %d", p);
         return 0;
     }
+    r = ia_binop(p, ev_iaty(&ti), a, b, &fl);
+    if (fl & IA_ZDIV) {
+        TRAP(v, "division by zero");
+        return 0;
+    }
+    if (fl & IA_SHIFT_RANGE) {
+        TRAP(v, "shift count out of range");
+        return 0;
+    }
+    if ((fl & IA_OVF) && !v->o.wrap) {
+        TRAP(v, "signed integer overflow");
+        return 0;
+    }
+    if ((fl & IA_SHIFT_NEG) && !v->o.wrap) {
+        TRAP(v, "left shift of a negative value");
+        return 0;
+    }
+    return r;
 }
 
 /* The sweep reads what the program compares its inputs with (eval_run.c, guided calls). */
