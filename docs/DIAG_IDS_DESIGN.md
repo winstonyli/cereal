@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Diagnostic option ids as an enum generated from one table
@@ -74,3 +74,11 @@ One commit for the conversion, because the entry points and ~630 sites must agre
 - **Keep strings, delete the cache only** (h2): no signature change and no compile-time check, and it gives up most of the 1.65%.
 - **A generator script and a generated header** instead of the X-macro: adds a build step and a generated file to keep fresh; the X-macro needs neither.
 - **A typed pointer to the table row** (`const DiagOption *`) instead of an enum: also strict, but the pointer cannot index the `memo`, `overrides[]` and `optlevel[]` arrays without a subtraction, and enum values are stable across the process.
+
+## Outcome (2026-11-01, `237b3a2`, `723f951`)
+
+- The table is `src/diag_opts.def` (187 options), the enum is `DiagOpt`, and the row for `DW_X` is `options[DW_X - 1]`. `diag_selftest` checks every row's enum and the `DW_NONE` case.
+- 792 string literals in id position were rewritten by script (the design's 630 counted files, not calls), 12 ternary arguments by a second pass, the rest by hand (wrappers, `Lit.id`, `ConvInfo.warnopt`, `opt` variables in `cconv.c`/`cdecl.c`/`cformat.c`). 39 files changed, +973/-960.
+- Unregistered ids (the Risks case): four, `invalid-memory-model`, `extra`, `c2x`, `inputloc`. The user chose tags ("n1"): `DIAG_TAG` rows in the `.def`, enum values above `DW_COUNT`, kept out of `options[]` so no flag or listing code skips them. Making them options is parked (`PARKED.md`).
+- Deleted: `find_index_cached`, `DiagEngine.idc_key`/`idc_val`, the per-call name search. Kept: `by_name`, `find_index_scan`, the `memo`. `-Werror=int-conversion` is in `WARN`.
+- Gate on `723f951`: run 2347/0, san 2346/0 (findings 0), verify 637/638, 289/289, 3908/3910, globals 36. callgrind `uvloop/loop.c`: 3,896,168,683 -> 3,819,218,212 (-76.95M, -1.97%), above the 64M ceiling the design expected; the extra is probably the per-call string checks that went with the lookup (inference, not profiled).

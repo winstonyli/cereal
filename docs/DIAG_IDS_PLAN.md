@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Diagnostic option ids as a generated enum: implementation plan
