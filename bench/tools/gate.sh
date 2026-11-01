@@ -5,6 +5,7 @@
 # Writes /tmp/gate.<stage> and prints them in order.  Expect run/san "N passed, 0 failed"
 # (N grows with the goldens), san "findings 0", verify dg 2 / c-c++-common 1 / cpp 0 differ (file counts: docs/STATUS.md "Numbers"; cpp is a baseline, not a target),
 # callgrind ~3.91G (instructions, deterministic; 3.896G before the C23 work, +1.4% for it: docs/C23_PLAN.md; it read 3.907G at HEAD 2026-10-30, so the earlier ~3.95G was stale).
+# Exit status: 1 when a stage printed a failure (checked at the end).
 # Inner loop while iterating: `sh tests/run.sh` alone (GOLDEN_JOBS=n shards its golden loops).
 cd "$(dirname "$0")/../.." || exit 1
 O=/tmp/gate; rm -f $O.*
@@ -19,3 +20,12 @@ t callgrind nice -n 10 valgrind --tool=callgrind --callgrind-out-file=/dev/null 
     grep Collected >$O.4cg &
 wait
 for f in $O.*; do echo "== ${f#$O.}"; cat "$f"; done
+# a stage that printed a failure must fail the gate (the exit code used to be the last `cat`'s)
+bad=0
+grep -q 'all allowed' $O.0globals || { echo "gate: globals not all allowed"; bad=1; }
+for s in 1run 3san; do
+    grep -Eq '^[0-9]+ passed, 0 failed$' $O.$s || { echo "gate: $s did not end 'N passed, 0 failed'"; bad=1; }
+done
+grep -q 'findings 0$' $O.3san || { echo "gate: san findings not 0"; bad=1; }
+grep -q 'Collected' $O.4cg || { echo "gate: callgrind printed no total"; bad=1; }
+exit $bad
