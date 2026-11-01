@@ -57,7 +57,9 @@ For the two preprocessors, which share libcpp's rule that a negative shift count
 | `ppexpr` | `overflow()` | `fail()` when evaluated | `overflow()` for a nonzero signed left operand of `<<` | ignored | `overflow()` |
 | `pcexpr` | ignored | return `false` | ignored | ignored | ignored |
 
-## Differences the kernel would erase (to be decided or pinned before stage 1)
+## Differences the kernel would erase
+
+Decided 2026-10-31: item 1 as recommended (`IA_OVF` for `%`; `eval` traps), items 2 and 3 as recommended (`pcexpr` follows `ppexpr` through `ia_shift_cpp`); item 4 needs no decision.
 
 Found by reading the four copies on 2026-10-31; each gets a characterization test before any source changes, and the resolution below is the recommendation.
 
@@ -66,7 +68,7 @@ Found by reading the four copies on 2026-10-31; each gets a characterization tes
 3. **Negative shift count:** `ppexpr` shifts the other way (libcpp); `pcexpr` gives 0. Recommend the shared `ia_shift_cpp`; behavior change in `pcexpr` (`8 << -1` becomes 4).
 4. **Left shift of a negative value:** `eval` traps, `ppexpr` warns through the lossy rule, `cexpr` is silent. Not an erasure: the flags keep each policy.
 
-Items 2 and 3 move `pcexpr` toward `ppexpr`. They need the user's go-ahead each, since they change results; if refused, `pcexpr` keeps a local rule for that case and the kernel is called only where the values agree.
+Items 2 and 3 move `pcexpr` toward `ppexpr`; stage 2's golden shows the changed results.
 
 ## Tests
 
@@ -77,8 +79,8 @@ Items 2 and 3 move `pcexpr` toward `ppexpr`. They need the user's go-ahead each,
 
 ## Stages
 
-1. Kernel, `ia_canon`, selftest; `cexpr` and `eval` call it; the two canonicalizers become adapters. Decide items 1 and 4 here.
-2. `ppexpr` and `pcexpr` call it with `bits = 64`; decide items 2 and 3 here.
+1. Kernel, `ia_canon`, selftest; `cexpr` and `eval` call it; the two canonicalizers become adapters. Item 1 lands here (the `eval` trap on `INT_MIN % -1`).
+2. `ppexpr` and `pcexpr` call it with `bits = 64`; items 2 and 3 land here.
 
 Each stage is its own commit with its own gate. `int_op`, `int_arith`, the `mul/add/shift` arithmetic bodies and `fold`'s integer cases are deleted in the stage that replaces them.
 
