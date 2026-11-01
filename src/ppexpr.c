@@ -4,6 +4,7 @@
  * (6.10.1p3).  Subexpressions that are not evaluated (short-circuit, ?:)
  * are parsed but produce no diagnostics for division by zero/overflow. */
 #include "pp.h"
+#include "intarith.h"
 #include "c/lit.h"
 
 #include <ctype.h>
@@ -36,6 +37,8 @@ static Val mkval(uintmax_t v, bool uns)
 }
 
 static intmax_t sv(Val a) { return (intmax_t)a.v; }
+/* #if arithmetic is intmax_t (signed) or uintmax_t (unsigned) */
+static IaTy pp_ty(Val a) { return (IaTy){64, !a.uns, false}; }
 
 static void fail(EP *p, const Tok *t, const char *fmt, const char *arg, int n)
 {
@@ -507,37 +510,18 @@ static Val mul(EP *p, bool eval)
         b = unary(p, eval);
         convert(p, op, &a, &b);
         a.loc = op->loc;
-        if (op->punct == P_STAR) {
-            if (!a.uns) {
-                intmax_t x = sv(a), y = sv(b);
-                if (x != 0 && y != 0 &&
-                    ((x == -1 && y == INTMAX_MIN) || (y == -1 && x == INTMAX_MIN) ||
-                     (x != -1 && y != -1 &&
-                      ((x > 0 && y > 0 && x > INTMAX_MAX / y) ||
-                       (x < 0 && y < 0 && x < INTMAX_MAX / y) ||
-                       (x > 0 && y < 0 && y < INTMAX_MIN / x) ||
-                       (x < 0 && y > 0 && x < INTMAX_MIN / y)))))
-                    overflow(p, op, eval);
-            }
-            a.v = a.v * b.v;
-        } else {
-            if (b.v == 0) {
+        {
+            unsigned fl;
+            uint64_t r = ia_binop(op->punct, pp_ty(a), a.v, b.v, &fl);
+            if (fl & IA_ZDIV) {
                 if (eval)
                     fail(p, op, "division by zero in #if", NULL, 0);
                 a.v = 0;
                 continue;
             }
-            if (a.uns) {
-                a.v = op->punct == P_SLASH ? a.v / b.v : a.v % b.v;
-            } else {
-                intmax_t x = sv(a), y = sv(b);
-                if (x == INTMAX_MIN && y == -1) {
-                    overflow(p, op, eval);
-                    a.v = op->punct == P_SLASH ? (uintmax_t)x : 0;
-                } else {
-                    a.v = (uintmax_t)(op->punct == P_SLASH ? x / y : x % y);
-                }
-            }
+            if (fl & IA_OVF)
+                overflow(p, op, eval);
+            a.v = r;
         }
     }
 }
@@ -554,16 +538,12 @@ static Val add(EP *p, bool eval)
         b = mul(p, eval);
         convert(p, op, &a, &b);
         a.loc = op->loc;
-        if (op->punct == P_PLUS) {
-            if (!a.uns && ((sv(b) > 0 && sv(a) > INTMAX_MAX - sv(b)) ||
-                           (sv(b) < 0 && sv(a) < INTMAX_MIN - sv(b))))
+        {
+            unsigned fl;
+            uint64_t r = ia_binop(op->punct, pp_ty(a), a.v, b.v, &fl);
+            if (fl & IA_OVF)
                 overflow(p, op, eval);
-            a.v = a.v + b.v;
-        } else {
-            if (!a.uns && ((sv(b) < 0 && sv(a) > INTMAX_MAX + sv(b)) ||
-                           (sv(b) > 0 && sv(a) < INTMAX_MIN + sv(b))))
-                overflow(p, op, eval);
-            a.v = a.v - b.v;
+            a.v = r;
         }
     }
 }
@@ -574,29 +554,18 @@ static Val shift(EP *p, bool eval)
     for (;;) {
         const Tok *op = p->t;
         Val b;
-        intmax_t n;
         if (!is_punct(p, P_SHL) && !is_punct(p, P_SHR))
             return a;
         advance(p);
         b = add(p, eval);
         a.loc = op->loc;
         /* result has the type of the (promoted) left operand */
-        n = b.uns ? (b.v > 64 ? 64 : (intmax_t)b.v) : sv(b);
-        if (op->punct == P_SHR)
-            n = -n;
-        if (n >= 64 || n <= -64) {
-            if (n >= 64 && !a.uns && a.v != 0)
+        {
+            unsigned fl;
+            bool bneg = !b.uns && sv(b) < 0;
+            a.v = ia_shift_cpp(op->punct, pp_ty(a), a.v, b.v, bneg, &fl);
+            if (fl & IA_SHIFT_LOSSY)     /* libcpp num_lshift: shifting back loses the value */
                 overflow(p, op, eval);
-            a.v = (n < 0 && !a.uns && sv(a) < 0) ? UINTMAX_MAX : 0;
-        } else if (n >= 0) {
-            /* libcpp num_lshift: overflow if shifting back loses the value */
-            if (!a.uns && (intmax_t)(a.v << n) >> n != sv(a))
-                overflow(p, op, eval);
-            a.v <<= n;
-        } else if (a.uns) {
-            a.v >>= -n;
-        } else {
-            a.v = (uintmax_t)(sv(a) >> -n); /* arithmetic (GCC) */
         }
     }
 }

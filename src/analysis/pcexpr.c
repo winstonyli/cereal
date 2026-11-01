@@ -1,6 +1,7 @@
 /* pcexpr.c - presence conditions of #if expressions. */
 #include "pcexpr.h"
 #include "pcfam.h"
+#include "../intarith.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -672,34 +673,24 @@ static bool fold(int op, const Num *x, const Num *y, Num *out)
     intmax_t r;
     bool ru = uns;
     switch (op) {
-    case P_STAR: r = (intmax_t)(ux * uy); break;
-    case P_SLASH:
-        if (!uy) return false;
-        r = uns ? (intmax_t)(ux / uy)
-                : y->n == -1 ? (intmax_t)(0 - ux) : x->n / y->n;
+    case P_STAR: case P_SLASH: case P_PERCENT: case P_PLUS: case P_MINUS:
+    case P_AMP: case P_CARET: case P_PIPE: {
+        unsigned fl;
+        r = (intmax_t)ia_binop(op, (IaTy){64, !uns, false}, ux, uy, &fl);
+        if (fl & IA_ZDIV)
+            return false;
         break;
-    case P_PERCENT:
-        if (!uy) return false;
-        r = uns ? (intmax_t)(ux % uy) : y->n == -1 ? 0 : x->n % y->n;
-        break;
-    case P_PLUS: r = (intmax_t)(ux + uy); break;
-    case P_MINUS: r = (intmax_t)(ux - uy); break;
-    case P_SHL:
-        r = (y->n < 0 || y->n > 63) ? 0 : (intmax_t)(ux << y->n);
+    }
+    case P_SHL: case P_SHR: {
+        unsigned fl;
+        r = (intmax_t)ia_shift_cpp(op, (IaTy){64, !x->u, false}, ux, uy, !y->u && y->n < 0, &fl);
         ru = x->u;
         break;
-    case P_SHR:
-        r = (y->n < 0 || y->n > 63) ? 0
-            : x->u ? (intmax_t)(ux >> y->n) : x->n >> y->n;
-        ru = x->u;
-        break;
+    }
     case P_LT: case P_GT: case P_LE: case P_GE: case P_EQEQ: case P_NE:
         r = rel_holds(op, uns ? rel_cmp_u(ux, uy) : rel_cmp_s(x->n, y->n));
         ru = false;
         break;
-    case P_AMP: r = (intmax_t)(ux & uy); break;
-    case P_CARET: r = (intmax_t)(ux ^ uy); break;
-    case P_PIPE: r = (intmax_t)(ux | uy); break;
     default: return false;
     }
     *out = n_constu(r, ru);

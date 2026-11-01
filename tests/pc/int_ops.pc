@@ -1,0 +1,15 @@
+pc: int_ops.c:2 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:5 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:8 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:11 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:14 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:17 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:20 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:23 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:26 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:29 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:32 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:35 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:38 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:41 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: total groups=14 files=1 sys=0 unresolved=0 computed=0 over=0
