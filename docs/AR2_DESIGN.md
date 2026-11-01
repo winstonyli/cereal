@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 Stress test (2026-10-31, by hand against the source): round 1 checked the three precedence orders, the swap/negate identities, `cmp_str` against `punct_spelling`, the `is_relop` copy in `tast_vec.c` and the Pratt start values; it added the `PR_LOR` start values and the `is_relop` entry. Remaining: the full `case P_LE:` site list is taken at plan time.
