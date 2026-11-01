@@ -693,12 +693,10 @@ static bool fold(int op, const Num *x, const Num *y, Num *out)
             : x->u ? (intmax_t)(ux >> y->n) : x->n >> y->n;
         ru = x->u;
         break;
-    case P_LT: r = uns ? ux < uy : x->n < y->n; ru = false; break;
-    case P_GT: r = uns ? ux > uy : x->n > y->n; ru = false; break;
-    case P_LE: r = uns ? ux <= uy : x->n <= y->n; ru = false; break;
-    case P_GE: r = uns ? ux >= uy : x->n >= y->n; ru = false; break;
-    case P_EQEQ: r = ux == uy; ru = false; break;
-    case P_NE: r = ux != uy; ru = false; break;
+    case P_LT: case P_GT: case P_LE: case P_GE: case P_EQEQ: case P_NE:
+        r = rel_holds(op, uns ? rel_cmp_u(ux, uy) : rel_cmp_s(x->n, y->n));
+        ru = false;
+        break;
     case P_AMP: r = (intmax_t)(ux & uy); break;
     case P_CARET: r = (intmax_t)(ux ^ uy); break;
     case P_PIPE: r = (intmax_t)(ux | uy); break;

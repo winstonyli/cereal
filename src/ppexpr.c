@@ -614,12 +614,7 @@ static Val relational(EP *p, bool eval)
         advance(p);
         b = shift(p, eval);
         convert(p, op, &a, &b);
-        switch (op->punct) {
-        case P_LT: r = a.uns ? a.v < b.v : sv(a) < sv(b); break;
-        case P_GT: r = a.uns ? a.v > b.v : sv(a) > sv(b); break;
-        case P_LE: r = a.uns ? a.v <= b.v : sv(a) <= sv(b); break;
-        default: r = a.uns ? a.v >= b.v : sv(a) >= sv(b); break;
-        }
+        r = rel_holds(op->punct, a.uns ? rel_cmp_u(a.v, b.v) : rel_cmp_s(sv(a), sv(b)));
         a = mkval(r, false);
         a.loc = op->loc;
     }

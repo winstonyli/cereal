@@ -543,17 +543,11 @@ static uint64_t fbin(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
 static uint64_t fcompare(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
 {
     double x = ev_fget(ti, a), y = ev_fget(ti, b);
-    switch (p) {
-    case P_EQEQ: return x == y;
-    case P_NE: return x != y;
-    case P_LT: return x < y;
-    case P_GT: return x > y;
-    case P_LE: return x <= y;
-    case P_GE: return x >= y;
-    default:
+    if (!punct_is_cmp(p)) {
         UNSUP(v, "comparison %d", p);
         return 0;
     }
+    return rel_holds(p, rel_cmp_f(x, y));
 }
 
 /* A conversion between scalar types; floats convert through double, which is
@@ -708,17 +702,11 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
         b = (uint64_t)(int64_t)poff(b);
         sg = true;
     }
-    switch (p) {
-    case P_EQEQ: return a == b;
-    case P_NE: return a != b;
-    case P_LT: return sg ? (int64_t)a < (int64_t)b : a < b;
-    case P_GT: return sg ? (int64_t)a > (int64_t)b : a > b;
-    case P_LE: return sg ? (int64_t)a <= (int64_t)b : a <= b;
-    case P_GE: return sg ? (int64_t)a >= (int64_t)b : a >= b;
-    default:
+    if (!punct_is_cmp(p)) {
         UNSUP(v, "comparison %d", p);
         return 0;
     }
+    return rel_holds(p, sg ? rel_cmp_s((int64_t)a, (int64_t)b) : rel_cmp_u(a, b));
 }
 
 /* ---- frames and calls -------------------------------------------------------- */

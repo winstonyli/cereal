@@ -836,14 +836,7 @@ static bool bool_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
             cmp = (uint64_t)x < mag ? -1 : (uint64_t)x > mag;
         if (!ba)
             cmp = -cmp;     /* the constant is the left operand */
-        switch (op) {
-        case P_EQEQ: r[x] = cmp == 0; break;
-        case P_NE: r[x] = cmp != 0; break;
-        case P_LT: r[x] = cmp < 0; break;
-        case P_GT: r[x] = cmp > 0; break;
-        case P_LE: r[x] = cmp <= 0; break;
-        default: r[x] = cmp >= 0; break;
-        }
+        r[x] = rel_holds(op, cmp);
     }
     if (r[0] != r[1])
         return false;
@@ -1092,8 +1085,7 @@ void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (!opeq(c, sa, sb))
         return;
     cwarn(c, loc, "tautological-compare", "self-comparison always evaluates "
-          "to %s", (op == P_EQEQ || op == P_LE || op == P_GE) ? "true"
-                                                              : "false");
+          "to %s", rel_holds(op, 0) ? "true" : "false");
 }
 
 /* ---- -Wparentheses ---- */
@@ -2366,14 +2358,7 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             bool equal = cba == cbb && va == vb;
             if (cba == cbb) {
                 int cmp = va < vb ? -1 : va > vb;
-                switch (op) {
-                case P_EQEQ: r = equal; break;
-                case P_NE: r = !equal; break;
-                case P_LT: r = cmp < 0; break;
-                case P_GT: r = cmp > 0; break;
-                case P_LE: r = cmp <= 0; break;
-                default: r = cmp >= 0; break;
-                }
+                r = rel_holds(op, cmp);
             } else if (eq && ((cba == 0 && va == 0 && !(cbb && !(cbb & CB_NODE) && addr_weak(c, cbb))) ||
                               (cbb == 0 && vb == 0 && !(cba && !(cba & CB_NODE) && addr_weak(c, cba))))) {
                 r = op == P_NE;     /* a weak symbol's address may be null */
@@ -2382,8 +2367,7 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                                (cbb == 0 && vb == 0 && cba && !(cba & CB_NODE) &&
                                 !addr_weak(c, cba)))) {
                 int cmp = cba == 0 ? -1 : 1;    /* an object address > null */
-                r = op == P_LT ? cmp < 0 : op == P_GT ? cmp > 0 :
-                    op == P_LE ? cmp <= 0 : cmp >= 0;
+                r = rel_holds(op, cmp);
             } else if (eq && cba && cbb && !(cba & CB_NODE) && !(cbb & CB_NODE) &&
                        !addr_weak(c, cba) && !addr_weak(c, cbb)) {
                 r = op == P_NE;         /* distinct declared objects */
@@ -2403,32 +2387,14 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             has_ival(c, b)) {
             uint64_t x = cexpr_trunc(c, rt, c->cv[a]);
             uint64_t y = cexpr_trunc(c, rt, c->cv[b]);
-            int cmp;
-            if (is_signed(c, rt))
-                cmp = (int64_t)x < (int64_t)y ? -1 : (int64_t)x > (int64_t)y;
-            else
-                cmp = x < y ? -1 : x > y;
-            switch (op) {
-            case P_EQEQ: r = cmp == 0; break;
-            case P_NE: r = cmp != 0; break;
-            case P_LT: r = cmp < 0; break;
-            case P_GT: r = cmp > 0; break;
-            case P_LE: r = cmp <= 0; break;
-            default: r = cmp >= 0; break;
-            }
+            int cmp = is_signed(c, rt) ? rel_cmp_s((int64_t)x, (int64_t)y) : rel_cmp_u(x, y);
+            r = rel_holds(op, cmp);
             bin_value(c, i, a, b, (uint64_t)r, false, true, loc);
             return;
         }
         if (is_flt(c, rt) && !is_decimal_flt(c, rt) && fval(c, a, &fa) &&
             fval(c, b, &fb)) {
-            switch (op) {
-            case P_EQEQ: r = fa == fb; break;
-            case P_NE: r = fa != fb; break;
-            case P_LT: r = fa < fb; break;
-            case P_GT: r = fa > fb; break;
-            case P_LE: r = fa <= fb; break;
-            default: r = fa >= fb; break;
-            }
+            r = rel_holds(op, rel_cmp_f(fa, fb));
             c->ck[i] = K_FOLD;
             c->cv[i] = (uint64_t)r;
             return;
