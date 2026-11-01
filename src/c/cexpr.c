@@ -4149,14 +4149,10 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
         uint64_t v = c->cv[a];
         bool ovf = false;
         TypeId pt = c->ty[i];
-        if (op == P_MINUS) {
-            unsigned bits = int_bits(c, pt);
-            if (is_signed(c, pt) && bits <= 64 && bits > 0 &&
-                v == cexpr_trunc(c, pt, UINT64_C(1) << (bits - 1)))
-                ovf = true;
-            v = 0 - v;
-        } else if (op == P_TILDE) {
-            v = ~v;
+        if (op == P_MINUS || op == P_TILDE) {
+            unsigned fl;
+            v = ia_unop(op, ia_ty(c, pt), cexpr_trunc(c, pt, v), &fl);
+            ovf = (fl & IA_OVF) && int_bits(c, pt) <= 64;
         }
         if (op == P_PLUS) {
             /* no operation: the operand's value (not an lvalue) */

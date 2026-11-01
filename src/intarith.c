@@ -1,4 +1,4 @@
-/* intarith.c - `cereal selftest intarith`: ia_binop and ia_canon against a 128-bit reference. */
+/* intarith.c - `cereal selftest intarith`: ia_binop, ia_unop and ia_canon against a 128-bit reference. */
 #include <stdio.h>
 
 #include "intarith.h"
@@ -56,6 +56,20 @@ int intarith_selftest(void)
             v[n++] = t_lo(bits, sg);
             v[n++] = t_hi(bits, sg) - 1;
             v[n++] = t_lo(bits, sg) + 1;
+            for (i = 0; i < n; i++) {
+                Wide x = v[i];
+                unsigned fl;
+                uint64_t a, r;
+                if (!t_fits(bits, sg, x))
+                    continue;
+                a = t_wrap(bits, sg, x);
+                r = ia_unop(P_MINUS, t, a, &fl);
+                if (r != t_wrap(bits, sg, (UWide)0 - (UWide)x) || fl != (sg && x == t_lo(bits, sg) ? IA_OVF : 0u))
+                    bad += t_fail("unary -", bits, sg, x, 0, r, fl);
+                r = ia_unop(P_TILDE, t, a, &fl);
+                if (r != t_wrap(bits, sg, ~(UWide)x) || fl)
+                    bad += t_fail("~", bits, sg, x, 0, r, fl);
+            }
             for (i = 0; i < n; i++)
                 for (j = 0; j < n; j++) {
                     Wide x = v[i], y = v[j];

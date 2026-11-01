@@ -602,11 +602,6 @@ static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
 
 /* ---- arithmetic ------------------------------------------------------------ */
 
-static bool fits(const Ti *ti, int64_t x)
-{
-    return ti->bytes >= 8 || (int64_t)ev_canon(ti, (uint64_t)x) == x;
-}
-
 static uint64_t int_arith(Ev *v, int p, TypeId ty, uint64_t a, uint64_t b)
 {
     Ti ti;
@@ -1787,17 +1782,15 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             UNSUP(v, "unary operator %d on a float", t->pun);
             return 0;
         }
-        if (t->pun == P_MINUS) {
-            if (ti.sg && !v->o.wrap && !fits(&ti, (int64_t)(0 - a))) {
+        if (t->pun == P_MINUS || t->pun == P_TILDE) {
+            unsigned fl;
+            uint64_t r = ia_unop(t->pun, ev_iaty(&ti), a, &fl);
+            if ((fl & IA_OVF) && !v->o.wrap) {
                 TRAP(v, "signed integer overflow");
                 return 0;
             }
-            *sh = op_sh(v, SX_NEG, &ti, a, ash, 0, 0);
-            return ev_canon(&ti, 0 - a);
-        }
-        if (t->pun == P_TILDE) {
-            *sh = op_sh(v, SX_NOT, &ti, a, ash, 0, 0);
-            return ev_canon(&ti, ~a);
+            *sh = op_sh(v, t->pun == P_MINUS ? SX_NEG : SX_NOT, &ti, a, ash, 0, 0);
+            return r;
         }
         if (t->pun == P_PLUS) {
             *sh = ash;

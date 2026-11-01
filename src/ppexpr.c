@@ -447,16 +447,22 @@ static Val unary(EP *p, bool eval)
     if (is_punct(p, P_MINUS)) {
         advance(p);
         v = unary(p, eval);
-        if (!v.uns && sv(v) == INTMAX_MIN)
-            overflow(p, op, eval);
-        v.v = (uintmax_t)0 - v.v;
+        {
+            unsigned fl;
+            v.v = ia_unop(P_MINUS, pp_ty(v), v.v, &fl);
+            if (fl & IA_OVF)
+                overflow(p, op, eval);
+        }
         v.loc = op->loc;
         return v;
     }
     if (is_punct(p, P_TILDE)) {
         advance(p);
         v = unary(p, eval);
-        v.v = ~v.v;
+        {
+            unsigned fl;
+            v.v = ia_unop(P_TILDE, pp_ty(v), v.v, &fl);
+        }
         v.loc = op->loc;
         return v;
     }

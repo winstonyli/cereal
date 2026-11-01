@@ -14,6 +14,7 @@
         if (b) { h = H(h, (T)(a / b)); h = H(h, (T)(a % b)); }                     \
         h = H(h, (T)(a & b)); h = H(h, (T)(a | b)); h = H(h, (T)(a ^ b));          \
         h = H(h, (T)(a >> k)); h = H(h, (T)((uint64_t)a << k));                    \
+        h = H(h, (T)(0 - a)); h = H(h, (T)~a);                                     \
         return h;                                                                  \
     }
 
@@ -30,6 +31,8 @@
         if (b != 0 && !(b == -1 && x == lo)) { h = H(h, (T)(a / b)); h = H(h, (T)(a % b)); } \
         h = H(h, (T)(a & b)); h = H(h, (T)(a | b)); h = H(h, (T)(a ^ b));          \
         h = H(h, (T)(a >> k));                                                     \
+        if (x != lo) h = H(h, (T)(-a));                                            \
+        h = H(h, (T)~a);                                                           \
         if (a >= 0 && W < 64 && (x << k) <= hi) h = H(h, (T)(a << k));             \
         return h;                                                                  \
     }

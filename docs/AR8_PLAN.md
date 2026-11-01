@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # AR8 implementation plan: unary integer kernel and float binary-op kernel

@@ -1043,10 +1043,11 @@ static Val ev_unary(PcCtx *cx, PcNode *n)
         return x;
     for (i = 0; i < x.n; i++) {
         const Num *v = &x.c[i].v;
+        unsigned fl;
         if (v->k == N_CONST)
             vb_add(&b, x.c[i].cond,
-                   n_constu(n->op == P_MINUS ? (intmax_t)(0 - (uintmax_t)v->n)
-                                             : ~v->n, v->u));
+                   n_constu((intmax_t)ia_unop(n->op, (IaTy){64, !v->u, false},
+                                              (uint64_t)v->n, &fl), v->u));
         else
             vb_add(&b, x.c[i].cond,
                    n_opq(arena_printf(cx->an->arena, "(u%d %s)", n->op,
@@ -1285,11 +1286,10 @@ static bool key_val(KeyP *k, Num *out)
                 return false;
             if (op == P_BANG)
                 *out = n_const(!a.n);
-            else if (op == P_MINUS)
-                *out = n_constu((intmax_t)(0 - (uintmax_t)a.n), a.u);
-            else if (op == P_TILDE)
-                *out = n_constu(~a.n, a.u);
-            else if (op == P_PLUS)
+            else if (op == P_MINUS || op == P_TILDE) {
+                unsigned fl;
+                *out = n_constu((intmax_t)ia_unop(op, (IaTy){64, !a.u, false}, (uint64_t)a.n, &fl), a.u);
+            } else if (op == P_PLUS)
                 *out = a;
             else
                 return false;

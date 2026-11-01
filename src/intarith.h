@@ -97,6 +97,15 @@ static inline uint64_t ia_binop(int op, IaTy t, uint64_t a, uint64_t b, unsigned
     }
 }
 
+/* - or ~ of a canonical operand of t; - of the signed minimum wraps and sets IA_OVF */
+static inline uint64_t ia_unop(int op, IaTy t, uint64_t a, unsigned *flags)
+{
+    if (op == P_MINUS)
+        return ia_binop(P_MINUS, t, 0, a, flags);
+    *flags = 0;
+    return ia_canon(t, ~a);
+}
+
 /* #if and presence conditions: a negative count shifts the other way (libcpp); b_neg says the
  * count is a negative signed value, b its two's complement bits */
 static inline uint64_t ia_shift_cpp(int op, IaTy t, uint64_t a, uint64_t b, bool b_neg, unsigned *flags)

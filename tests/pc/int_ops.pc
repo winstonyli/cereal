@@ -12,4 +12,9 @@ pc: int_ops.c:32 if sat=1 host=1 exact=1 taint=0 :: 1
 pc: int_ops.c:35 if sat=1 host=1 exact=1 taint=0 :: 1
 pc: int_ops.c:38 if sat=1 host=1 exact=1 taint=0 :: 1
 pc: int_ops.c:41 if sat=1 host=1 exact=1 taint=0 :: 1
-pc: total groups=14 files=1 sys=0 unresolved=0 computed=0 over=0
+pc: int_ops.c:44 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:47 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:50 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:53 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: int_ops.c:56 if sat=1 host=1 exact=1 taint=0 :: 1
+pc: total groups=19 files=1 sys=0 unresolved=0 computed=0 over=0
