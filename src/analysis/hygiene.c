@@ -92,15 +92,7 @@ static bool ends_operand(const Interner *in, const Tok *t)
 /* Binary operators with lower precedence than a postfix/unary operand. */
 static bool is_binary_op(Punct p)
 {
-    switch (p) {
-    case P_STAR: case P_SLASH: case P_PERCENT: case P_PLUS: case P_MINUS:
-    case P_SHL: case P_SHR: case P_LT: case P_GT: case P_LE: case P_GE:
-    case P_EQEQ: case P_NE: case P_AMP: case P_CARET: case P_PIPE:
-    case P_ANDAND: case P_OROR: case P_QUESTION:
-        return true;
-    default:
-        return false;
-    }
+    return punct_prec(p) != 0 || p == P_QUESTION;
 }
 
 static bool unevaluated_context(const Interner *in, const Tok **v, int i)

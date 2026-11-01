@@ -18,23 +18,6 @@ static void print_ival(Checker *c, StrBuf *sb, TypeId t, uint64_t v)
         sb_printf(sb, "%llu", (unsigned long long)v);
 }
 
-static int bin_prec(int op)
-{
-    switch (op) {
-    case P_COMMA: return PR_COMMA;
-    case P_OROR: return PR_LOR;
-    case P_ANDAND: return PR_LAND;
-    case P_PIPE: return PR_OR;
-    case P_CARET: return PR_XOR;
-    case P_AMP: return PR_AND;
-    case P_EQEQ: case P_NE: return PR_EQ;
-    case P_LT: case P_GT: case P_LE: case P_GE: return PR_REL;
-    case P_SHL: case P_SHR: return PR_SHIFT;
-    case P_PLUS: case P_MINUS: return PR_ADD;
-    default: return PR_MUL;
-    }
-}
-
 /* Does node i print as its value (an INTEGER_CST)? */
 bool prints_value(Checker *c, uint32_t i)
 {
@@ -237,7 +220,7 @@ static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond)
     t = rvt(c, e);
     if (pcond_plain) {
         bool lg = (ntag(c, e) == N_BINARY && (op = npunct(c, e), op == P_ANDAND ||
-                   op == P_OROR || bin_prec(op) == PR_EQ || bin_prec(op) == PR_REL)) ||
+                   op == P_OROR || punct_prec(op) == PR_EQ || punct_prec(op) == PR_REL)) ||
                   (ntag(c, e) == N_UNARY && npunct(c, e) == P_BANG);
         pexpr(c, sb, e, lg ? PR_LOR : PR_EQ);
         if (!lg)
@@ -252,14 +235,14 @@ static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond)
             pcond_test(c, sb, k[1]);
             return;
         }
-        if (bin_prec(op) == PR_EQ || bin_prec(op) == PR_REL) {
+        if (punct_prec(op) == PR_EQ || punct_prec(op) == PR_REL) {
             bool ar = is_arith(c, rvt(c, k[0])) && is_arith(c, rvt(c, k[1]));
             if (ar) {
                 sb_putc(sb, '(');
                 pexpr(c, sb, k[0], PR_COMMA);
                 sb_putc(sb, ')');
             } else {
-                pexpr(c, sb, k[0], bin_prec(op));
+                pexpr(c, sb, k[0], punct_prec(op));
             }
             sb_printf(sb, " %s ", punct_spelling[op]);
             if (ar) {
@@ -267,7 +250,7 @@ static void pcond_test(Checker *c, StrBuf *sb, uint32_t cond)
                 pexpr(c, sb, k[1], PR_COMMA);
                 sb_putc(sb, ')');
             } else {
-                pexpr(c, sb, k[1], bin_prec(op) + 1);
+                pexpr(c, sb, k[1], punct_prec(op) + 1);
             }
             return;
         }
@@ -333,7 +316,7 @@ void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
     }
     n = nkids(c, i, k, 3);
     switch (ntag(c, i)) {
-    case N_BINARY: my = bin_prec(npunct(c, i)); break;
+    case N_BINARY: my = punct_prec(npunct(c, i)); break;
     case N_ASSIGN: my = PR_ASSIGN; break;
     case N_COND: my = PR_COND; break;
     case N_CAST: case N_UNARY: case N_SIZEOF_EXPR: case N_SIZEOF_TYPE:
@@ -379,7 +362,7 @@ void pexpr(Checker *c, StrBuf *sb, uint32_t i, int prec)
             if (op == P_SHL || op == P_SHR) {
                 t0 = promoted(c, k[0]);
                 t1 = promoted(c, k[1]);
-            } else if (bin_prec(op) == PR_EQ || bin_prec(op) == PR_REL) {
+            } else if (punct_prec(op) == PR_EQ || punct_prec(op) == PR_REL) {
                 t0 = t1 = TYPE_B(ERROR);
                 if (is_arith(c, rvt(c, k[0])) && is_arith(c, rvt(c, k[1])))
                     t0 = t1 = common_type(c, promoted(c, k[0]),

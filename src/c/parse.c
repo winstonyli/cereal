@@ -2346,40 +2346,6 @@ static void initializer(Parser *p)
 
 /* ---- expressions ----------------------------------------------------------- */
 
-static int binary_prec(const PTok *t)
-{
-    if (t->t.kind != TK_PUNCT)
-        return 0;
-    switch (t->t.punct) {
-    case P_OROR: return 4;
-    case P_ANDAND: return 5;
-    case P_PIPE: return 6;
-    case P_CARET: return 7;
-    case P_AMP: return 8;
-    case P_EQEQ: case P_NE: return 9;
-    case P_LT: case P_GT: case P_LE: case P_GE: return 10;
-    case P_SHL: case P_SHR: return 11;
-    case P_PLUS: case P_MINUS: return 12;
-    case P_STAR: case P_SLASH: case P_PERCENT: return 13;
-    default: return 0;
-    }
-}
-
-static bool is_assign_op(const PTok *t)
-{
-    if (t->t.kind != TK_PUNCT)
-        return false;
-    switch (t->t.punct) {
-    case P_ASSIGN: case P_MUL_ASSIGN: case P_DIV_ASSIGN: case P_MOD_ASSIGN:
-    case P_ADD_ASSIGN: case P_SUB_ASSIGN: case P_SHL_ASSIGN:
-    case P_SHR_ASSIGN: case P_AND_ASSIGN: case P_XOR_ASSIGN:
-    case P_OR_ASSIGN:
-        return true;
-    default:
-        return false;
-    }
-}
-
 static void postfix_tail(Parser *p, uint32_t start)
 {
     for (;;) {
@@ -2813,7 +2779,7 @@ static void binary(Parser *p, int min)
     parse_cast(p);
     for (;;) {
         PTok t = ct(p);
-        int prec = binary_prec(&t);
+        int prec = tok_prec(&t.t);
         uint32_t op;
         if (!prec || prec < min)
             return;
@@ -2826,7 +2792,7 @@ static void binary(Parser *p, int min)
 static void parse_cond(Parser *p)
 {
     uint32_t start = nmark(p);
-    binary(p, 4);
+    binary(p, PR_LOR);
     if (at(p, P_QUESTION)) {
         uint32_t q = adv(p);
         unsigned flags = 0;
@@ -2846,7 +2812,7 @@ static void parse_assign(Parser *p)
     PTok t;
     parse_cond(p);
     t = ct(p);
-    if (is_assign_op(&t)) {
+    if (t.t.kind == TK_PUNCT && punct_is_assign(t.t.punct)) {
         uint32_t op = adv(p);
         parse_assign(p);
         emit(p, N_ASSIGN, op, start, 0);

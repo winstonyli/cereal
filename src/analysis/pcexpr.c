@@ -181,32 +181,13 @@ static PcNode *px_unary(PX *p)
     return px_primary(p);
 }
 
-static int prec(const Tok *t)
-{
-    if (t->kind != TK_PUNCT)
-        return -1;
-    switch (t->punct) {
-    case P_STAR: case P_SLASH: case P_PERCENT: return 10;
-    case P_PLUS: case P_MINUS: return 9;
-    case P_SHL: case P_SHR: return 8;
-    case P_LT: case P_GT: case P_LE: case P_GE: return 7;
-    case P_EQEQ: case P_NE: return 6;
-    case P_AMP: return 5;
-    case P_CARET: return 4;
-    case P_PIPE: return 3;
-    case P_ANDAND: return 2;
-    case P_OROR: return 1;
-    default: return -1;
-    }
-}
-
 static PcNode *px_binary(PX *p, int min)
 {
     PcNode *lhs = px_unary(p);
     for (;;) {
-        int pr = prec(p->t);
+        int pr = tok_prec(p->t);
         PcNode *n;
-        if (pr < min || pr < 0)
+        if (pr < min)
             return lhs;
         n = mk(p, PN_BIN);
         n->op = p->t->punct;
@@ -219,7 +200,7 @@ static PcNode *px_binary(PX *p, int min)
 
 static PcNode *px_cond(PX *p)
 {
-    PcNode *c = px_binary(p, 1);
+    PcNode *c = px_binary(p, PR_LOR);
     if (tok_is_punct(p->t, P_QUESTION)) {
         PcNode *n = mk(p, PN_TERN);
         p->t = (p->t + 1);
