@@ -11,6 +11,7 @@
  * float and pointer subset).
  * No mutable globals: the state is the Ev. */
 #include "c/eval_int.h"
+#include "fparith.h"
 #include "intarith.h"
 #include "c/cintrin.h"
 /* ---- failure -------------------------------------------------------------- */
@@ -517,27 +518,11 @@ uint64_t ev_fput(const Ti *ti, double d)
 /* + - * / in the type's own precision (a float operation rounds to float). */
 static uint64_t fbin(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)
 {
-    if (ti->bytes == 4) {
-        float x = (float)ev_fget(ti, a), y = (float)ev_fget(ti, b), r;
-        switch (p) {
-        case P_PLUS: r = x + y; break;
-        case P_MINUS: r = x - y; break;
-        case P_STAR: r = x * y; break;
-        case P_SLASH: r = x / y; break;
-        default: UNSUP(v, "float operator %d", p); return 0;
-        }
-        return ev_fput(ti, r);
-    } else {
-        double x = ev_fget(ti, a), y = ev_fget(ti, b), r;
-        switch (p) {
-        case P_PLUS: r = x + y; break;
-        case P_MINUS: r = x - y; break;
-        case P_STAR: r = x * y; break;
-        case P_SLASH: r = x / y; break;
-        default: UNSUP(v, "float operator %d", p); return 0;
-        }
-        return ev_fput(ti, r);
+    if (p != P_PLUS && p != P_MINUS && p != P_STAR && p != P_SLASH) {
+        UNSUP(v, "float operator %d", p);
+        return 0;
     }
+    return ev_fput(ti, (double)fl_binop(p, ti->bytes == 4 ? FP_F32 : FP_F64, ev_fget(ti, a), ev_fget(ti, b)));
 }
 
 static uint64_t fcompare(Ev *v, int p, const Ti *ti, uint64_t a, uint64_t b)

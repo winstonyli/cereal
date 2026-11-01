@@ -17,6 +17,7 @@
  * gcc only finds when it folds the full expression (c_fully_fold) is
  * K_FOLD; EF_INTOPS is C_MAYBE_CONST_EXPR_INT_OPERANDS. */
 #include "c/cexpr_int.h"
+#include "fparith.h"
 #include "intarith.h"
 #include "c/fuzzy.h"
 #include "c/tast.h"
@@ -170,17 +171,27 @@ bool ival_neg(Checker *c, TypeId t, uint64_t v)
 
 /* ---- floating values ----------------------------------------------------- */
 
-static long double fround(Checker *c, TypeId t, long double v)
+static FpTy fp_ty(Checker *c, TypeId t)
 {
     switch (tkind(c, t)) {
     case TY_FLOAT: case TY_FLOAT32:
-        return (float)v;
+        return FP_F32;
     case TY_DOUBLE: case TY_FLOAT64: case TY_FLOAT32X:
-        return (double)v;
+        return FP_F64;
     case TY_LDOUBLE:
-        if (c->tgt->long_double == LD_IEEE64)
-            return (double)v;
-        return v;
+        return c->tgt->long_double == LD_IEEE64 ? FP_F64 : FP_LD;
+    default:
+        return FP_LD;
+    }
+}
+
+static long double fround(Checker *c, TypeId t, long double v)
+{
+    switch (fp_ty(c, t)) {
+    case FP_F32:
+        return (float)v;
+    case FP_F64:
+        return (double)v;
     default:
         return v;
     }
@@ -6447,15 +6458,8 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         }
     } else if (!is_decimal_flt(c, rt) && !zero_div && fval(c, a, &fa) &&
                fval(c, b, &fb) && !((op == P_SLASH) && fb == 0)) {
-        long double r = 0;
-        switch (op) {
-        case P_PLUS: r = fa + fb; break;
-        case P_MINUS: r = fa - fb; break;
-        case P_STAR: r = fa * fb; break;
-        default: r = fa / fb; break;
-        }
         c->ck[i] = K_FLOAT;
-        c->cv[i] = fpush(c, fround(c, rt, r));
+        c->cv[i] = fpush(c, fl_binop(op, fp_ty(c, rt), fa, fb));
         return;
     }
     if (intops(c, a) && intops(c, b))

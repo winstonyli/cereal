@@ -1,0 +1,12 @@
+fold_double_round.c:3:1: warning: variably modified 'd1' at file scope
+    3 | int d1[(1.0 + 0x1.0000002p-53 == 1.0) ? -1 : 1];
+      | ^
+fold_double_round.c:4:1: warning: variably modified 'd2' at file scope
+    4 | int d2[(1.0 + 0x1.0000002p-53 == 0x1.0000000000001p0) ? 1 : -1];
+      | ^
+fold_double_round.c:5:1: warning: variably modified 'd3' at file scope
+    5 | int d3[(1.0 + 9007199254740993 == 9007199254740992.0) ? 1 : -1];
+      | ^
+fold_double_round.c:6:1: warning: variably modified 'd4' at file scope
+    6 | int d4[(1.0f + 0x1.000002p-24f == 0x1.000002p0f) ? 1 : -1];
+      | ^
