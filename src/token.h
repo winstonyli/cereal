@@ -52,6 +52,73 @@ typedef enum {
 
 extern const char *const punct_spelling[P_COUNT];
 
+/* C's expression precedence, lowest first.  A binary operator's level is
+ * punct_info[op].prec; PR_COMMA (0) means "not a binary operator" to the
+ * Pratt parsers. */
+enum {
+    PR_COMMA, PR_ASSIGN, PR_COND, PR_LOR, PR_LAND, PR_OR, PR_XOR, PR_AND,
+    PR_EQ, PR_REL, PR_SHIFT, PR_ADD, PR_MUL, PR_UNARY, PR_POSTFIX,
+    PR_PRIMARY
+};
+
+enum { PF_CMP = 1, PF_ASSIGN = 2, PF_LOGICAL = 4 };
+
+typedef struct {
+    uint8_t prec;    /* binary precedence (PR_*); 0: not a binary operator */
+    uint8_t flags;   /* PF_* */
+    uint8_t swap;    /* a OP b == b swap(OP) a; 0: the operator itself */
+    uint8_t negate;  /* !(a OP b) == a negate(OP) b; 0: none (ordered operands only) */
+    uint8_t base;    /* the binary operator of a compound assignment; 0: the operator itself */
+} PunctInfo;
+
+extern const PunctInfo punct_info[P_COUNT];
+
+static inline const PunctInfo *punct_ent(int op)
+{
+    return &punct_info[(unsigned)op < P_COUNT ? op : P_NONE];
+}
+static inline int punct_prec(int op) { return punct_ent(op)->prec; }
+static inline bool punct_is_cmp(int op) { return punct_ent(op)->flags & PF_CMP; }
+static inline bool punct_is_assign(int op) { return punct_ent(op)->flags & PF_ASSIGN; }
+static inline bool punct_is_logical(int op) { return punct_ent(op)->flags & PF_LOGICAL; }
+/* the value is 0 or 1: a comparison, && or || */
+static inline bool punct_is_bool(int op)
+{
+    return punct_ent(op)->flags & (PF_CMP | PF_LOGICAL);
+}
+static inline int punct_swap(int op)
+{
+    return punct_ent(op)->swap ? punct_ent(op)->swap : op;
+}
+static inline int punct_negate(int op) { return punct_ent(op)->negate; }
+static inline int punct_assign_base(int op)
+{
+    return punct_ent(op)->base ? punct_ent(op)->base : op;
+}
+
+/* `a OP b` for a comparison OP, from cmp = rel_cmp_*(a, b): -1, 0, 1, or
+ * REL_UNORDERED (a NaN operand: only != holds). */
+enum { REL_UNORDERED = 2 };
+static inline bool rel_holds(int op, int cmp)
+{
+    switch (op) {
+    case P_EQEQ: return cmp == 0;
+    case P_NE: return cmp != 0;
+    case P_LT: return cmp == -1;
+    case P_GT: return cmp == 1;
+    case P_LE: return cmp == -1 || cmp == 0;
+    default: return cmp == 0 || cmp == 1;        /* P_GE */
+    }
+}
+static inline int rel_cmp_s(int64_t a, int64_t b) { return (a > b) - (a < b); }
+static inline int rel_cmp_u(uint64_t a, uint64_t b) { return (a > b) - (a < b); }
+static inline int rel_cmp_f(long double a, long double b)
+{
+    return a < b ? -1 : a > b ? 1 : a == b ? 0 : REL_UNORDERED;
+}
+
+int punct_selftest(void);   /* `cereal selftest punct`: the table against first principles */
+
 enum {
     TF_BOL          = 1 << 0,  /* first token on a line */
     TF_SPACE        = 1 << 1,  /* preceded by white space */
@@ -77,6 +144,12 @@ typedef struct Tok {
     uint32_t len;        /* spelling length */
     uint32_t aux;        /* ident id | scratch loc (TF_SPELL) | 0 */
 } Tok;
+
+/* the binary precedence of a token, 0 when it is not a binary operator */
+static inline int tok_prec(const Tok *t)
+{
+    return t->kind == TK_PUNCT ? punct_prec(t->punct) : 0;
+}
 
 typedef struct TokSpan {
     const Tok *t;

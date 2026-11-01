@@ -1055,6 +1055,7 @@ done
 if "$CEREAL" selftest bdd </dev/null; then ok; else bad "selftest bdd"; fi
 if "$CEREAL" selftest pcq </dev/null; then ok; else bad "selftest pcq"; fi
 if "$CEREAL" selftest diag </dev/null; then ok; else bad "selftest diag"; fi
+if "$CEREAL" selftest punct </dev/null; then ok; else bad "selftest punct"; fi
 # 24. presence conditions (S1c fold): the hidden CEREAL_PCDUMP hook against
 # tests/pc/NAME.pc; NAME.flags adds flags (host macros, a system directory),
 # NAME.dump the hook words (default 1; "why" lists the cheapest ways to enable).

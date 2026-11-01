@@ -11,12 +11,6 @@
 #define TT (&c->tt)
 #define ERRT TYPE_B(ERROR)
 
-enum {
-    PR_COMMA, PR_ASSIGN, PR_COND, PR_LOR, PR_LAND, PR_OR, PR_XOR, PR_AND,
-    PR_EQ, PR_REL, PR_SHIFT, PR_ADD, PR_MUL, PR_UNARY, PR_POSTFIX,
-    PR_PRIMARY
-};
-
 /* A built-in function (c/builtin_tab.c): header, signature, gnu-ness. */
 typedef struct BTab {
     const char *name, *hdr;

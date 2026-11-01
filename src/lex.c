@@ -23,8 +23,124 @@ const char *const punct_spelling[P_COUNT] = {
 #undef X
 };
 
+/* every field is given: -Wextra warns on a partial initialiser */
+#define PI(prec, flags, swap, negate, base) {prec, flags, swap, negate, base}
+const PunctInfo punct_info[P_COUNT] = {
+    [P_STAR] = PI(PR_MUL, 0, 0, 0, 0), [P_SLASH] = PI(PR_MUL, 0, 0, 0, 0),
+    [P_PERCENT] = PI(PR_MUL, 0, 0, 0, 0),
+    [P_PLUS] = PI(PR_ADD, 0, 0, 0, 0), [P_MINUS] = PI(PR_ADD, 0, 0, 0, 0),
+    [P_SHL] = PI(PR_SHIFT, 0, 0, 0, 0), [P_SHR] = PI(PR_SHIFT, 0, 0, 0, 0),
+    [P_LT] = PI(PR_REL, PF_CMP, P_GT, P_GE, 0),
+    [P_GT] = PI(PR_REL, PF_CMP, P_LT, P_LE, 0),
+    [P_LE] = PI(PR_REL, PF_CMP, P_GE, P_GT, 0),
+    [P_GE] = PI(PR_REL, PF_CMP, P_LE, P_LT, 0),
+    [P_EQEQ] = PI(PR_EQ, PF_CMP, 0, P_NE, 0),
+    [P_NE] = PI(PR_EQ, PF_CMP, 0, P_EQEQ, 0),
+    [P_AMP] = PI(PR_AND, 0, 0, 0, 0), [P_CARET] = PI(PR_XOR, 0, 0, 0, 0),
+    [P_PIPE] = PI(PR_OR, 0, 0, 0, 0),
+    [P_ANDAND] = PI(PR_LAND, PF_LOGICAL, 0, 0, 0),
+    [P_OROR] = PI(PR_LOR, PF_LOGICAL, 0, 0, 0),
+    [P_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, 0),
+    [P_MUL_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_STAR),
+    [P_DIV_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_SLASH),
+    [P_MOD_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_PERCENT),
+    [P_ADD_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_PLUS),
+    [P_SUB_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_MINUS),
+    [P_SHL_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_SHL),
+    [P_SHR_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_SHR),
+    [P_AND_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_AMP),
+    [P_XOR_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_CARET),
+    [P_OR_ASSIGN] = PI(0, PF_ASSIGN, 0, 0, P_PIPE),
+};
+#undef PI
+_Static_assert(P_COUNT < 256, "PunctInfo holds operators in a byte");
+
+#define SELF_REL(cmpf, a, b)                                                   \
+    do {                                                                       \
+        int c_ = cmpf((a), (b));                                               \
+        if (rel_holds(P_EQEQ, c_) != ((a) == (b))) bad++;                      \
+        if (rel_holds(P_NE, c_) != ((a) != (b))) bad++;                        \
+        if (rel_holds(P_LT, c_) != ((a) < (b))) bad++;                         \
+        if (rel_holds(P_GT, c_) != ((a) > (b))) bad++;                         \
+        if (rel_holds(P_LE, c_) != ((a) <= (b))) bad++;                        \
+        if (rel_holds(P_GE, c_) != ((a) >= (b))) bad++;                        \
+        /* a OP b is b swap(OP) a, ordered or not */                           \
+        for (k = 0; k < 6; k++)                                                \
+            if (rel_holds(cmps[k], c_) !=                                      \
+                rel_holds(punct_swap(cmps[k]), cmpf((b), (a))))                \
+                bad++;                                                         \
+    } while (0)
+
+int punct_selftest(void)
+{
+    static const int cmps[6] = {P_EQEQ, P_NE, P_LT, P_GT, P_LE, P_GE};
+    /* strictly increasing precedence; operators of one level are listed in groups */
+    static const int levels[][4] = {
+        {P_OROR}, {P_ANDAND}, {P_PIPE}, {P_CARET}, {P_AMP}, {P_EQEQ, P_NE},
+        {P_LT, P_GT, P_LE, P_GE}, {P_SHL, P_SHR}, {P_PLUS, P_MINUS},
+        {P_STAR, P_SLASH, P_PERCENT}};
+    static const int64_t si[] = {-2, -1, 0, 1, 2, INT64_MIN, INT64_MAX};
+    static const uint64_t ui[] = {0, 1, 2, UINT64_MAX, (uint64_t)1 << 63};
+    static const long double fv[] = {-1.5L, 0.0L, 1.5L, 1e300L, __builtin_nanl("")};
+    int bad = 0, i, j, k, l;
+    for (i = 0; i < (int)(sizeof si / sizeof *si); i++)
+        for (j = 0; j < (int)(sizeof si / sizeof *si); j++)
+            SELF_REL(rel_cmp_s, si[i], si[j]);
+    for (i = 0; i < (int)(sizeof ui / sizeof *ui); i++)
+        for (j = 0; j < (int)(sizeof ui / sizeof *ui); j++)
+            SELF_REL(rel_cmp_u, ui[i], ui[j]);
+    for (i = 0; i < (int)(sizeof fv / sizeof *fv); i++)
+        for (j = 0; j < (int)(sizeof fv / sizeof *fv); j++)
+            SELF_REL(rel_cmp_f, fv[i], fv[j]);
+    for (k = 0; k < 6; k++) {
+        int o = cmps[k];
+        if (!punct_is_cmp(o) || !punct_is_bool(o) || punct_is_logical(o) || punct_is_assign(o))
+            bad++;
+        if (punct_swap(punct_swap(o)) != o || punct_negate(punct_negate(o)) != o)
+            bad++;
+        if (punct_negate(punct_swap(o)) != punct_swap(punct_negate(o)))
+            bad++;
+        for (i = -1; i <= 1; i++)            /* ordered operands: negation is the complement */
+            if (rel_holds(punct_negate(o), i) == rel_holds(o, i))
+                bad++;
+        if (rel_holds(o, REL_UNORDERED) != (o == P_NE))
+            bad++;
+    }
+    for (i = 0; i < (int)(sizeof levels / sizeof *levels); i++)
+        for (j = 0; j < 4 && levels[i][j]; j++) {
+            if (punct_prec(levels[i][j]) != punct_prec(levels[i][0]) || punct_prec(levels[i][j]) < PR_LOR)
+                bad++;
+            if (i && punct_prec(levels[i][j]) <= punct_prec(levels[i - 1][0]))
+                bad++;
+            if (punct_is_logical(levels[i][j]) != (levels[i][j] == P_ANDAND || levels[i][j] == P_OROR))
+                bad++;
+        }
+    if (punct_prec(P_COMMA) != PR_COMMA || PR_COMMA != 0 || punct_prec(P_NONE) != 0 ||
+        punct_prec(-1) != 0 || punct_prec(P_COUNT) != 0)
+        bad++;
+    for (l = 0; l < P_COUNT; l++) {
+        if (punct_is_assign(l)) {
+            const char *s = punct_spelling[l], *b = punct_spelling[punct_assign_base(l)];
+            size_t n = strlen(s);
+            if (l == P_ASSIGN) {
+                if (punct_assign_base(l) != l)
+                    bad++;
+            } else if (punct_assign_base(l) == l || !punct_prec(punct_assign_base(l)) ||
+                       n != strlen(b) + 1 || strncmp(s, b, n - 1) || s[n - 1] != '=') {
+                fprintf(stderr, "punct selftest: %s\n", s);
+                bad++;
+            }
+        } else if (punct_assign_base(l) != l) {
+            bad++;
+        }
+    }
+    if (bad)
+        fprintf(stderr, "punct selftest: %d failures\n", bad);
+    return bad != 0;
+}
+
 enum {
-    C_ID = 1,        /* identifier continue */
+    C_ID = 1,       /* identifier continue */
     C_IDSTART = 2,
     C_DIGIT = 4,
     C_PPNUM = 8,     /* pp-number continue (besides sign after e/p) */
