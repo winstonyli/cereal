@@ -1,5 +1,7 @@
 /* eval.h - the evaluator: runs lowered functions (El + Cfg) over byte-addressed
- * objects.  docs/EVAL_DESIGN.md. */
+ * objects.  docs/EVAL_DESIGN.md.  What other files use: ev_* take an Ev (the
+ * code generator's view of static objects), eval_* take a Checker (its hooks);
+ * the evaluator's own interface is in eval_int.h. */
 #ifndef CEREAL_EVAL_H
 #define CEREAL_EVAL_H
 
@@ -7,33 +9,9 @@
 
 typedef struct Ev Ev;
 
-typedef struct EvOpts {
-    long fuel;                  /* node evaluations before "step limit" */
-    unsigned depth;             /* call depth limit */
-    bool wrap;                  /* signed overflow wraps (gcc -fwrapv) instead of trapping */
-    uint64_t maxobj;            /* the most bytes of one object (a bigger request traps); 0: 1 GiB */
-    FILE *out, *err;            /* the program's stdout and stderr; NULL: output is dropped */
-} EvOpts;
-
-/* The sweep's bound on one object: the largest real object seen in the Lua sweep is 16 MB (its stack), and the solver picks
- * sizes of 61 MB to 1 GB for the same allocations; such an object is written whole by the code that fills it (docs/STOPPED_SEEDS_SPIKE.md, Memory). */
-#define EV_SWEEP_OBJ ((uint64_t)32 << 20)
-
-enum { EV_OK, EV_UNSUPPORTED, EV_TRAP, EV_FUEL, EV_EXIT };
-
-typedef struct EvRes {
-    int status;                 /* EV_* */
-    int code;                   /* EV_EXIT: the argument of exit */
-    char why[96];               /* not OK: the reason */
-} EvRes;
-
-void ev_free(Ev *v);
-/* Copies a lowered function in; the caller keeps (and frees) e and g. */
 /* Copies in a unit of file-scope objects (its TO_DATA nodes), and registers an
  * object defined by a tentative definition (no initializer, zero). */
 void ev_add_data(Ev *v, El *e);
-/* Calls a retained function with integer or pointer arguments. */
-EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *out);
 
 /* The image of a static object, for the code generator: its bytes (an address
  * element left zero) and one relocation per address element, in element order.
@@ -64,7 +42,6 @@ void eval_tentative(Checker *c, uint32_t ref);
 void eval_statics(Checker *c, El *e);
 /* The checker's evaluator, made on first use. */
 Ev *ev_of(Checker *c);
-const char *ev_dup_def(Ev *v);   /* --eval-link: a name defined in two files, or NULL */
 /* --eval-link: the files of one run, checked one after the other with one Ev, then swept together. */
 struct EvLink {
     Ev *ev;

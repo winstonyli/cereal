@@ -10,6 +10,32 @@
 #include "c/eval.h"
 #include "c/symx.h"
 
+typedef struct EvOpts {
+    long fuel;                  /* node evaluations before "step limit" */
+    unsigned depth;             /* call depth limit */
+    bool wrap;                  /* signed overflow wraps (gcc -fwrapv) instead of trapping */
+    uint64_t maxobj;            /* the most bytes of one object (a bigger request traps); 0: 1 GiB */
+    FILE *out, *err;            /* the program's stdout and stderr; NULL: output is dropped */
+} EvOpts;
+
+/* The sweep's bound on one object: the largest real object seen in the Lua sweep is 16 MB (its stack), and the solver picks
+ * sizes of 61 MB to 1 GB for the same allocations; such an object is written whole by the code that fills it (docs/STOPPED_SEEDS_SPIKE.md, Memory). */
+#define EV_SWEEP_OBJ ((uint64_t)32 << 20)
+
+enum { EV_OK, EV_UNSUPPORTED, EV_TRAP, EV_FUEL, EV_EXIT };
+
+typedef struct EvRes {
+    int status;                 /* EV_* */
+    int code;                   /* EV_EXIT: the argument of exit */
+    char why[96];               /* not OK: the reason */
+} EvRes;
+
+/* the evaluator's own interface (eval.h holds what other files use) */
+void ev_free(Ev *v);
+/* Calls a retained function with integer or pointer arguments. */
+EvRes ev_call(Ev *v, uint32_t fsym, const uint64_t *args, size_t n, uint64_t *out);
+const char *ev_dup_def(Ev *v);   /* --eval-link: a name defined in two files, or NULL */
+
 typedef struct Obj {
     uint8_t *b, *init;          /* bytes and one init flag per byte: 0 no, 1 yes, 2 a pointer the sweep drew */
     uint32_t *sh;               /* tracking: per byte, an 8-bit expression of the input (0: concrete); NULL: none */
