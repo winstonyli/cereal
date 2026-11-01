@@ -869,7 +869,6 @@ bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
                        TypeId rt, unsigned w);
 const char *cexpr_str(Checker *c, uint32_t i);
 const char *cexpr_str_plain(Checker *c, uint32_t i);
-int assign_binop(int op);   /* the operator of a compound-assignment token */
 uint32_t stmt_expr_single(Checker *c, uint32_t s);
 void cexpr_builtin_decl(Checker *c, const CSym *s);
 void cexpr_builtin_nonfn(Checker *c, const CSym *s);

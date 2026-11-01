@@ -29,35 +29,6 @@ typedef struct {
     i128 lo[4], hi[4];
 } IvSet;
 
-static bool lg_cmp(int op)
-{
-    return op == P_EQEQ || op == P_NE || op == P_LT || op == P_LE ||
-           op == P_GT || op == P_GE;
-}
-
-static int lg_swap(int op)
-{
-    switch (op) {
-    case P_LT: return P_GT;
-    case P_GT: return P_LT;
-    case P_LE: return P_GE;
-    case P_GE: return P_LE;
-    default: return op;
-    }
-}
-
-static int lg_inv(int op)
-{
-    switch (op) {
-    case P_EQEQ: return P_NE;
-    case P_NE: return P_EQEQ;
-    case P_LT: return P_GE;
-    case P_GE: return P_LT;
-    case P_GT: return P_LE;
-    default: return P_GT;
-    }
-}
-
 /* e without the conversions fold removes from a comparison with zero. */
 static uint32_t lg_strip(Checker *c, uint32_t e)
 {
@@ -86,7 +57,7 @@ static bool lg_form(Checker *c, uint32_t n, LForm *f)
     uint32_t k[3], cnt;
     n = strip_paren(c, n);
     cnt = nkids(c, n, k, 3);
-    if (ntag(c, n) == N_BINARY && lg_cmp(npunct(c, n)) && cnt >= 2) {
+    if (ntag(c, n) == N_BINARY && punct_is_cmp(npunct(c, n)) && cnt >= 2) {
         f->op = npunct(c, n);
         f->l = k[0];
         f->r = k[1];
@@ -112,7 +83,7 @@ static bool lg_form(Checker *c, uint32_t n, LForm *f)
             return false;
         if (f->r != NO_NODE && (is_flt(c, rvt(c, f->l)) || is_flt(c, rvt(c, f->r))))
             return false;
-        f->op = lg_inv(f->op);
+        f->op = punct_negate(f->op);
         return true;
     }
     if (ntag(c, n) == N_CAST && tkind(c, rvt(c, n)) == TY_BOOL && cnt >= 1)
@@ -133,7 +104,7 @@ static bool lg_eqn(Checker *c, uint32_t x, uint32_t y)
 static bool lg_same(Checker *c, const LForm *a, const LForm *b)
 {
     return (a->op == b->op && lg_eqn(c, a->l, b->l) && lg_eqn(c, a->r, b->r)) ||
-           (a->r != NO_NODE && b->r != NO_NODE && a->op == lg_swap(b->op) &&
+           (a->r != NO_NODE && b->r != NO_NODE && a->op == punct_swap(b->op) &&
             lg_eqn(c, a->l, b->r) && lg_eqn(c, a->r, b->l));
 }
 
@@ -141,9 +112,7 @@ static bool lg_same(Checker *c, const LForm *a, const LForm *b)
 static bool lg_eligible(Checker *c, uint32_t n)
 {
     n = strip_paren(c, n);
-    if (ntag(c, n) == N_BINARY && (lg_cmp(npunct(c, n)) ||
-                                   npunct(c, n) == P_ANDAND ||
-                                   npunct(c, n) == P_OROR))
+    if (ntag(c, n) == N_BINARY && punct_is_bool(npunct(c, n)))
         return true;
     if (ntag(c, n) == N_UNARY && npunct(c, n) == P_BANG)
         return true;
@@ -224,7 +193,7 @@ static bool lg_atom(Checker *c, const LForm *f, uint32_t *e, IvSet *s,
         k = lg_val(c, f->r);
     } else if (is_intcst(c, f->l) && !is_intcst(c, f->r)) {
         *e = f->r;
-        op = lg_swap(op);
+        op = punct_swap(op);
         k = lg_val(c, f->l);
     } else {
         return false;
@@ -275,8 +244,7 @@ static void logical_op_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int 
         bool neg;
         uint64_t mag;
         int ta = ntag(c, a), pa = npunct(c, a);
-        bool truthy = (ta == N_BINARY && (lg_cmp(pa) || pa == P_ANDAND ||
-                                          pa == P_OROR)) ||
+        bool truthy = (ta == N_BINARY && punct_is_bool(pa)) ||
                       (ta == N_UNARY && pa == P_BANG);
         cst_parts(c, sb, &neg, &mag);
         if (!truthy && (neg || mag > 1)) {
@@ -414,12 +382,6 @@ static bool addr_weak(Checker *c, uint32_t cb)
  * -Wsizeof-pointer-div (gcc's shorten_compare, warn_for_sign_compare,
  * warn_about_parentheses, maybe_warn_for_null_address, ...). */
 
-bool is_cmp_op(int op)
-{
-    return op == P_EQEQ || op == P_NE || op == P_LT || op == P_GT ||
-           op == P_LE || op == P_GE;
-}
-
 static const char *cmp_str(int op)
 {
     switch (op) {
@@ -429,17 +391,6 @@ static const char *cmp_str(int op)
     case P_GT: return ">";
     case P_LE: return "<=";
     default: return ">=";
-    }
-}
-
-static int swap_cmp(int op)
-{
-    switch (op) {
-    case P_LT: return P_GT;
-    case P_GT: return P_LT;
-    case P_LE: return P_GE;
-    case P_GE: return P_LE;
-    default: return op;
     }
 }
 
@@ -455,15 +406,8 @@ static bool truth_expr(Checker *c, uint32_t n)
     n = strip_paren(c, n);
     if (cst_class(c, n))
         return false;
-    if (ntag(c, n) == N_BINARY) {
-        switch (npunct(c, n)) {
-        case P_EQEQ: case P_NE: case P_LT: case P_GT: case P_LE: case P_GE:
-        case P_ANDAND: case P_OROR:
-            return true;
-        default:
-            return false;
-        }
-    }
+    if (ntag(c, n) == N_BINARY)
+        return punct_is_bool(npunct(c, n));
     return ntag(c, n) == N_UNARY && npunct(c, n) == P_BANG;
 }
 
@@ -540,10 +484,7 @@ bool nonneg(Checker *c, uint32_t n)
             unsigned x = zext_bits(c, k[0]), y = zext_bits(c, k[1]);
             return x && y && (x > y ? x : y) + 1 < int_bits(c, t);
         }
-        case P_EQEQ: case P_NE: case P_LT: case P_GT: case P_LE: case P_GE:
-        case P_ANDAND: case P_OROR:
-            return true;
-        default: return false;
+        default: return punct_is_bool(npunct(c, n));
         }
     case N_ASSIGN:
         return npunct(c, n) == P_ASSIGN && nkids(c, n, k, 3) >= 2 &&
@@ -798,7 +739,7 @@ static bool type_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
         y = p0;
         tx = t1;
         prx = pr1;
-        code = swap_cmp(op);
+        code = punct_swap(op);
     }
     if (!is_intcst(c, y))
         return false;
@@ -1093,7 +1034,7 @@ void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     SrcLoc loc = cnode_loc(c, i);
     uint32_t sa = strip_paren(c, a), sb = strip_paren(c, b), bit, cst, n;
     TypeId t;
-    if (!is_cmp_op(op) || tfrom_macro(c, c->nodes[i].tok))
+    if (!punct_is_cmp(op) || tfrom_macro(c, c->nodes[i].tok))
         return;
     if (op == P_EQEQ || op == P_NE) {
         bit = NO_NODE;
@@ -1178,7 +1119,7 @@ static bool lognot_bitop(Checker *c, uint32_t a, uint32_t b, int op, SrcLoc la)
         return false;
     r = strip_paren(c, b);
     rop = ntag(c, r) == N_BINARY ? npunct(c, r) : 0;
-    if (is_cmp_op(rop) || rop == P_ANDAND || rop == P_OROR ||
+    if (punct_is_bool(rop) ||
         (ntag(c, r) == N_UNARY && npunct(c, r) == P_BANG))
         return false;
     PW(la, "suggest parentheses around operand of '!' or "
@@ -1220,9 +1161,9 @@ void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             PW(la, "suggest parentheses around arithmetic in operand of '|'");
         else if (cb == P_AMP || cb == P_CARET || cb == P_PLUS || cb == P_MINUS)
             PW(lb, "suggest parentheses around arithmetic in operand of '|'");
-        else if (is_cmp_op(ca))
+        else if (punct_is_cmp(ca))
             PW(la, "suggest parentheses around comparison in operand of '|'");
-        else if (is_cmp_op(cb))
+        else if (punct_is_cmp(cb))
             PW(lb, "suggest parentheses around comparison in operand of '|'");
         return;
     case P_CARET:
@@ -1230,9 +1171,9 @@ void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             PW(la, "suggest parentheses around arithmetic in operand of '^'");
         else if (cb == P_AMP || cb == P_PLUS || cb == P_MINUS)
             PW(lb, "suggest parentheses around arithmetic in operand of '^'");
-        else if (is_cmp_op(ca))
+        else if (punct_is_cmp(ca))
             PW(la, "suggest parentheses around comparison in operand of '^'");
-        else if (is_cmp_op(cb))
+        else if (punct_is_cmp(cb))
             PW(lb, "suggest parentheses around comparison in operand of '^'");
         return;
     case P_AMP:
@@ -1246,24 +1187,24 @@ void parens_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             PW(la, "suggest parentheses around '-' in operand of '&'");
         else if (cb == P_MINUS)
             PW(lb, "suggest parentheses around '-' in operand of '&'");
-        else if (is_cmp_op(ca))
+        else if (punct_is_cmp(ca))
             PW(la, "suggest parentheses around comparison in operand of '&'");
-        else if (is_cmp_op(cb))
+        else if (punct_is_cmp(cb))
             PW(lb, "suggest parentheses around comparison in operand of '&'");
         return;
     case P_EQEQ: case P_NE:
-        if (is_cmp_op(ca))
+        if (punct_is_cmp(ca))
             PW(la, "suggest parentheses around comparison in operand of '%s'",
                cmp_str(op));
-        else if (is_cmp_op(cb))
+        else if (punct_is_cmp(cb))
             PW(lb, "suggest parentheses around comparison in operand of '%s'",
                cmp_str(op));
         return;
     case P_LT: case P_GT: case P_LE: case P_GE:
-        if (is_cmp_op(ca))
+        if (punct_is_cmp(ca))
             PW(la, "comparisons like 'X<=Y<=Z' do not have their mathematical "
                    "meaning");
-        else if (is_cmp_op(cb))
+        else if (punct_is_cmp(cb))
             PW(lb, "comparisons like 'X<=Y<=Z' do not have their mathematical "
                    "meaning");
         return;
@@ -1299,7 +1240,7 @@ void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     uint32_t k[3], x, y;
     Diagnostic *d;
     int own;
-    if (!is_cmp_op(op) || ntag(c, a) != N_UNARY || npunct(c, a) != P_BANG ||
+    if (!punct_is_cmp(op) || ntag(c, a) != N_UNARY || npunct(c, a) != P_BANG ||
         (ntag(c, b) == N_UNARY && npunct(c, b) == P_BANG) ||
         nkids(c, a, k, 3) < 1)
         return;
@@ -1339,7 +1280,7 @@ void array_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
 {
     Diagnostic *d;
     SrcLoc loc = cnode_loc(c, i);
-    if (!is_cmp_op(op) || ntag(c, a) != N_IDENT || ntag(c, b) != N_IDENT ||
+    if (!punct_is_cmp(op) || ntag(c, a) != N_IDENT || ntag(c, b) != N_IDENT ||
         !is_array(c, c->ty[a]) || !is_array(c, c->ty[b]))
         return;
     d = cwarn_d(c, DL_WARNING, loc, "array-compare", "comparison between two "

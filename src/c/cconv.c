@@ -268,7 +268,7 @@ static bool is_binop(Checker *c, uint32_t n)
 /* The operator of a binary operation or compound assignment. */
 static int binop_p(Checker *c, uint32_t n)
 {
-    return assign_binop(npunct(c, n));
+    return punct_assign_base(npunct(c, n));
 }
 
 static bool bool_valued(Checker *c, uint32_t s);
@@ -495,7 +495,7 @@ static int arith_operands(Checker *c, uint32_t s, uint32_t *k)
         p = npunct(c, s);
         if (p == P_ASSIGN)
             return 0;
-        p = assign_binop(p);
+        p = punct_assign_base(p);
         if ((p == P_SHL || p == P_SHR) && nkids(c, s, k, 2) == 2)
             return 1;
         return nkids(c, s, k, 2) == 2 ? 2 : 0;
@@ -524,8 +524,7 @@ static bool bool_valued(Checker *c, uint32_t s)
     if (ntag(c, s) != N_BINARY)
         return false;
     p = npunct(c, s);
-    return p == P_EQEQ || p == P_NE || p == P_LT || p == P_GT || p == P_LE ||
-           p == P_GE || p == P_ANDAND || p == P_OROR;
+    return punct_is_bool(p);
 }
 
 /* An expression built only from numeric literals (a complex constant). */
@@ -860,8 +859,6 @@ static SrcLoc conv_loc(Conv *x)
     return l;
 }
 
-bool is_cmp_op(int op);
-
 /* gcc builds the result of a vector comparison or ! as an opaque vector
  * type, convertible to any vector of the same size. */
 bool vector_truth_node(Checker *c, uint32_t e)
@@ -870,7 +867,7 @@ bool vector_truth_node(Checker *c, uint32_t e)
     if (e == NO_NODE)
         return false;
     if (ntag(c, e) == N_BINARY)
-        return is_cmp_op(npunct(c, e));
+        return punct_is_cmp(npunct(c, e));
     return ntag(c, e) == N_UNARY && npunct(c, e) == P_BANG;
 }
 

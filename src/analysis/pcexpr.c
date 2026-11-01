@@ -662,23 +662,6 @@ static Bdd lin_cmp(PcCtx *cx, int op, const Num *x, intmax_t c)
     }
 }
 
-static bool is_cmp(int op)
-{
-    return op == P_EQEQ || op == P_NE || op == P_LT || op == P_GT ||
-           op == P_LE || op == P_GE;
-}
-
-static int swap_cmp(int op)
-{
-    switch (op) {
-    case P_LT: return P_GT;
-    case P_GT: return P_LT;
-    case P_LE: return P_GE;
-    case P_GE: return P_LE;
-    default: return op;
-    }
-}
-
 /* x op y on constants with C's usual arithmetic conversions: unsigned if
  * either operand is (a shift takes its left operand's type, a comparison
  * gives a signed 0 or 1); false when undefined (division by zero) */
@@ -939,14 +922,14 @@ static Val pair_op(PcCtx *cx, int op, const Num *x, const Num *y)
         return fold(op, x, y, &r)
                    ? v_one(cx, r)
                    : v_one(cx, n_opq(key_bin(cx, op, x, y)));
-    if (is_cmp(op)) {
+    if (punct_is_cmp(op)) {
         /* s*X + k op c  is  s*X op (c - k) */
         if (is_lin(x) && y->k == N_CONST &&
             !__builtin_sub_overflow(y->n, x->n, &c))
             return v_bool(cx, lin_cmp(cx, op, x, c));
         if (x->k == N_CONST && is_lin(y) &&
             !__builtin_sub_overflow(x->n, y->n, &c))
-            return v_bool(cx, lin_cmp(cx, swap_cmp(op), y, c));
+            return v_bool(cx, lin_cmp(cx, punct_swap(op), y, c));
         if (x->k == N_INIT && y->k == N_INIT && x->id == y->id &&
             x->s == y->s) {
             Num a = n_const(x->n), b = n_const(y->n);

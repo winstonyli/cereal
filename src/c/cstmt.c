@@ -511,13 +511,7 @@ static bool is_truth_value(Checker *c, uint32_t e)
     if (c->ck[e] == K_ICE || c->ck[e] == K_FOLD)
         return false;
     if (tg(c, e) == N_BINARY) {
-        switch (c->u->toks[c->nodes[e].tok].t.punct) {
-        case P_EQEQ: case P_NE: case P_LT: case P_GT: case P_LE: case P_GE:
-        case P_ANDAND: case P_OROR:
-            return true;
-        default:
-            return false;
-        }
+        return punct_is_bool(c->u->toks[c->nodes[e].tok].t.punct);
     }
     if (tg(c, e) == N_UNARY &&
         c->u->toks[c->nodes[e].tok].t.punct == P_BANG)

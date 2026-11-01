@@ -943,29 +943,6 @@ typedef struct {
     int64_t cv;
 } DupCmp;
 
-static int dup_mirror(int op)
-{
-    switch (op) {
-    case P_LT: return P_GT;
-    case P_GT: return P_LT;
-    case P_LE: return P_GE;
-    case P_GE: return P_LE;
-    default: return op;
-    }
-}
-
-static int dup_negate(int op)
-{
-    switch (op) {
-    case P_EQEQ: return P_NE;
-    case P_NE: return P_EQEQ;
-    case P_LT: return P_GE;
-    case P_GE: return P_LT;
-    case P_LE: return P_GT;
-    default: return P_LE;
-    }
-}
-
 static bool dup_intlike(Checker *c, uint32_t e)
 {
     TypeId t = c->ty[e];
@@ -982,14 +959,9 @@ static bool dup_cmp_of(Checker *c, uint32_t e, DupCmp *d)
            node_children(c->nodes, e, k, 3) == 1) {
         uint32_t in = strip_paren(c, k[0]);
         neg = !neg;
-        if (tg(c, in) == N_BINARY) {
-            switch (dup_punct(c, in)) {
-            case P_EQEQ: case P_NE: case P_LT: case P_LE: case P_GT: case P_GE:
-                e = in;
-                goto cmp;
-            default:
-                break;
-            }
+        if (tg(c, in) == N_BINARY && punct_is_cmp(dup_punct(c, in))) {
+            e = in;
+            goto cmp;
         }
         e = in;
         if (tg(c, e) == N_UNARY && dup_punct(c, e) == P_BANG)
@@ -1003,14 +975,8 @@ static bool dup_cmp_of(Checker *c, uint32_t e, DupCmp *d)
         d->cv = 0;
         goto norm;
     }
-    if (tg(c, e) == N_BINARY) {
-        switch (dup_punct(c, e)) {
-        case P_EQEQ: case P_NE: case P_LT: case P_LE: case P_GT: case P_GE:
-            goto cmp;
-        default:
-            break;
-        }
-    }
+    if (tg(c, e) == N_BINARY && punct_is_cmp(dup_punct(c, e)))
+        goto cmp;
     if (!dup_intlike(c, e) || dup_const(c, e))
         return false;
     d->op = P_NE;
@@ -1031,7 +997,7 @@ cmp:
     }
     d->op = dup_punct(c, e);
     if (neg)
-        d->op = dup_negate(d->op);
+        d->op = punct_negate(d->op);
     d->l = strip_paren(c, k[0]);
     d->r = strip_paren(c, k[1]);
     d->rc = false;
@@ -1039,7 +1005,7 @@ cmp:
         uint32_t t = d->l;
         d->l = d->r;
         d->r = t;
-        d->op = dup_mirror(d->op);
+        d->op = punct_swap(d->op);
     }
     if (dup_const(c, d->r)) {
         d->rc = true;
@@ -1055,7 +1021,7 @@ norm:
             if (tg(c, d->l) == N_UNARY && dup_punct(c, d->l) == P_MINUS &&
                 node_children(c->nodes, d->l, m, 3) == 1 && sgn) {
                 d->l = m[0];
-                d->op = dup_mirror(d->op);
+                d->op = punct_swap(d->op);
                 d->cv = -d->cv;
                 continue;
             }
@@ -1088,7 +1054,7 @@ norm:
         uint32_t t = d->l;
         d->l = d->r;
         d->r = t;
-        d->op = dup_mirror(d->op);
+        d->op = punct_swap(d->op);
     }
     return true;
 }
@@ -1120,15 +1086,9 @@ static int dupcond_cmp(const void *x, const void *y)
  * operator's location is its first token. */
 static SrcLoc dupcond_loc(Checker *c, uint32_t e)
 {
-    if (tg(c, e) == N_BINARY)
-        switch (dup_punct(c, e)) {
-        case P_EQEQ: case P_NE: case P_LT: case P_LE: case P_GT: case P_GE:
-        case P_ANDAND: case P_OROR: case P_COMMA:
-            break;
-        default:
-            if (!dup_const(c, e))
-                return ctok_loc(c, first_tok(c, e));
-        }
+    if (tg(c, e) == N_BINARY && !punct_is_bool(dup_punct(c, e)) &&
+        dup_punct(c, e) != P_COMMA && !dup_const(c, e))
+        return ctok_loc(c, first_tok(c, e));
     return cnode_loc(c, e);
 }
 

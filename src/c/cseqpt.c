@@ -556,9 +556,10 @@ static bool sq_truth_wraps(Checker *c, uint32_t e)
     case N_UNARY:
         return npunct(c, e) != P_BANG;
     case N_BINARY:
+        if (punct_is_bool(npunct(c, e)))
+            return false;
         switch (npunct(c, e)) {
-        case P_EQEQ: case P_NE: case P_LT: case P_GT: case P_LE: case P_GE:
-        case P_ANDAND: case P_OROR: case P_COMMA:
+        case P_COMMA:
             return false;
         case P_MINUS: case P_CARET:     /* fold turns `a - b != 0` into `a != b` */
             return !is_int(c, c->ty[e]);

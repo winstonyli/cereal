@@ -200,11 +200,6 @@ uint32_t vmap(El *e, TypeId vt, SrcLoc loc, const U32Vec *setup, LaneFn f, void 
     return id;
 }
 
-static bool is_relop(int p)
-{
-    return p == P_LT || p == P_GT || p == P_LE || p == P_GE || p == P_EQEQ || p == P_NE;
-}
-
 typedef struct VBin {
     int p;
     TypeId ot, rl;              /* the lane type of the operation, and of the result */
@@ -217,7 +212,7 @@ static uint32_t bin_lane(El *e, void *ctx, uint32_t j)
     const VBin *x = ctx;
     uint32_t a = conv(e, vop_lane(e, x->a, j, x->loc), x->ot, x->loc);
     uint32_t b = conv(e, vop_lane(e, x->b, j, x->loc), x->ot, x->loc);
-    return is_relop(x->p) ? vl_mask(e, x->p, x->rl, a, b, x->loc) : vl_bin(e, x->p, x->ot, a, b, x->loc);
+    return punct_is_cmp(x->p) ? vl_mask(e, x->p, x->rl, a, b, x->loc) : vl_bin(e, x->p, x->ot, a, b, x->loc);
 }
 
 /* a op b on the lanes of the operands oa and ob into a vector of type vt: the relational
@@ -230,7 +225,7 @@ uint32_t vec_op(El *e, int p, TypeId vt, const VOp *oa, const VOp *ob, SrcLoc lo
     if (!vec_dims(e, vt, &x.rl, &n))
         return TN;
     x.p = p;
-    x.ot = is_relop(p) ? oa->et : x.rl;     /* the lanes are the operands' for a comparison, the result's else */
+    x.ot = punct_is_cmp(p) ? oa->et : x.rl;     /* the lanes are the operands' for a comparison, the result's else */
     x.a = oa;
     x.b = ob;
     x.loc = loc;

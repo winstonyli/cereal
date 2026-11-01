@@ -6578,7 +6578,7 @@ static void e_binary(Checker *c, uint32_t i)
     if (op == P_SLASH)
         sizeof_div(c, i, k[0], k[1]);
     parens_warn(c, i, k[0], k[1], op);
-    if (is_cmp_op(op)) {
+    if (punct_is_cmp(op)) {
         lognot_warn(c, i, k[0], k[1], op);
         tauto_warn(c, i, k[0], k[1], op);
         array_compare(c, i, k[0], k[1], op);
@@ -6807,23 +6807,6 @@ static void e_cond(Checker *c, uint32_t i)
 
 /* ---- assignment ------------------------------------------------------------------------- */
 
-int assign_binop(int op)
-{
-    switch (op) {
-    case P_MUL_ASSIGN: return P_STAR;
-    case P_DIV_ASSIGN: return P_SLASH;
-    case P_MOD_ASSIGN: return P_PERCENT;
-    case P_ADD_ASSIGN: return P_PLUS;
-    case P_SUB_ASSIGN: return P_MINUS;
-    case P_SHL_ASSIGN: return P_SHL;
-    case P_SHR_ASSIGN: return P_SHR;
-    case P_AND_ASSIGN: return P_AMP;
-    case P_XOR_ASSIGN: return P_CARET;
-    case P_OR_ASSIGN: return P_PIPE;
-    default: return op;
-    }
-}
-
 static void e_assign(Checker *c, uint32_t i)
 {
     uint32_t k[2], l, r;
@@ -6882,7 +6865,7 @@ static void e_assign(Checker *c, uint32_t i)
         if (op != P_ASSIGN) {
             /* a op= b: the operation first, then the conversion of its
              * result */
-            int bop = assign_binop(op);
+            int bop = punct_assign_base(op);
             bool ok = binop_operand(c, l);
             ok = binop_operand(c, r) && ok;
             if (ok) {
