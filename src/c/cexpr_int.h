@@ -385,7 +385,7 @@ SrcLoc colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);
 extern __thread bool no_int_bool;   /* set by the ?: check while its condition is checked */
 
 /* -Wparentheses */
-#define PW(l, ...) cwarn(c, (l), "parentheses", __VA_ARGS__)
+#define PW(l, ...) cwarn(c, (l), DW_PARENTHESES, __VA_ARGS__)
 
 
 

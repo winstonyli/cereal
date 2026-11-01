@@ -296,7 +296,7 @@ void deps_write(TU *tu, FILE *out)
     if (dest && !strcmp(dest, "-"))
         dest = NULL;
     if (dest && !(f = fopen(dest, "w"))) {
-        diag_report(&tu->diag, DL_ERROR, "", 0, "cannot open '%s' for writing: %s",
+        diag_report(&tu->diag, DL_ERROR, DW_NONE, 0, "cannot open '%s' for writing: %s",
                     dest, strerror(errno));
     } else {
         fwrite(sb.data, 1, sb.len, f);

@@ -14,7 +14,7 @@ static void add_scspec(Checker *c, Spec *s, uint32_t tok)
     bool dupe = false;
 
     if (s->non_sc_seen)
-        cwarn(c, il, "old-style-declaration",
+        cwarn(c, il, DW_OLD_STYLE_DECLARATION,
               "'%s' is not at beginning of declaration", sp);
     switch (kw) {
     case CK_INLINE:
@@ -149,8 +149,8 @@ static void add_qual(Checker *c, Spec *s, uint32_t tok)
     if (q == TQ_RESTRICT)
         s->restrict_q = true;
     if (dupe && prev && !tfrom_macro(c, prev - 1) && !tfrom_macro(c, tok)) {
-        const char *id = cc90_id(c, NULL);
-        cwarn(c, loc, id ? id : "duplicate-decl-specifier",
+        DiagOpt id = cc90_id(c, DW_NONE);
+        cwarn(c, loc, id != DW_NONE ? id : DW_DUPLICATE_DECL_SPECIFIER,
               "duplicate '%s' declaration specifier", sp);
     }
 }
@@ -222,8 +222,8 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
                 return;
             }
             s->long_long = true;
-            if (cc90_id(c, "long-long"))
-                cwarn(c, loc, "long-long", "ISO C90 does not support 'long "
+            if (cc90_id(c, DW_LONG_LONG))
+                cwarn(c, loc, DW_LONG_LONG, "ISO C90 does not support 'long "
                       "long'");
             return;
         }
@@ -273,7 +273,7 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
                           wbit(TW_DECIMAL), loc)) {
             s->is_complex = true;
             s->complex_loc = loc;
-            cc90(c, loc, NULL, "ISO C90 does not support complex types");
+            cc90(c, loc, DW_NONE, "ISO C90 does not support complex types");
         }
         break;
     case CK_IMAGINARY:
@@ -319,7 +319,7 @@ static void add_type_kw(Checker *c, Spec *s, uint32_t tok)
             }
             nw = kw == CK_VOID ? TW_VOID : TW_BOOL;
             if (kw == CK_BOOL)
-                cc90(c, loc, NULL, "ISO C90 does not support boolean types");
+                cc90(c, loc, DW_NONE, "ISO C90 does not support boolean types");
             break;
         }
         case CK_CHAR: {
@@ -715,7 +715,7 @@ void specs_visit(Checker *c, uint32_t i)
                 c->attr_quiet = false;
                 if (ta.packed)
                     cwarn(c, iloc(c, cnode(c, find_child(c, n, N_TAG))->tok),
-                          "attributes", "'packed' attribute ignored");
+                          DW_ATTRIBUTES, "'packed' attribute ignored");
             }
             if (sso_of_tag(c, n))
                 s.attrs.sso = sso_of_tag(c, n);
@@ -775,7 +775,7 @@ void specs_visit(Checker *c, uint32_t i)
                                       "'_Alignof' applied to a function type");
                     } else if (ak == TY_VOID) {
                         if (!ext)
-                            cpedwarn(c, loc, "pointer-arith", "invalid "
+                            cpedwarn(c, loc, DW_POINTER_ARITH, "invalid "
                                      "application of '__alignof__' to a void "
                                      "type");
                     } else if (ak != TY_ERROR && !type_is_complete(TT, at))

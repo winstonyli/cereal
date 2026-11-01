@@ -82,17 +82,17 @@ static void macro_notes(Checker *c, Diagnostic *d, SrcLoc loc, bool is_note)
                          c->opt.macro_chain, c->opt.macro_ctx);
 }
 
-static Diagnostic *vrep(Checker *c, DiagLevel lvl, const char *id, SrcLoc loc,
+static Diagnostic *vrep(Checker *c, DiagLevel lvl, DiagOpt id, SrcLoc loc,
                         const char *fmt, va_list ap)
 {
     Diagnostic *d;
     if (c->quiet)
         return NULL;
     /* gcc's disable_extension_diagnostics also clears warn_traditional */
-    if (id && !strcmp(id, "traditional") && c->cur_node != NO_NODE &&
+    if (id == DW_TRADITIONAL && c->cur_node != NO_NODE &&
         cexpr_in_extension(c, c->cur_node))
         return NULL;
-    d = diag_vreport(c->diag, lvl, id ? id : "", loc, fmt, ap);
+    d = diag_vreport(c->diag, lvl, id, loc, fmt, ap);
     if (d && lvl != DL_NOTE)
         macro_notes(c, d, loc, false);
     return d;
@@ -102,7 +102,7 @@ void cerror(Checker *c, SrcLoc loc, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    vrep(c, DL_ERROR, "", loc, fmt, ap);
+    vrep(c, DL_ERROR, DW_NONE, loc, fmt, ap);
     va_end(ap);
 }
 
@@ -111,12 +111,12 @@ Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...)
     Diagnostic *d;
     va_list ap;
     va_start(ap, fmt);
-    d = vrep(c, DL_ERROR, "", loc, fmt, ap);
+    d = vrep(c, DL_ERROR, DW_NONE, loc, fmt, ap);
     va_end(ap);
     return d;
 }
 
-void cwarn(Checker *c, SrcLoc loc, const char *id, const char *fmt, ...)
+void cwarn(Checker *c, SrcLoc loc, DiagOpt id, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -124,7 +124,7 @@ void cwarn(Checker *c, SrcLoc loc, const char *id, const char *fmt, ...)
     va_end(ap);
 }
 
-Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
+Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, DiagOpt id,
                     const char *fmt, ...)
 {
     Diagnostic *d;
@@ -135,13 +135,13 @@ Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
     return d;
 }
 
-static Diagnostic *vped(Checker *c, SrcLoc loc, const char *id, bool err,
+static Diagnostic *vped(Checker *c, SrcLoc loc, DiagOpt id, bool err,
                         const char *fmt, va_list ap)
 {
-    if (id && *id && !diag_enabled(c->diag, id))
+    if (id != DW_NONE && !diag_enabled(c->diag, id))
         return NULL;
     /* gcc clears `pedantic` while parsing under __extension__ */
-    if (id && !strcmp(id, "pedantic") && c->cur_node != NO_NODE &&
+    if (id == DW_PEDANTIC && c->cur_node != NO_NODE &&
         cexpr_in_extension(c, c->cur_node))
         return NULL;
     if (in_system(c, loc) && !c->diag->show_system)
@@ -149,7 +149,7 @@ static Diagnostic *vped(Checker *c, SrcLoc loc, const char *id, bool err,
     return vrep(c, err ? DL_ERROR : DL_WARNING, id, loc, fmt, ap);
 }
 
-Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
+Diagnostic *cpedwarn(Checker *c, SrcLoc loc, DiagOpt id,
                      const char *fmt, ...)
 {
     Diagnostic *d;
@@ -165,7 +165,7 @@ Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
  * `year` on, only as a plain warning when the compat option OPT was given.
  * An explicit option also becomes the diagnostic's tag; __extension__ hides
  * all of it. */
-Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, const char *opt,
+Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, DiagOpt opt,
                     const char *fmt, ...)
 {
     Diagnostic *d;
@@ -177,7 +177,7 @@ Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, const char *opt,
     if (c->cur_node != NO_NODE && cexpr_in_extension(c, c->cur_node))
         return NULL;
     va_start(ap, fmt);
-    d = vped(c, loc, expl ? opt : "pedantic", below && c->opt.pedantic_errors,
+    d = vped(c, loc, expl ? opt : DW_PEDANTIC, below && c->opt.pedantic_errors,
              fmt, ap);
     va_end(ap);
     return d;
@@ -186,22 +186,22 @@ Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, const char *opt,
 /* gcc's pedwarn_c90 in C99 mode: the option to report a C90-only restriction
  * under -- its own option when on, else -Wc90-c99-compat unless the own
  * option was turned off; NULL when neither applies. */
-const char *cc90_id(Checker *c, const char *own)
+DiagOpt cc90_id(Checker *c, DiagOpt own)
 {
-    if (own && diag_enabled(c->diag, own))
+    if (own != DW_NONE && diag_enabled(c->diag, own))
         return own;
-    if (diag_enabled(c->diag, "c90-c99-compat") &&
-        (!own || diag_option_state(c->diag, own) == -1))
-        return "c90-c99-compat";
-    return NULL;
+    if (diag_enabled(c->diag, DW_C90_C99_COMPAT) &&
+        (own == DW_NONE || diag_option_state(c->diag, own) == -1))
+        return DW_C90_C99_COMPAT;
+    return DW_NONE;
 }
 
-void cc90(Checker *c, SrcLoc loc, const char *own, const char *fmt, ...)
+void cc90(Checker *c, SrcLoc loc, DiagOpt own, const char *fmt, ...)
 {
-    const char *id = cc90_id(c, own);
+    DiagOpt id = cc90_id(c, own);
     char buf[256];
     va_list ap;
-    if (!id)
+    if (id == DW_NONE)
         return;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
@@ -211,8 +211,8 @@ void cc90(Checker *c, SrcLoc loc, const char *own, const char *fmt, ...)
 
 void cconst_overflow(Checker *c, SrcLoc loc)
 {
-    if (diag_enabled(c->diag, "pedantic"))
-        cpedwarn(c, loc, "overflow", "overflow in constant expression");
+    if (diag_enabled(c->diag, DW_PEDANTIC))
+        cpedwarn(c, loc, DW_OVERFLOW, "overflow in constant expression");
 }
 
 /* A token of a predefined macro (__INT_MAX__) has no spelling location of
@@ -232,7 +232,7 @@ Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...)
     if (!c->opt.pedantic)
         return NULL;
     va_start(ap, fmt);
-    d = vped(c, loc, "pedantic", c->opt.pedantic_errors, fmt, ap);
+    d = vped(c, loc, DW_PEDANTIC, c->opt.pedantic_errors, fmt, ap);
     va_end(ap);
     return d;
 }

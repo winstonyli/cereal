@@ -108,7 +108,7 @@ static void check_branch(Analysis *a, Skeleton *sk, PcCtx *cx, Frame *stack,
             return;             /* 1 / 0 by zero, say: nothing to claim */
         if (d->kind != SK_IFNDEF && d->kind != SK_IFDEF &&
             d->kind != SK_ELIFNDEF && d->kind != SK_ELIFDEF)
-            diag_report(a->diag, DL_REMARK, "cond-constant", d->kw_loc,
+            diag_report(a->diag, DL_REMARK, DW_COND_CONSTANT, d->kw_loc,
                         "%s condition is constant (%s)", dir_name(d->kind),
                         fr->cur == BDD_TRUE ? "always true" : "always false");
         fr->dead = fr->cur == BDD_FALSE;
@@ -117,7 +117,7 @@ static void check_branch(Analysis *a, Skeleton *sk, PcCtx *cx, Frame *stack,
     /* reachability of this branch position */
     reach = pc_sat(cx, fr->reach);
     if (reach == 0) {
-        Diagnostic *dg = diag_report(a->diag, DL_WARNING, "cond-dead-branch",
+        Diagnostic *dg = diag_report(a->diag, DL_WARNING, DW_COND_DEAD_BRANCH,
             d->kw_loc, "%s branch can never be taken: the enclosing and "
             "earlier conditions already cover every configuration",
             dir_name(d->kind));
@@ -132,7 +132,7 @@ static void check_branch(Analysis *a, Skeleton *sk, PcCtx *cx, Frame *stack,
     sat_c = pc_sat(cx, bdd_and(m, fr->reach, fr->cur));
     if (sat_c == 0) {
         int self = pc_sat(cx, fr->cur);
-        diag_report(a->diag, DL_WARNING, "cond-dead-branch", d->kw_loc,
+        diag_report(a->diag, DL_WARNING, DW_COND_DEAD_BRANCH, d->kw_loc,
                     self == 0 ? "%s condition can never be true"
                               : "%s condition contradicts the enclosing or "
                                 "earlier conditions; this branch is dead in "
@@ -143,7 +143,7 @@ static void check_branch(Analysis *a, Skeleton *sk, PcCtx *cx, Frame *stack,
     }
     sat_notc = pc_sat(cx, bdd_and(m, fr->reach, bdd_not(m, fr->cur)));
     if (sat_notc == 0 && d->kind != SK_IFNDEF && d->kind != SK_ELIFNDEF) {
-        diag_report(a->diag, DL_WARNING, "cond-redundant", d->kw_loc,
+        diag_report(a->diag, DL_WARNING, DW_COND_REDUNDANT, d->kw_loc,
                     "%s condition is always true here (implied by the "
                     "enclosing and earlier conditions)%s", dir_name(d->kind),
                     d->kind == SK_ELIF ? "; use #else" : "");
@@ -221,7 +221,7 @@ static void check_label(Analysis *a, Skeleton *sk, int idx)
         any = true;
     }
     if (any) {
-        Diagnostic *dg = diag_report(a->diag, DL_WARNING, "endif-label",
+        Diagnostic *dg = diag_report(a->diag, DL_WARNING, DW_ENDIF_LABEL,
             d->kw_loc, "comment on %s mentions '%.*s', which the conditional "
             "does not test", dir_name(d->kind), (int)first_len, first_word);
         diag_note(a->diag, dg, sk->dirs.data[d->opener].kw_loc,
@@ -412,7 +412,7 @@ void cond_finish(Analysis *a)
             }
         }
         if (best) {
-            Diagnostic *d = diag_report(a->diag, DL_WARNING, "cond-typo", t->loc,
+            Diagnostic *d = diag_report(a->diag, DL_WARNING, DW_COND_TYPO, t->loc,
                 "'%s' is never defined in this translation unit; did you mean "
                 "'%s'?", id->str, best->str);
             diag_set_range(d, t->loc, t->loc + t->len);
@@ -423,7 +423,7 @@ void cond_finish(Analysis *a)
                 fix_tok_replace(a->diag, d, 0, a->sm, a->in, t, best->str,
                                 FIX_INFO);
         } else {
-            diag_report(a->diag, DL_REMARK, "cond-never-defined", t->loc,
+            diag_report(a->diag, DL_REMARK, DW_COND_NEVER_DEFINED, t->loc,
                         "'%s' is never defined in this translation unit",
                         id->str);
         }

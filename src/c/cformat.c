@@ -320,7 +320,7 @@ static void fmt_take(FmtCtx *x, const FmtWant *w, SrcLoc loc, const char *what)
     if (x->va)
         return;
     if (x->ai >= x->nk) {
-        cwarn(c, loc, "format=", "%s expects a matching '%s' argument", what,
+        cwarn(c, loc, DW_FORMAT_V, "%s expects a matching '%s' argument", what,
               w->name);
         return;
     }
@@ -333,24 +333,24 @@ static void fmt_take(FmtCtx *x, const FmtWant *w, SrcLoc loc, const char *what)
     k = type_ckind(TT, t);
     if (w->write && k == TY_PTR &&
         (tquals(c, type_base(TT, type_canon(TT, t))) & TQ_CONST))
-        cwarn(c, x->call, "format=", "writing into constant object "
+        cwarn(c, x->call, DW_FORMAT_V, "writing into constant object "
               "(argument %u)", x->ai);
     if (w->shape == FW_INT && w->sgn && fmt_cls(k) && fmt_arg_ok(c, w, t) &&
-        diag_enabled(c->diag, "format-signedness")) {
+        diag_enabled(c->diag, DW_FORMAT_SIGNEDNESS)) {
         /* -Wformat-signedness: an unsigned type narrower than int promotes
          * to int but is still fine for either conversion */
         TypeKind ok = type_ckind(TT, rvt(c, a));
         bool small_u = ok == TY_UCHAR || ok == TY_USHORT;
         bool uk = fmt_unsigned_kind(k);
         if (!small_u && k != TY_CHAR && (w->sgn == 2) != uk)
-            fmt_fixit(x, cwarn_d(c, DL_WARNING, loc, "format=",
+            fmt_fixit(x, cwarn_d(c, DL_WARNING, loc, DW_FORMAT_V,
                                  "%s expects argument of type '%s', but "
                                  "argument %u has type %s", what, w->name,
                                  x->ai, type_q(TT, t)), t);
     }
     if ((fmt_cls(k) || k == TY_DOUBLE || k == TY_LDOUBLE || k == TY_PTR ||
          is_record(c, t)) && !fmt_arg_ok(c, w, t))
-        fmt_fixit(x, cwarn_d(c, DL_WARNING, loc, "format=",
+        fmt_fixit(x, cwarn_d(c, DL_WARNING, loc, DW_FORMAT_V,
                              "%s expects argument of type '%s', but "
                              "argument %u has type %s", what, w->name,
                              x->ai, type_q(TT, t)), t);
@@ -471,7 +471,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
     uint32_t *off;
     size_t n, i = 0, t, st, sp0 = 0;
     bool exact, dollar = false;
-    if (!diag_enabled(c->diag, "format="))
+    if (!diag_enabled(c->diag, DW_FORMAT_V))
         return;
     if (si) {
         n = si->n;
@@ -511,13 +511,13 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
     x.off = off;
     for (t = 0; t < n; t++)
         if (!f[t]) {
-            cwarn(c, fmt_loc(&x, t), "format-contains-nul",
+            cwarn(c, fmt_loc(&x, t), DW_FORMAT_CONTAINS_NUL,
                   "embedded '\\0' in format");
             n = t;
             break;
         }
     if (!n) {
-        cwarn(c, whole, "format-zero-length", "zero-length %s format string",
+        cwarn(c, whole, DW_FORMAT_ZERO_LENGTH, "zero-length %s format string",
               kname);
         goto out;
     }
@@ -539,18 +539,18 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         }
         st = sp0 = i++;
         if (i >= n) {
-            cwarn(c, fmt_loc(&x, st), "format=",
+            cwarn(c, fmt_loc(&x, st), DW_FORMAT_V,
                   "spurious trailing '%%' in format");
             break;
         }
         while (i < n && strchr(scan ? "*'m" : "-+ #0'I", f[i])) {
             if (seen[(int)f[i]])
-                cwarn(c, fmt_loc(&x, i), "format=",
+                cwarn(c, fmt_loc(&x, i), DW_FORMAT_V,
                       "repeated '%c' flag in format", f[i]);
             else if (nf < sizeof flags - 1)
                 flags[nf++] = f[i];
             if (c->opt.pedantic && (f[i] == '\'' || f[i] == 'I'))
-                cwarn(c, whole, "format=", "ISO C does not support the '%c' "
+                cwarn(c, whole, DW_FORMAT_V, "ISO C does not support the '%c' "
                       "%s flag", f[i], scan ? "scanf" : "printf");
             seen[(int)f[i]] = 1;
             supp |= scan && f[i] == '*';
@@ -570,7 +570,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
             }
             if (width && i < n && f[i] == '$') {
                 if (c->opt.pedantic)
-                    cwarn(c, call, "format=", "ISO C does not support %%n$ "
+                    cwarn(c, call, DW_FORMAT_V, "ISO C does not support %%n$ "
                           "operand number formats");
                 dollar = true;
                 break;
@@ -605,12 +605,12 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
                 lsp[1] = len == FL_HH || (len == FL_LL && f[i] == 'l') ? f[i] : 0;
                 i += lsp[1] ? 2 : 1;
                 if ((f[i - 1] == 'q' || f[i - 1] == 'Z') && c->opt.pedantic)
-                    cwarn(c, whole, "format=", "ISO C does not support the "
+                    cwarn(c, whole, DW_FORMAT_V, "ISO C does not support the "
                           "'%c' %s length modifier", f[i - 1], kname);
             }
         }
         if (i >= n) {
-            cwarn(c, fmt_loc(&x, i - 1), "format=",
+            cwarn(c, fmt_loc(&x, i - 1), DW_FORMAT_V,
                   "conversion lacks type at end of format");
             break;
         }
@@ -618,7 +618,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         ls = i - (lsp[0] ? (lsp[1] ? 2 : 1) : 0);
         if (conv == '%') {
             if (i - 1 > st) {
-                cwarn(c, fmt_loc(&x, i - 1), "format=",
+                cwarn(c, fmt_loc(&x, i - 1), DW_FORMAT_V,
                       "conversion lacks type at end of format");
                 continue;       /* the '%' starts the next conversion */
             }
@@ -627,11 +627,11 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         }
         if (!conv || !strchr(convs, conv)) {
             if (isprint((unsigned char)conv))
-                cwarn(c, fmt_loc(&x, i), "format=",
+                cwarn(c, fmt_loc(&x, i), DW_FORMAT_V,
                       "unknown conversion type character '%c' in format",
                       conv);
             else
-                cwarn(c, fmt_loc(&x, i), "format=", "unknown conversion type "
+                cwarn(c, fmt_loc(&x, i), DW_FORMAT_V, "unknown conversion type "
                       "character '\\x%02x' in format", (unsigned char)conv);
             i++;
             continue;
@@ -639,7 +639,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         snprintf(what, sizeof what, "format '%%%s%s%c'", mflag ? "m" : "", lsp,
                  conv);
         if (mflag && c->opt.pedantic)
-            cwarn(c, whole, "format=", "ISO C does not support the 'm' scanf "
+            cwarn(c, whole, DW_FORMAT_V, "ISO C does not support the 'm' scanf "
                   "flag");
         if (conv == '[') {
             /* a scan set: the conversion is located at its last character */
@@ -652,7 +652,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
                 j++;
             e = j < n ? j - 1 : n - 1;
             if (j >= n)
-                cwarn(c, fmt_loc(&x, e), "format=",
+                cwarn(c, fmt_loc(&x, e), DW_FORMAT_V,
                       "no closing ']' for '%%[' format");
             snprintf(what, sizeof what, "format '%%%s%.*s'", lsp,
                      (int)(e - i + 1), f + i);
@@ -665,23 +665,23 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
             if (t < sizeof ft / sizeof *ft) {
                 bool intc = strchr("diouxX", conv) != NULL;
                 if (seen[' '] && seen['+'])
-                    cwarn(c, whole, "format=", "' ' flag ignored with '+' flag "
+                    cwarn(c, whole, DW_FORMAT_V, "' ' flag ignored with '+' flag "
                           "in %s format", kname);
                 if (seen['0'] && seen['-'])
-                    cwarn(c, whole, "format=", "'0' flag ignored with '-' flag "
+                    cwarn(c, whole, DW_FORMAT_V, "'0' flag ignored with '-' flag "
                           "in %s format", kname);
                 if (seen['0'] && prec && intc)
-                    cwarn(c, whole, "format=", "'0' flag ignored with "
+                    cwarn(c, whole, DW_FORMAT_V, "'0' flag ignored with "
                           "precision and '%%%c' %s format", conv, kname);
                 for (st = 0; flags[st]; st++)
                     if (!strchr(ft[t].flags, flags[st]))
-                        cwarn(c, fmt_loc(&x, i), "format=", "'%c' flag used "
+                        cwarn(c, fmt_loc(&x, i), DW_FORMAT_V, "'%c' flag used "
                               "with '%%%c' %s format", flags[st], conv, kname);
                 if (width && conv == 'n')
-                    cwarn(c, fmt_loc(&x, i), "format=", "field width used "
+                    cwarn(c, fmt_loc(&x, i), DW_FORMAT_V, "field width used "
                           "with '%%%c' %s format", conv, kname);
                 if (prec && !strchr("diouxXfFeEgGaAsSn", conv))
-                    cwarn(c, fmt_loc(&x, i), "format=", "precision used with "
+                    cwarn(c, fmt_loc(&x, i), DW_FORMAT_V, "precision used with "
                           "'%%%c' %s format", conv, kname);
             }
         }
@@ -696,7 +696,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
             else
                 lenok = conv == 'C' || conv == 'S';
             if (!lenok) {
-                cwarn(c, fmt_loc(&x, i), "format=", "use of '%s' length "
+                cwarn(c, fmt_loc(&x, i), DW_FORMAT_V, "use of '%s' length "
                       "modifier with '%c' type character has either no "
                       "effect or undefined behavior", lsp, conv);
                 len = FL_NONE;
@@ -706,7 +706,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
             }
             if (c->opt.pedantic && (strchr(scan ? "CS" : "mCS", conv) ||
                                     (len == FL_BIGL && intc)))
-                cwarn(c, fmt_loc(&x, i), "format=", "ISO C does not support "
+                cwarn(c, fmt_loc(&x, i), DW_FORMAT_V, "ISO C does not support "
                       "the '%%%s%c' %s format", lsp, conv, kname);
         }
         if (supp) {
@@ -734,7 +734,7 @@ static void fmt_check(Checker *c, const uint32_t *kv, uint32_t nk,
         i++;
     }
     if (!dollar && !x.va && x.ai < nk)
-        cwarn(c, whole, "format-extra-args", "too many arguments for format");
+        cwarn(c, whole, DW_FORMAT_EXTRA_ARGS, "too many arguments for format");
 out:
     free(f);
     free(off);
@@ -770,7 +770,7 @@ static void suggest_format(Checker *c, bool scan, SrcLoc where)
     const CSym *f;
     TypeId ft;
     uint32_t k, n;
-    if (c->func_sym == SYM_NONE || !diag_enabled(c->diag, "suggest-attribute=format"))
+    if (c->func_sym == SYM_NONE || !diag_enabled(c->diag, DW_SUGGEST_ATTRIBUTE_VFORMAT))
         return;
     f = csym(c, c->func_sym);
     if (f->fmt && (f->fmt >> 24) == (scan ? 2u : 1u))
@@ -784,7 +784,7 @@ static void suggest_format(Checker *c, bool scan, SrcLoc where)
         if (type_kind(TT, t) == TY_PTR &&
             type_kind(TT, TYPE_UNQUAL(type_canon(TT, type_base(TT, t)))) ==
                 TY_CHAR) {
-            cwarn(c, where, "suggest-attribute=format", "function '%s' might "
+            cwarn(c, where, DW_SUGGEST_ATTRIBUTE_VFORMAT, "function '%s' might "
                   "be a candidate for '%s' format attribute",
                   cident(c, f->name), scan ? "gnu_scanf" : "gnu_printf");
             return;
@@ -1368,8 +1368,8 @@ bool const_strlen(Checker *c, uint32_t a, uint64_t *out)
 
 void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk)
 {
-    if (nk != 2 || (!diag_enabled(c->diag, "array-bounds=") &&
-                    !diag_enabled(c->diag, "stringop-overread")))
+    if (nk != 2 || (!diag_enabled(c->diag, DW_ARRAY_BOUNDS_V) &&
+                    !diag_enabled(c->diag, DW_STRINGOP_OVERREAD)))
         return;
     check_strlen_arg(c, kv[1], "strlen", 0);
 }
@@ -1378,7 +1378,7 @@ void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk)
 void check_spn(Checker *c, const uint32_t *kv, uint32_t nk, const char *name,
                SrcLoc call)
 {
-    if (nk != 3 || !diag_enabled(c->diag, "stringop-overread"))
+    if (nk != 3 || !diag_enabled(c->diag, DW_STRINGOP_OVERREAD))
         return;
     check_strlen_arg(c, kv[1], name, call);
     check_strlen_arg(c, kv[2], name, call);
@@ -1404,7 +1404,7 @@ static void check_strlen_arg(Checker *c, uint32_t a, const char *fn, SrcLoc at)
             continue;
         if (r[j].known && !r[j].mem &&
             (r[j].off < 0 || r[j].off >= r[j].size)) {
-            Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "array-bounds=",
+            Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_ARRAY_BOUNDS_V,
                                     "offset '%d' outside bounds of constant "
                                     "string", (int)r[j].off);
             if (d && sy)
@@ -1416,7 +1416,7 @@ static void check_strlen_arg(Checker *c, uint32_t a, const char *fn, SrcLoc at)
             size_t end = (size_t)(r[j].base + r[j].size);
             if ((int64_t)si->n >= r[j].base + r[j].size &&
                 (from >= end || !memchr(si->b + from, 0, end - from))) {
-                Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "stringop-overread",
+                Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_STRINGOP_OVERREAD,
                                         "'%s' argument missing "
                                         "terminating nul", fn);
                 if (d)
@@ -1521,14 +1521,14 @@ static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
                 SrcLoc w = pn != NO_NODE ? ctok_loc(c, c->nodes[pn].tok)
                                          : expr_loc(c, u);
                 if (si->uns)
-                    cwarn(c, expr_loc(c, u), "format=", "format string is not "
+                    cwarn(c, expr_loc(c, u), DW_FORMAT_V, "format string is not "
                           "an array of type 'char'");
                 else if (off >= 0 &&
                          (bool)(ok_sz = true, asz = type_size(TT, c->ty[u], &ok_sz),
                                 ok_sz) && (uint64_t)off < asz &&
                          (size_t)off < si->n && si->n >= asz &&
                          si->b[asz - 1])
-                    cwarn(c, plus ? expr_loc(c, u) : expr_loc(c, a), "format=",
+                    cwarn(c, plus ? expr_loc(c, u) : expr_loc(c, a), DW_FORMAT_V,
                           "unterminated format string");
                 else if (off >= 0) {
                     fmt_mloc = plus ? expr_loc(c, strip_paren(c, a)) : 0;
@@ -1543,7 +1543,7 @@ static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
             size_t len;
             const char *tx = ttext(c, c->nodes[u].tok, &len);
             if (lit_str_prefix(tx, len)) {
-                cwarn(c, ctok_loc(c, c->nodes[u].tok), "format=",
+                cwarn(c, ctok_loc(c, c->nodes[u].tok), DW_FORMAT_V,
                       "format is a wide character string");
                 return;
             }
@@ -1581,12 +1581,12 @@ static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
     if (!first)
         suggest_format(c, scan, input);
     if (first && nk <= first) {
-        const char *opt = !scan && diag_enabled(c->diag, "format-security")
-                          ? "format-security" : "format-nonliteral";
+        DiagOpt opt = !scan && diag_enabled(c->diag, DW_FORMAT_SECURITY)
+                      ? DW_FORMAT_SECURITY : DW_FORMAT_NONLITERAL;
         cwarn(c, where, opt, "format not a string literal and no format "
               "arguments");
     } else {
-        cwarn(c, where, "format-nonliteral", "format not a string literal, "
+        cwarn(c, where, DW_FORMAT_NONLITERAL, "format not a string literal, "
               "argument types not checked");
     }
 }

@@ -3,7 +3,8 @@ CC      ?= cc
 HOSTCC  ?= $(CC)
 CFLAGS  ?= -O2 -g
 WARN     = -std=c99 -pedantic -Wall -Wextra -Wshadow -Wstrict-prototypes \
-           -Wmissing-prototypes -Wno-unused-parameter
+           -Wmissing-prototypes -Wno-unused-parameter \
+           -Werror=int-conversion
 CPPFLAGS = -D_POSIX_C_SOURCE=200809L -Isrc -pthread
 BUILD    = build
 

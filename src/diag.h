@@ -110,10 +110,6 @@ typedef struct DiagEngine {
     int max_errors;
     const DiagConfig *cfg;   /* NULL: defaults */
     uint32_t key;            /* current plan item (set by the preprocessor) */
-    /* option lookup cache keyed by the id string's address (ids are
-     * literals); a hit is verified by name */
-    const char *idc_key[512];
-    int16_t idc_val[512];
     /* option -> level+1 under the config generation memo_gen (0: unknown) */
     uint32_t memo_gen;
     uint8_t memo[512];
@@ -202,16 +198,25 @@ void diag_free(DiagEngine *d);
 typedef enum DiagOpt {
     DW_NONE = 0,            /* a hard error, or anything without an option: id "" */
 #define DIAG_OPT(id, ...) DW_##id,
+#define DIAG_TAG(id, name)
 #include "diag_opts.def"
 #undef DIAG_OPT
-    DW_COUNT
+#undef DIAG_TAG
+    DW_COUNT,               /* the configurable options are below this, the tags above it */
+#define DIAG_OPT(id, ...)
+#define DIAG_TAG(id, name) DW_##id,
+#include "diag_opts.def"
+#undef DIAG_OPT
+#undef DIAG_TAG
+    DW_END
 } DiagOpt;
 
-/* The option called name (text from a flag, a pragma, a stored diagnostic); DW_NONE if none. */
+/* The option called name (text from a flag, a pragma, a stored diagnostic); DW_NONE if none.
+ * Tags are not found by name. */
 DiagOpt diag_opt_find(const char *name);
 const char *diag_opt_name(DiagOpt o);   /* "" for DW_NONE */
 
-bool diag_enabled(DiagEngine *d, const char *id);
+bool diag_enabled(DiagEngine *d, DiagOpt id);
 /* Which options d reports (a byte per registry entry, malloc'd), and the
  * question for one id against such a map (hard errors, ids outside the
  * registry: yes).  For comparing translation units with different flags. */
@@ -222,18 +227,18 @@ bool diag_map_enabled(const uint8_t *map, const char *id);
  * -Wall enables); -1: disabled by default.  gcc emits some pedwarns
  * untagged when the option is merely at its default (warn_return_type
  * == -1) and not at all when it is turned off. */
-int diag_option_state(DiagEngine *d, const char *id);
+int diag_option_state(DiagEngine *d, DiagOpt id);
 /* true when -Wid itself was given on the command line */
-bool diag_option_explicit(DiagEngine *d, const char *id);
-bool diag_option_requested(DiagEngine *d, const char *id);
+bool diag_option_explicit(DiagEngine *d, DiagOpt id);
+bool diag_option_requested(DiagEngine *d, DiagOpt id);
 /* N of -Wid=N as given on the command line, else dflt */
-int diag_option_level(DiagEngine *d, const char *id, int dflt);
-uint64_t diag_option_size(DiagEngine *d, const char *id);
+int diag_option_level(DiagEngine *d, DiagOpt id, int dflt);
+uint64_t diag_option_size(DiagEngine *d, DiagOpt id);
 
-Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, const char *id,
+Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, DiagOpt id,
                         SrcLoc loc, const char *fmt, ...);
 bool diag_hidden_in_system_header(DiagEngine *d, SrcLoc loc);
-Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
+Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, DiagOpt id,
                          SrcLoc loc, const char *fmt, va_list ap);
 void diag_note(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);
 void diag_note_nocol(DiagEngine *d, Diagnostic *dg, SrcLoc loc, const char *fmt, ...);

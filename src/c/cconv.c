@@ -571,7 +571,8 @@ static void cplx_conv_warn(Checker *c, SrcLoc l, TypeId lt, uint32_t s,
     long double re, im, ore, oim;
     TypeId ct, tc;
     int kind;
-    const char *opt, *tn, *w, *toS;
+    DiagOpt opt;
+    const char *tn, *w, *toS;
     char fb[400], to[400], tb[64];
     if (!cplx_get(c, s, &re, &im, &ct))
         return;
@@ -598,8 +599,8 @@ static void cplx_conv_warn(Checker *c, SrcLoc l, TypeId lt, uint32_t s,
     }
     if (kind == UC_SAFE)
         return;
-    opt = kind == UC_REAL ? "float-conversion"
-          : kind == UC_SIGN ? "sign-conversion" : "conversion";
+    opt = kind == UC_REAL ? DW_FLOAT_CONVERSION
+          : kind == UC_SIGN ? DW_SIGN_CONVERSION : DW_CONVERSION;
     if (!diag_enabled(c->diag, opt))
         return;
     cplx_str(c, fb, re, im, ct);
@@ -628,7 +629,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
 {
     uint32_t s = strip_paren(c, e), k[3];
     int kind;
-    const char *opt;
+    DiagOpt opt;
     bool cst;
     if (s == NO_NODE || node_err(c, s) || folds_to_zero(c, s))
         return;
@@ -671,8 +672,8 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
                     has_ival(c, strip_paren(c, k[j])) &&
                     !tgt_fits(c, c->cv[strip_paren(c, k[j])], ct, lt)) {
                     char tb[64];
-                    if (diag_enabled(c->diag, "overflow"))
-                        cwarn(c, l, "overflow", "overflow in conversion from "
+                    if (diag_enabled(c->diag, DW_OVERFLOW))
+                        cwarn(c, l, DW_OVERFLOW, "overflow in conversion from "
                               "%s to %s changes value from '%s' to '%s'",
                               type_q(TT, ct), tgt_name(c, lt, tb),
                               cexpr_str_plain(c, s),
@@ -698,8 +699,8 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
         return;      /* a constant we could not evaluate */
     if (!cst && bool_valued(c, s)) {
         char tb[64];
-        if (uc_bw == 1 && is_signed(c, lt) && diag_enabled(c->diag, "conversion"))
-            cwarn(c, l, "conversion", "conversion to %s from boolean "
+        if (uc_bw == 1 && is_signed(c, lt) && diag_enabled(c->diag, DW_CONVERSION))
+            cwarn(c, l, DW_CONVERSION, "conversion to %s from boolean "
                   "expression", tgt_name(c, lt, tb));
         return;
     }
@@ -719,7 +720,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
             c->cv[ks] >> tp && ntag(c, strip_paren(c, ow)) != N_BINARY) {
             char sb[200];
             if ((c->cv[ks] & m) == 0 && binop_p(c, s) == P_AMP) {
-                if (diag_enabled(c->diag, "overflow")) {
+                if (diag_enabled(c->diag, DW_OVERFLOW)) {
                     const char *tq = type_q(TT, rvt(c, s));
                     char pn[80] = "";
                     if (rvt(c, k[ca]) != rvt(c, s))
@@ -727,7 +728,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
                                  tq + 1);
                     snprintf(sb, sizeof sb, "%s%s & %s", pn,
                              cexpr_str(c, k[ca]), vstr(c, rvt(c, ks), c->cv[ks]));
-                    cwarn(c, l, "overflow", "overflow in conversion from %s "
+                    cwarn(c, l, DW_OVERFLOW, "overflow in conversion from %s "
                           "to %s changes value from '%s' to '0'",
                           type_q(TT, et), type_q(TT, lt), sb);
                 }
@@ -735,8 +736,8 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
             }
             if (int_bits(c, ot) <= tp &&
                 !(binop_p(c, s) == P_AMP && (c->cv[ks] & m) == m)) {
-                if (diag_enabled(c->diag, "conversion"))
-                    cwarn(c, l, "conversion", "conversion from %s to %s "
+                if (diag_enabled(c->diag, DW_CONVERSION))
+                    cwarn(c, l, DW_CONVERSION, "conversion from %s to %s "
                           "changes the value of '%s'", type_q(TT, et),
                           type_q(TT, lt), vstr(c, rvt(c, ks), c->cv[ks]));
                 return;
@@ -746,8 +747,8 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
     kind = unsafe_conv_t(c, lt, s, et, true);
     if (kind == UC_SAFE)
         return;
-    opt = kind == UC_REAL ? "float-conversion"
-          : kind == UC_SIGN ? "sign-conversion" : "conversion";
+    opt = kind == UC_REAL ? DW_FLOAT_CONVERSION
+          : kind == UC_SIGN ? DW_SIGN_CONVERSION : DW_CONVERSION;
     if (kind == UC_IMAG) {
         if (diag_enabled(c->diag, opt)) {
             char tb[64];
@@ -770,7 +771,7 @@ static void conversion_warning(Checker *c, SrcLoc l, TypeId lt, uint32_t e,
                 safe = false;
         }
         if (safe)
-            opt = "arith-conversion";        /* off by default */
+            opt = DW_ARITH_CONVERSION;        /* off by default */
     }
     if (!diag_enabled(c->diag, opt))
         return;
@@ -895,7 +896,7 @@ static bool conv_overflow(Conv *x)
         sign_map(c, lt, &dummy, &sg);
         if (!is_signed(c, lt)) {
             if (!cexpr_fits(c, v, rt, sg)) {
-                cwarn(c, l, "overflow", "%sconversion from %s to %s "
+                cwarn(c, l, DW_OVERFLOW, "%sconversion from %s to %s "
                       "changes value from '%s' to '%s'",
                       is_signed(c, rt) ? "unsigned " : "", type_q(TT, rt),
                       type_q(TT, lt), vstr(c, rt, v), vstr(c, lt, r));
@@ -909,7 +910,7 @@ static bool conv_overflow(Conv *x)
                  (!gcc_integer(c, rt) || int_bits(c, rt) != int_bits(c, lt)))
             warn = true;
         if (warn)
-            cwarn(c, l, "overflow", "overflow in conversion from %s to %s "
+            cwarn(c, l, DW_OVERFLOW, "overflow in conversion from %s to %s "
                   "changes value from '%s' to '%s'", type_q(TT, rt),
                   type_q(TT, lt), vstr(c, rt, v), vstr(c, lt, r));
         return warn;
@@ -921,7 +922,7 @@ static bool conv_overflow(Conv *x)
         if (!float_ovf(c, f, lt, &r))
             return false;
         char tb[64];
-        cwarn(c, l, "overflow", "overflow in conversion from %s to %s changes "
+        cwarn(c, l, DW_OVERFLOW, "overflow in conversion from %s to %s changes "
               "value from '%s' to '%s'", type_q(TT, rt), tgt_name(c, lt, tb),
               real_cst_str(c, rb, f, rt), vstr(c, lt, r));
         return true;
@@ -942,7 +943,7 @@ static bool conv_overflow(Conv *x)
                         is_signed(c, lt) && !cexpr_fits(c, cplx_u(re), ct, lt)))
             r = cexpr_trunc(c, lt, cplx_u(re));
         if (ovf)
-            cwarn(c, l, "overflow", "overflow in conversion from %s to %s "
+            cwarn(c, l, DW_OVERFLOW, "overflow in conversion from %s to %s "
                   "changes value from '%s' to '%s'", type_q(TT, rt),
                   type_q(TT, lt), cplx_str(c, fb, re, im, ct), vstr(c, lt, r));
         return ovf;
@@ -1011,7 +1012,7 @@ void double_promo(Checker *c, uint32_t at, SrcLoc loc, TypeId from,
                          TypeId to, const char *what)
 {
     TypeId f = mainv(c, from), t = mainv(c, to);
-    if (!diag_enabled(c->diag, "double-promotion"))
+    if (!diag_enabled(c->diag, DW_DOUBLE_PROMOTION))
         return;
     if (is_complex(c, f) != is_complex(c, t))
         return;
@@ -1023,7 +1024,7 @@ void double_promo(Checker *c, uint32_t at, SrcLoc loc, TypeId from,
         tkind(c, t) != TY_DOUBLE ||
         inhibited(c, at, false))
         return;
-    cwarn(c, loc, "double-promotion", "implicit conversion from %s to %s %s",
+    cwarn(c, loc, DW_DOUBLE_PROMOTION, "implicit conversion from %s to %s %s",
           type_q(TT, mainv(c, from)), type_q(TT, mainv(c, to)), what);
 }
 

@@ -14,9 +14,21 @@
 /* Every configurable diagnostic.  Hard errors use id "" and are not listed. */
 static const DiagOption options[] = {
 #define DIAG_OPT(id, ...) {__VA_ARGS__},
+#define DIAG_TAG(id, name)
 #include "diag_opts.def"
 #undef DIAG_OPT
+#undef DIAG_TAG
 };
+
+/* The names of the tags, in enum order after DW_COUNT. */
+static const char *const tag_names[] = {
+#define DIAG_OPT(id, ...)
+#define DIAG_TAG(id, name) name,
+#include "diag_opts.def"
+#undef DIAG_OPT
+#undef DIAG_TAG
+};
+_Static_assert(sizeof tag_names / sizeof tag_names[0] == DW_END - DW_COUNT - 1, "tag_names and the enum disagree");
 
 #define NOPTIONS (sizeof options / sizeof options[0])
 _Static_assert(sizeof options / sizeof options[0] == DW_COUNT - 1, "diag_opts.def and options[] disagree");
@@ -177,7 +189,15 @@ DiagOpt diag_opt_find(const char *name)
 
 const char *diag_opt_name(DiagOpt o)
 {
-    return o == DW_NONE ? "" : options[o - 1].name;
+    if (o == DW_NONE)
+        return "";
+    return o < DW_COUNT ? options[o - 1].name : tag_names[o - DW_COUNT - 1];
+}
+
+/* The registry row of a configurable option; -1 for DW_NONE and for tags. */
+static long opt_index(DiagOpt o)
+{
+    return o > DW_NONE && o < DW_COUNT ? (long)o - 1 : -1;
 }
 
 /* Every option name finds the same option by bisection as by the scan, and
@@ -407,7 +427,7 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
               !strcmp(o->name, "format-security"))) {
         static __thread long f = -2;
         if (f == -2)
-            f = find_index("format=");
+            f = opt_index(DW_FORMAT_V);
         if (f >= 0 && c->overridden[f] && c->overrides[f] != DL_IGNORED &&
             c->optlevel[f] >= 2) {
             *lvl = o->level;
@@ -427,7 +447,7 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
     if (c && !strcmp(o->name, "dangling-else")) {       /* gcc: enabled by -Wparentheses */
         static __thread long p = -2;
         if (p == -2)
-            p = find_index("parentheses");
+            p = opt_index(DW_PARENTHESES);
         if (p >= 0 && c->overridden[p])
             return option_state(c, (size_t)p, lvl);
     }
@@ -435,7 +455,7 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
     if (c && !strcmp(o->name, "long-long")) {
         static __thread long p = -2;
         if (p == -2)
-            p = find_index("c90-c99-compat");
+            p = opt_index(DW_C90_C99_COMPAT);
         if (p >= 0 && c->overridden[p] && c->overrides[p] != DL_IGNORED) {
             *lvl = o->level;
             return 1;
@@ -450,34 +470,11 @@ static int option_state(const DiagConfig *c, size_t i, DiagLevel *lvl)
     return u == 0 ? 0 : -1;
 }
 
-static long find_index_cached(DiagEngine *d, const char *id)
+static DiagLevel diag_level_for(DiagEngine *d, DiagOpt id, DiagLevel requested)
 {
-    /* the high bits of a 64-bit multiplicative hash: the low bits of a
-     * product depend only on the low bits of the address, and the slot
-     * (hence the hit rate) then varied with where the linker put the ids */
-    size_t h = (size_t)(((uint64_t)((uintptr_t)id >> 3) *
-                         0x9E3779B97F4A7C15ull) >> 55);
-    long i;
-    _Static_assert(sizeof d->idc_key / sizeof *d->idc_key == 512,
-                   "the hash takes 9 bits");
-    if (d->idc_key[h] == id && !strcmp(options[d->idc_val[h]].name, id))
-        return d->idc_val[h];
-    i = find_index(id);
-    if (i >= 0 && i < 32767 && !strcmp(options[i].name, id)) {
-        d->idc_key[h] = id;
-        d->idc_val[h] = (int16_t)i;
-    }
-    return i;
-}
-
-static DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel requested)
-{
-    long i;
+    long i = opt_index(id);
     DiagLevel l;
-    if (!id || !*id || requested >= DL_ERROR || requested == DL_NOTE)
-        return requested;
-    i = find_index_cached(d, id);
-    if (i < 0)
+    if (i < 0 || requested >= DL_ERROR || requested == DL_NOTE)
         return requested;
     {
         uint32_t g = d->cfg ? d->cfg->gen : 0;
@@ -495,16 +492,13 @@ static DiagLevel diag_level_for(DiagEngine *d, const char *id, DiagLevel request
     return l;
 }
 
-static bool diag_noerror(DiagEngine *d, const char *id)
+static bool diag_noerror(DiagEngine *d, DiagOpt id)
 {
-    long i;
-    if (!d->cfg || !id || !*id)
-        return false;
-    i = find_index_cached(d, id);
-    return i >= 0 && d->cfg->noerror[i];
+    long i = opt_index(id);
+    return d->cfg && i >= 0 && d->cfg->noerror[i];
 }
 
-bool diag_enabled(DiagEngine *d, const char *id)
+bool diag_enabled(DiagEngine *d, DiagOpt id)
 {
     return diag_level_for(d, id, DL_WARNING) != DL_IGNORED;
 }
@@ -514,7 +508,7 @@ uint8_t *diag_enabled_map(DiagEngine *d)
     uint8_t *m = xmalloc(NOPTIONS);
     size_t i;
     for (i = 0; i < NOPTIONS; i++) {
-        DiagLevel l = diag_level_for(d, options[i].name, DL_WARNING);
+        DiagLevel l = diag_level_for(d, (DiagOpt)(i + 1), DL_WARNING);
         m[i] = l != DL_IGNORED && !(l == DL_WARNING && d->no_warnings);
     }
     return m;
@@ -529,41 +523,41 @@ bool diag_map_enabled(const uint8_t *map, const char *id)
     return i < 0 || map[i];
 }
 
-int diag_option_level(DiagEngine *d, const char *id, int dflt)
+int diag_option_level(DiagEngine *d, DiagOpt id, int dflt)
 {
-    long i = find_index_cached(d, id);
+    long i = opt_index(id);
     if (i < 0 || !d->cfg || !d->cfg->optlevel[i])
         return dflt;
     return d->cfg->optlevel[i];
 }
 
 /* -Wfoo=SIZE: the size as given (units applied); 0 when not given. */
-uint64_t diag_option_size(DiagEngine *d, const char *id)
+uint64_t diag_option_size(DiagEngine *d, DiagOpt id)
 {
-    long i = find_index_cached(d, id);
+    long i = opt_index(id);
     return i < 0 || !d->cfg ? 0 : d->cfg->optsize[i];
 }
 
-int diag_option_state(DiagEngine *d, const char *id)
+int diag_option_state(DiagEngine *d, DiagOpt id)
 {
-    long i = find_index_cached(d, id);
+    long i = opt_index(id);
     DiagLevel l;
     if (i < 0)
         return 1;
     return option_state(d->cfg, (size_t)i, &l);
 }
 
-bool diag_option_explicit(DiagEngine *d, const char *id)
+bool diag_option_explicit(DiagEngine *d, DiagOpt id)
 {
-    long i = find_index_cached(d, id);
+    long i = opt_index(id);
     return i >= 0 && d->cfg && d->cfg->overridden[i] &&
            d->cfg->overrides[i] != DL_IGNORED;
 }
 
 /* Asked for: explicitly, or through -Wall/-Wextra (not by default). */
-bool diag_option_requested(DiagEngine *d, const char *id)
+bool diag_option_requested(DiagEngine *d, DiagOpt id)
 {
-    long i = find_index_cached(d, id);
+    long i = opt_index(id);
     if (i < 0 || !d->cfg)
         return false;
     return diag_option_explicit(d, id) || umbrella_state(d->cfg, &options[i]) > 0;
@@ -580,7 +574,7 @@ bool diag_hidden_in_system_header(DiagEngine *d, SrcLoc loc)
     return !d->show_system && in_system_header(d, loc);
 }
 
-Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
+Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, DiagOpt id,
                          SrcLoc loc, const char *fmt, va_list ap)
 {
     Diagnostic *dg;
@@ -596,20 +590,20 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
         return NULL;
     /* a warning asked for is suppressed in a system header even when
      * -pedantic-errors or -Werror made it an error */
-    if ((lvl <= DL_WARNING || (lvl == DL_ERROR && id && *id &&
+    if ((lvl <= DL_WARNING || (lvl == DL_ERROR && id != DW_NONE &&
                                (req == DL_WARNING || d->pedantic_errors))) &&
         !d->show_system && in_system_header(d, loc))
         return NULL;
     if (lvl == DL_WARNING && d->werror && !diag_noerror(d, id))
         lvl = DL_ERROR;
-    promoted = id && *id && req < DL_ERROR && req != DL_NOTE && lvl == DL_ERROR;
+    promoted = id != DW_NONE && req < DL_ERROR && req != DL_NOTE && lvl == DL_ERROR;
     dg = NEW(d->arena, Diagnostic);
     dg->promoted = promoted;
     dg->nocol = nocol;
     dg->vcol = vcol;
     dg->ord = d->ord;
     dg->level = lvl;
-    dg->id = id ? id : "";
+    dg->id = diag_opt_name(id);
     dg->loc = loc;
     dg->oloc = loc;
     dg->key = d->key;
@@ -646,7 +640,7 @@ Diagnostic *diag_vreport(DiagEngine *d, DiagLevel lvl, const char *id,
     return dg;
 }
 
-Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, const char *id,
+Diagnostic *diag_report(DiagEngine *d, DiagLevel lvl, DiagOpt id,
                         SrcLoc loc, const char *fmt, ...)
 {
     Diagnostic *dg;

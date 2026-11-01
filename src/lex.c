@@ -328,9 +328,9 @@ static void scan_line_notes(Lexer *L)
           (lim[-2] == 0x5c || (lim[-2] == 0x0d && lim - p >= 3 && lim[-3] == 0x5c))))
         return;
     if (L->opt.trigraphs)
-        tri_on = diag_option_requested(L->diag, "trigraphs");
+        tri_on = diag_option_requested(L->diag, DW_TRIGRAPHS);
     else
-        tri_on = diag_option_state(L->diag, "trigraphs") != 0;
+        tri_on = diag_option_state(L->diag, DW_TRIGRAPHS) != 0;
     while ((p = next_note_byte(p)) < lim) {
         int c = (unsigned char)*p;
         bool tri_slash = false;
@@ -458,16 +458,16 @@ static void flush_notes_to(Lexer *L, const char *at)
     while (L->note_i < L->nnotes && L->notes[L->note_i].pos <= here) {
         const LineNote *n = &L->notes[L->note_i++];
         if (n->kind == 'c')
-            diag_report(L->diag, DL_WARNING, "trigraphs", n->loc,
+            diag_report(L->diag, DL_WARNING, DW_TRIGRAPHS, n->loc,
                         "trigraph ??%c converted to %c", n->x, trigraph_char(n->x));
         else if (n->kind == 'i')
-            diag_report(L->diag, DL_WARNING, "trigraphs", n->loc,
+            diag_report(L->diag, DL_WARNING, DW_TRIGRAPHS, n->loc,
                         "trigraph ??%c ignored, use -trigraphs to enable", n->x);
         else if (n->kind == 'e')
             diag_report(L->diag, L->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                        "", n->loc, "backslash-newline at end of file");
+                        DW_NONE, n->loc, "backslash-newline at end of file");
         else
-            diag_report(L->diag, DL_WARNING, "", n->loc,
+            diag_report(L->diag, DL_WARNING, DW_NONE, n->loc,
                         "backslash and newline separated by space");
     }
 }
@@ -600,15 +600,15 @@ static void bidi_char(Lexer *L, const char *p, int kind, bool ucn)
     if (kind == bidi_cur(L)) {
         if (f == (BIDI_UNPAIRED | BIDI_UCN) &&
             ((L->bd[L->bd_n - 1] >> 1) & 1u) != (unsigned)ucn)
-            diag_report(L->diag, DL_WARNING, "bidi-chars=", loc,
+            diag_report(L->diag, DL_WARNING, DW_BIDI_CHARS_V, loc,
                         "UTF-8 vs UCN mismatch when closing a context by "
                         "\"%s\"", bk_name[kind]);
     } else if ((f & BIDI_ANY) && (!ucn || (f & BIDI_UCN))) {
         if (kind == BK_PDF || kind == BK_PDI)
-            diag_report(L->diag, DL_WARNING, "bidi-chars=", loc,
+            diag_report(L->diag, DL_WARNING, DW_BIDI_CHARS_V, loc,
                         "\"%s\" is closing an unopened context", bk_name[kind]);
         else
-            diag_report(L->diag, DL_WARNING, "bidi-chars=", loc,
+            diag_report(L->diag, DL_WARNING, DW_BIDI_CHARS_V, loc,
                         "found problematic Unicode character \"%s\"",
                         bk_name[kind]);
     }
@@ -666,7 +666,7 @@ static void bidi_close(Lexer *L, const char *p)
             at = ls;
             L->diag->vcol_next = (uint32_t)(p - 1 - ls) - cut + 1;
         }
-        diag_report(L->diag, DL_WARNING, "bidi-chars=",
+        diag_report(L->diag, DL_WARNING, DW_BIDI_CHARS_V,
                     (SrcLoc)(at - L->region),
                     L->bd_n > 1 ? "unpaired UTF-8 bidirectional control "
                                   "characters detected"
@@ -1095,7 +1095,7 @@ void lex_norm_check(const Lexer *L, DiagEngine *dg, SrcLoc loc, const char *star
         p += n;
     }
     *o = 0;
-    diag_report(dg, DL_WARNING, "normalized=", loc,
+    diag_report(dg, DL_WARNING, DW_NORMALIZED_V, loc,
                 "`%s' is not in %s", sp, lvl == 1 ? "NFKC" : "NFC");
     free(sp);
 }
@@ -1281,7 +1281,7 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
                 if (!(k = s_utf8_id(&s, &u)))
                     break;
                 if (k == 2 && s.p == start && L->diag)
-                    diag_report(L->diag, DL_ERROR, "", (SrcLoc)(start - L->region),
+                    diag_report(L->diag, DL_ERROR, DW_NONE, (SrcLoc)(start - L->region),
                                 "extended character %.*s is not valid at the "
                                 "start of an identifier", u, s.p);
                 ext = true;
@@ -1294,14 +1294,14 @@ static void lex_slow(Lexer *L, const char *start, Tok *t, uint16_t flags)
                     int cl;
                     if ((v < 0xA0 && v != 0x24 && v != 0x40 && v != 0x60) ||
                         v >= 0x80000000ul || (v >= 0xD800 && v <= 0xDFFF))
-                        diag_report(L->diag, DL_ERROR, "",
+                        diag_report(L->diag, DL_ERROR, DW_NONE,
                                     (SrcLoc)(start - L->region),
                                     "%.*s is not a valid universal character",
                                     u, s.p);
                     else if (v != 0x24 || !L->opt.dollar_idents) {
                         cl = utf8_id_class(L, (uint32_t)v);
                         if (cl == 0 || (cl == 2 && s.p == start))
-                            diag_report(L->diag, DL_ERROR, "",
+                            diag_report(L->diag, DL_ERROR, DW_NONE,
                                         (SrcLoc)(start - L->region),
                                         "universal character %.*s is not "
                                         "valid %san identifier", u, s.p,
@@ -1428,7 +1428,7 @@ static void unterminated_comment(Lexer *L, const char *start)
 {
     L->unterminated = true;
     if (L->diag)
-        diag_report(L->diag, DL_ERROR, "", (SrcLoc)(start - L->region),
+        diag_report(L->diag, DL_ERROR, DW_NONE, (SrcLoc)(start - L->region),
                     "unterminated comment");
 }
 
@@ -1548,7 +1548,7 @@ static const char *skip_blank(Lexer *L, const char *p)
             return p;
         } else if (c == 0 && p < L->lim) {
             if (L->diag && L->nul_line != L->line_begin) { /* once per line */
-                diag_report(L->diag, DL_WARNING, "", (SrcLoc)(p - L->region),
+                diag_report(L->diag, DL_WARNING, DW_NONE, (SrcLoc)(p - L->region),
                             "null character(s) ignored");
                 L->nul_line = L->line_begin;
             }

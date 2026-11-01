@@ -156,7 +156,7 @@ static void sq_collide1(SeqCtx *s, uint32_t written, uint32_t writer, TL *list,
             !sq_same(s->c, list->writer, writer) &&
             (!only_writes || list->writer != NO_NODE)) {
             s->warned = sq_new(s, s->warned, written, NO_NODE);
-            cwarn(s->c, sq_loc(s, writer), "sequence-point",
+            cwarn(s->c, sq_loc(s, writer), DW_SEQUENCE_POINT,
                   "operation on '%s' may be undefined",
                   estr(s->c, list->expr));
         }
@@ -575,7 +575,7 @@ void sq_check(Checker *c, uint32_t e, bool cond)
 {
     SeqCtx s;
     TL *before = NULL, *after = NULL;
-    if (!diag_enabled(c->diag, "sequence-point") || node_err(c, e) ||
+    if (!diag_enabled(c->diag, DW_SEQUENCE_POINT) || node_err(c, e) ||
         e - cfirst(c, e) > 400)
         return;
     memset(&s, 0, sizeof s);

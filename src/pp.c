@@ -18,7 +18,7 @@ static const char *const cond_names[] = {"if", "ifdef", "ifndef", "elif", "else"
 static void cond_began_here(PP *pp, SrcLoc loc)
 {
     pp->diag->nocol_next = true;            /* gcc: a line-only location */
-    diag_report(pp->diag, DL_ERROR, "", loc, "the conditional began here");
+    diag_report(pp->diag, DL_ERROR, DW_NONE, loc, "the conditional began here");
 }
 
 #define MAX_INCLUDE_DEPTH 200
@@ -117,8 +117,8 @@ static void check_cxx_opname(PP *pp, const Tok *t)
     if (id->len > 6 || id->len < 2 || !strchr("abcnox", id->str[0]))
         return;
     for (k = 0; k < sizeof ops / sizeof *ops; k++)
-        if (!strcmp(id->str, ops[k]) && diag_enabled(pp->diag, "c++-compat")) {
-            pp_warn_at(pp, t, "c++-compat", "identifier \"%s\" is a special "
+        if (!strcmp(id->str, ops[k]) && diag_enabled(pp->diag, DW_CPP_COMPAT)) {
+            pp_warn_at(pp, t, DW_CPP_COMPAT, "identifier \"%s\" is a special "
                        "operator name in C++", id->str);
             return;
         }
@@ -374,14 +374,14 @@ Diagnostic *pp_error_at(PP *pp, const Tok *t, const char *fmt, ...)
     Diagnostic *d;
     va_list ap;
     va_start(ap, fmt);
-    d = diag_vreport(pp->diag, DL_ERROR, "", t->loc, fmt, ap);
+    d = diag_vreport(pp->diag, DL_ERROR, DW_NONE, t->loc, fmt, ap);
     va_end(ap);
     diag_set_range(d, t->loc, t->loc + t->len);
     pp_add_expansion_notes(pp, d);
     return d;
 }
 
-Diagnostic *pp_warn_at(PP *pp, const Tok *t, const char *id,
+Diagnostic *pp_warn_at(PP *pp, const Tok *t, DiagOpt id,
                        const char *fmt, ...)
 {
     Diagnostic *d;
@@ -401,7 +401,7 @@ static void pedantic(PP *pp, SrcLoc loc, const char *fmt, ...)
         return;
     va_start(ap, fmt);
     diag_vreport(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                 "", loc, fmt, ap);
+                 DW_NONE, loc, fmt, ap);
     va_end(ap);
 }
 
@@ -420,7 +420,7 @@ static void va_opt_pedwarn(PP *pp, const Tok *t, bool in_variadic_body)
     if (diag_hidden_in_system_header(pp->diag, t->loc))
         return;
     diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                "", t->loc, "%s", msg);
+                DW_NONE, t->loc, "%s", msg);
 }
 
 static bool is_va_opt(PP *pp, const Tok *t)
@@ -472,7 +472,7 @@ void pp_pedwarn(PP *pp, SrcLoc loc, const char *fmt, ...)
         return;
     va_start(ap, fmt);
     diag_vreport(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                 "", loc, fmt, ap);
+                 DW_NONE, loc, fmt, ap);
     va_end(ap);
 }
 
@@ -482,7 +482,7 @@ static void check_eol(PP *pp, TokSpan rest, const char *dir)
         Diagnostic *d = diag_report(pp->diag,
                                     pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
                                     !strcmp(dir, "else") || !strcmp(dir, "endif")
-                                        ? "endif-labels" : "extra-tokens",
+                                        ? DW_ENDIF_LABELS : DW_EXTRA_TOKENS,
                                     rest.t[0].loc,
                                     "extra tokens at end of #%s directive", dir);
         diag_set_range(d, rest.t[0].loc, span_end(pp, rest, rest.t[0].loc));
@@ -624,7 +624,7 @@ static bool pop_file(PP *pp)
     }
     while (pp->cond != fr->cond_base) {
         pp->diag->nocol_next = true;        /* gcc: a line-only location */
-        diag_report(pp->diag, DL_ERROR, "", pp->cond->if_loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, pp->cond->if_loc,
                     "unterminated #%s", cond_names[pp->cond->kind]);
         pp->cond = pp->cond->prev;
     }
@@ -871,7 +871,7 @@ bool pp_enter_main(PP *pp, const char *path)
     SrcFile *f = srcmgr_load(pp->sm, path, SF_USER);
     SrcFile *pre;
     if (!f) {
-        diag_report(pp->diag, DL_FATAL, "", 0, "cannot open '%s'", path);
+        diag_report(pp->diag, DL_FATAL, DW_NONE, 0, "cannot open '%s'", path);
         sb_free(&pp->predef);
         return false;
     }
@@ -902,7 +902,7 @@ static Diagnostic *warn_unterminated(PP *pp, const Tok *t)
 {
     Diagnostic *ud = diag_report(pp->diag,
                 pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                "invalid-pp-token", t->loc,
+                DW_INVALID_PP_TOKEN, t->loc,
                 "missing terminating %c character",
                 pp_text(pp, t)[pp_text(pp, t)[0] == 'L' ? 1 : 0]);
     diag_set_range(ud, t->loc, t->loc + t->len);
@@ -1019,7 +1019,7 @@ static TokSpan read_line(PP *pp)
     s.n = pp->line.len;
     if (pp->dir_poison)
         check_poison(pp, s);
-    if (diag_enabled(pp->diag, "c++-compat")) {
+    if (diag_enabled(pp->diag, DW_CPP_COMPAT)) {
         uint32_t k;
         for (k = 0; k < s.n; k++)
             if (s.t[k].kind == TK_IDENT)
@@ -1058,7 +1058,7 @@ static void skip_unterminated(PP *pp, const SkipIf *nest, int depth)
     int i = depth > SKIP_IF_MAX ? SKIP_IF_MAX : depth;
     while (i-- > 0) {
         pp->diag->nocol_next = true;
-        diag_report(pp->diag, DL_ERROR, "", nest[i].loc, "unterminated #%s",
+        diag_report(pp->diag, DL_ERROR, DW_NONE, nest[i].loc, "unterminated #%s",
                     cond_names[nest[i].kind]);
     }
 }
@@ -1207,10 +1207,10 @@ static const char *directive_hint(const char *name)
 static void bad_macro_name(PP *pp, TokSpan line, const Tok *kw, const char *dir)
 {
     if (line.n == 0)
-        diag_report(pp->diag, DL_ERROR, "", kw_eol(pp, kw),
+        diag_report(pp->diag, DL_ERROR, DW_NONE, kw_eol(pp, kw),
                     "no macro name given in #%s directive", dir);
     else
-        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, line.t[0].loc,
                     "macro names must be identifiers");
 }
 
@@ -1302,7 +1302,7 @@ static void do_if(PP *pp, const Tok *hash, const Tok *kw, CondKind k)
 
     if (k == COND_IF) {
         if (line.n == 0) {
-            diag_report(pp->diag, DL_ERROR, "", kw_eol(pp, kw),
+            diag_report(pp->diag, DL_ERROR, DW_NONE, kw_eol(pp, kw),
                         "#if with no expression");
             ok = false;
         } else {
@@ -1353,12 +1353,12 @@ static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k,
                        : k == COND_ELIF ? "elif" : "else";
     IncludeFrame *fr = pp->inc;
     if (!c || c->include_depth != pp->include_depth) {
-        diag_report(pp->diag, DL_ERROR, "", kw->loc, "#%s without #if", name);
+        diag_report(pp->diag, DL_ERROR, DW_NONE, kw->loc, "#%s without #if", name);
         return;
     }
     bool was_active = c->active;
     if (c->seen_else) {
-        Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", kw->loc,
+        Diagnostic *d = diag_report(pp->diag, DL_ERROR, DW_NONE, kw->loc,
                                     "#%s after #else", name);
         (void)d;
         cond_began_here(pp, c->if_loc);
@@ -1391,7 +1391,7 @@ static void do_elif_else(PP *pp, const Tok *hash, const Tok *kw, CondKind k,
                     }
                 }
             } else if (line.n == 0) {
-                diag_report(pp->diag, DL_ERROR, "", kw_eol(pp, kw),
+                diag_report(pp->diag, DL_ERROR, DW_NONE, kw_eol(pp, kw),
                             "#elif with no expression");
                 ok = false;
             } else {
@@ -1415,7 +1415,7 @@ static void do_endif(PP *pp, const Tok *hash, const Tok *kw)
     CondFrame *c = pp->cond;
     IncludeFrame *fr = pp->inc;
     if (!c || c->include_depth != pp->include_depth) {
-        diag_report(pp->diag, DL_ERROR, "", kw->loc, "#endif without #if");
+        diag_report(pp->diag, DL_ERROR, DW_NONE, kw->loc, "#endif without #if");
         return;
     }
     check_eol(pp, line, "endif");
@@ -1499,7 +1499,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
         pp_pedwarn(pp, name->loc, "__VA_ARGS__ can only appear in the expansion "
                    "of a C99 variadic macro");
     if (nid == pp->id_defined) {
-        diag_report(pp->diag, DL_ERROR, "", name->loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, name->loc,
                     "\"defined\" cannot be used as a macro name");
         flush_unterminated(pp, line, 2);
         return;
@@ -1541,7 +1541,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
                                    "the expansion of a C99 variadic macro");
                     for (k = 0; k < params.len; k++)
                         if (params.data[k] == pid) {
-                            diag_report(pp->diag, DL_ERROR, "", t->loc,
+                            diag_report(pp->diag, DL_ERROR, DW_NONE, t->loc,
                                         "duplicate macro parameter \"%s\"",
                                         pid->str);
                             ok = false;
@@ -1569,15 +1569,15 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
                     if (!prev_ident) {
                         vec_push(&params, pp->id_va_args);
                         vec_push(&plocs, t->loc);
-                        if (diag_enabled(pp->diag, "c90-c99-compat"))
-                            diag_report(pp->diag, DL_WARNING, "", t->loc,
+                        if (diag_enabled(pp->diag, DW_C90_C99_COMPAT))
+                            diag_report(pp->diag, DL_WARNING, DW_NONE, t->loc,
                                         "anonymous variadic macros were "
                                         "introduced in C99");
                     } else {
                         if (pp->opt->pedantic)
                             diag_report(pp->diag, pp->diag->pedantic_errors
                                         ? DL_ERROR : DL_WARNING,
-                                        "variadic-macros", t->loc,
+                                        DW_VARIADIC_MACROS, t->loc,
                                         "ISO C does not permit named variadic "
                                         "macros");
                         m->gnu_named_variadic = true;
@@ -1588,14 +1588,14 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
             }
             if (bad) {
                 if (m->variadic)
-                    diag_report(pp->diag, DL_ERROR, "", here,
+                    diag_report(pp->diag, DL_ERROR, DW_NONE, here,
                                 "expected ')' after \"...\"");
                 else if (!t)
-                    diag_report(pp->diag, DL_ERROR, "", here, prev_ident
+                    diag_report(pp->diag, DL_ERROR, DW_NONE, here, prev_ident
                                 ? "expected ')' before end of line"
                                 : "expected parameter name before end of line");
                 else
-                    diag_report(pp->diag, DL_ERROR, "", here, prev_ident
+                    diag_report(pp->diag, DL_ERROR, DW_NONE, here, prev_ident
                                 ? "expected ',' or ')', found \"%.*s\""
                                 : "expected parameter name, found \"%.*s\"",
                                 (int)t->len, pp_text(pp, t));
@@ -1609,7 +1609,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
 
     } else if (i < line.n && !(line.t[i].flags & TF_SPACE)) {
         diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                    "", name->loc,
+                    DW_NONE, name->loc,
                     "ISO C99 requires whitespace after the macro name");
         flush_unterminated(pp, line, 2);
     } else {
@@ -1639,7 +1639,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
     if (m->body_len)
         memcpy(m->body, line.t + i, sizeof(Tok) * m->body_len);
     if (m->funclike && m->nparams > 0 && i > 0 &&
-        diag_enabled(pp->diag, "traditional"))
+        diag_enabled(pp->diag, DW_TRADITIONAL))
         trad_stringification(pp, m, line.t[i - 1].loc);
     {
         /* GCC: `##` marks the token before it; a run of them is one */
@@ -1686,7 +1686,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
         if (m->funclike && tok_is_punct(t, P_HASH)) {
             if (b + 1 >= m->body_len || !((m->body[b + 1].flags & TF_PARAM) ||
                 (m->variadic && is_va_opt(pp, &m->body[b + 1])))) {
-                diag_report(pp->diag, DL_ERROR, "", hdr_loc,
+                diag_report(pp->diag, DL_ERROR, DW_NONE, hdr_loc,
                             "'#' is not followed by a macro parameter");
                 return;
             }
@@ -1694,7 +1694,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
         }
         if (tok_is_punct(t, P_HASHHASH)) {
             if (b == 0 || b + 1 == m->body_len) {
-                diag_report(pp->diag, DL_ERROR, "", hdr_loc,
+                diag_report(pp->diag, DL_ERROR, DW_NONE, hdr_loc,
                             "'##' cannot appear at either end of a macro "
                             "expansion");
                 return;
@@ -1764,13 +1764,13 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
     if (old) {
         if (old->builtin || is_builtin_name(nid)) {
             if (!m->predefined)
-                diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
+                diag_report(pp->diag, DL_WARNING, DW_BUILTIN_MACRO_REDEFINED,
                             name->loc, "redefining builtin macro \"%s\"",
                             nid->str);
         } else if (!macros_identical(pp, old, m)) {
             Diagnostic *d;
             pp->diag->nocol_next = true;    /* gcc: a line-only location */
-            d = diag_report(pp->diag, DL_WARNING, "macro-redefined",
+            d = diag_report(pp->diag, DL_WARNING, DW_MACRO_REDEFINED,
                             name->loc, "\"%s\" redefined", nid->str);
             diag_note_nocol(pp->diag, d, old->name_loc,
                             "this is the location of the previous definition");
@@ -1778,7 +1778,7 @@ static void do_define(PP *pp, const Tok *hash, const Tok *kw)
         old->undef_loc = hash->loc;
         old->undef_seq = pp->seq;
     } else if (is_builtin_name(nid) && !m->predefined) {
-        diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined", name->loc,
+        diag_report(pp->diag, DL_WARNING, DW_BUILTIN_MACRO_REDEFINED, name->loc,
                     "defining builtin macro \"%s\" is undefined behavior",
                     nid->str);
     }
@@ -1801,7 +1801,7 @@ static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
     }
     id = ident_by_id(pp->in, line.t[0].aux);
     if (id == pp->id_defined) {
-        diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, line.t[0].loc,
                     "\"defined\" cannot be used as a macro name");
         return;
     }
@@ -1819,11 +1819,11 @@ static void do_undef(PP *pp, const Tok *hash, const Tok *kw)
                       !strcmp(id->str, "__COUNTER__") ||
                       (m && m->builtin >= BUILTIN_HAS_INCLUDE);
         if (always) {
-            diag_report(pp->diag, DL_WARNING, "", line.t[0].loc,
+            diag_report(pp->diag, DL_WARNING, DW_NONE, line.t[0].loc,
                         "undefining \"%s\"", id->str);
         } else {
             pp->diag->nocol_next = true;
-            diag_report(pp->diag, DL_WARNING, "builtin-macro-redefined",
+            diag_report(pp->diag, DL_WARNING, DW_BUILTIN_MACRO_REDEFINED,
                         line.t[0].loc, "undefining \"%s\"", id->str);
         }
     }
@@ -1938,7 +1938,7 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
         s.n = tmp->len;
         *expanded = true;
         if (s.n == 0) {
-            diag_report(pp->diag, DL_ERROR, "", line.t[0].loc,
+            diag_report(pp->diag, DL_ERROR, DW_NONE, line.t[0].loc,
                         "#include expects \"FILENAME\" or <FILENAME>");
             return NULL;
         }
@@ -1970,7 +1970,7 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
         while (u < s.n && !tok_is_punct(&s.t[u], P_GT))
             u++;
         if (u >= s.n) {
-            diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
+            diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[0].loc,
                         "missing terminating > character");
             return NULL;
         }
@@ -1995,7 +1995,7 @@ static char *parse_header_name(PP *pp, TokSpan line, bool *angled,
             return r;
         }
     }
-    diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
+    diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[0].loc,
                 "#include expects \"FILENAME\" or <FILENAME>");
     return NULL;
 }
@@ -2019,18 +2019,18 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
         if (pp->opt->pedantic)
             pedantic(pp, kw->loc, "#import is a GCC extension");
         else
-            diag_report(pp->diag, DL_WARNING, "deprecated", kw->loc,
+            diag_report(pp->diag, DL_WARNING, DW_DEPRECATED, kw->loc,
                         "#import is a deprecated GCC extension");
     }
     if (next || import)
         trad_directive(pp, import ? KW_IMPORT : KW_INCLUDE_NEXT, kw);
     if (next && pp->inc->prev == NULL) {
-        diag_report(pp->diag, DL_WARNING, "include-next-in-primary", kw->loc,
+        diag_report(pp->diag, DL_WARNING, DW_INCLUDE_NEXT_IN_PRIMARY, kw->loc,
                     "#include_next in primary source file");
         next = false;
     }
     if (line.n == 0) {
-        diag_report(pp->diag, DL_ERROR, "", kw->loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, kw->loc,
                     "#include expects \"FILENAME\" or <FILENAME>");
         return;
     }
@@ -2071,7 +2071,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
     }
     tokbuf_release(pp, &tmp);
     if (!*name) {
-        diag_report(pp->diag, DL_ERROR, "", nloc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, nloc,
                     "empty filename in #include");
         return;
     }
@@ -2096,7 +2096,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
         if (!pp_missing_ok(pp->opt, &ev)) {
             diag_report(pp->diag, pp->opt->fatal_missing_include ? DL_FATAL
                                                                   : DL_ERROR,
-                        "", nloc, "%s: No such file or directory", name);
+                        DW_NONE, nloc, "%s: No such file or directory", name);
             if (pp->opt->fatal_missing_include)
                 pp->halted = true;
         }
@@ -2123,7 +2123,7 @@ static void do_include(PP *pp, const Tok *hash, const Tok *kw, bool next,
         return;
     }
     if (pp->include_depth >= MAX_INCLUDE_DEPTH) {
-        diag_report(pp->diag, DL_ERROR, "", hash->loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, hash->loc,
                     "#include nested depth %d exceeds maximum of %d",
                     pp->include_depth, MAX_INCLUDE_DEPTH);
         return;
@@ -2158,7 +2158,7 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
          * gcc 13 (newer gcc tags it) */
         if (pp->opt->pedantic)
             diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR
-                        : DL_WARNING, "", kw->loc,
+                        : DL_WARNING, DW_NONE, kw->loc,
                         "style of line directive is a GCC extension");
     } else {
         line = read_line(pp);
@@ -2167,25 +2167,25 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
     s.t = tmp.t;
     s.n = tmp.len;
     if (!gnu_marker && s.n == 0) {
-        diag_report(pp->diag, DL_ERROR, "", eol_after(pp, span_end(pp, line, kw->loc + kw->len)),
+        diag_report(pp->diag, DL_ERROR, DW_NONE, eol_after(pp, span_end(pp, line, kw->loc + kw->len)),
                     "unexpected end of file after #line");
         goto out;
     }
     if (!gnu_marker && s.t[0].kind != TK_PPNUM) {
-        diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[0].loc,
                     "\"%.*s\" after #line is not a positive integer",
                     (int)s.t[0].len, pp_text(pp, &s.t[0]));
         goto out;
     }
     if (s.n == 0 || s.t[0].kind != TK_PPNUM) {
-        diag_report(pp->diag, DL_ERROR, "", s.n ? s.t[0].loc : hash->loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, s.n ? s.t[0].loc : hash->loc,
                     "#line directive requires a positive integer argument");
         goto out;
     }
     text = pp_text(pp, &s.t[0]);
     for (i = 0; i < s.t[0].len; i++) {
         if (text[i] < '0' || text[i] > '9') {
-            diag_report(pp->diag, DL_ERROR, "", s.t[0].loc,
+            diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[0].loc,
                         "\"%.*s\" after #line is not a positive integer",
                         (int)s.t[0].len, text);
             goto out;
@@ -2201,11 +2201,11 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
     if (!gnu_marker && (wrapped || n == 0 || n > 2147483647u))
         diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR
                     : (pp->opt->pedantic || wrapped) ? DL_WARNING : DL_REMARK,
-                    "", s.t[0].loc, "line number out of range");
+                    DW_NONE, s.t[0].loc, "line number out of range");
     k = 1;
     if (k < s.n && (s.t[k].kind != TK_STRING || pp_text(pp, &s.t[k])[0] != '"')) {
         /* GCC rejects the whole directive */
-        diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[k].loc,
                     "\"%.*s\" is not a valid filename", (int)s.t[k].len,
                     pp_text(pp, &s.t[k]));
         goto out;
@@ -2232,7 +2232,7 @@ static void do_line(PP *pp, const Tok *hash, const Tok *kw, bool gnu_marker)
             const char *nl = pp->sm->region + hash->loc;
             while (*nl && *nl != 0x0a)
                 nl++;
-            diag_report(pp->diag, DL_WARNING, "", (SrcLoc)(nl - pp->sm->region),
+            diag_report(pp->diag, DL_WARNING, DW_NONE, (SrcLoc)(nl - pp->sm->region),
                         "file \"%.*s\" linemarker ignored due to incorrect "
                         "nesting", (int)s.t[1].len - 2, pp_text(pp, &s.t[1]) + 1);
             goto out;
@@ -2329,15 +2329,15 @@ static void do_message(PP *pp, const Tok *kw, bool is_error)
         text = clean_line_text(pp, pp->sm->region + b, e - b);
     }
     if (is_error) {
-        diag_report(pp->diag, DL_ERROR, "", kw->loc, "#error %s", text);
+        diag_report(pp->diag, DL_ERROR, DW_NONE, kw->loc, "#error %s", text);
     } else {
         if (pp->opt->pedantic)
             pedantic(pp, kw->loc, "#warning before C2X is a GCC extension");
-        else if (diag_option_explicit(pp->diag, "c11-c2x-compat"))
-            diag_report(pp->diag, DL_WARNING, "c11-c2x-compat", kw->loc,
+        else if (diag_option_explicit(pp->diag, DW_C11_C2X_COMPAT))
+            diag_report(pp->diag, DL_WARNING, DW_C11_C2X_COMPAT, kw->loc,
                         "#warning before C2X is a GCC extension");
         trad_directive(pp, KW_WARNING, kw);
-        diag_report(pp->diag, DL_WARNING, "pp-warning-directive", kw->loc,
+        diag_report(pp->diag, DL_WARNING, DW_PP_WARNING_DIRECTIVE, kw->loc,
                     "#warning %s", text);
     }
 }
@@ -2362,11 +2362,11 @@ bool pp_parse_assertion(PP *pp, TokSpan s, uint32_t *i, bool need_answer,
     uint32_t k = *i;
     *answer = NULL;
     if (k >= s.n) {
-        diag_report(pp->diag, DL_ERROR, "", at, "assertion without predicate");
+        diag_report(pp->diag, DL_ERROR, DW_NONE, at, "assertion without predicate");
         return false;
     }
     if (s.t[k].kind != TK_IDENT) {
-        diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[k].loc,
                     "predicate must be an identifier");
         *i = k + 1;
         return false;
@@ -2374,7 +2374,7 @@ bool pp_parse_assertion(PP *pp, TokSpan s, uint32_t *i, bool need_answer,
     *pred = pp_ident(pp, &s.t[k++]);
     if (k >= s.n || !tok_is_punct(&s.t[k], P_LPAREN)) {
         if (need_answer) {
-            diag_report(pp->diag, DL_ERROR, "", s.t[k - 1].loc,
+            diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[k - 1].loc,
                         "missing '(' after predicate");
             *i = k;
             return false;
@@ -2390,13 +2390,13 @@ bool pp_parse_assertion(PP *pp, TokSpan s, uint32_t *i, bool need_answer,
         sb_putn(sb, pp_text(pp, &s.t[k]), s.t[k].len);
     }
     if (k >= s.n) {
-        diag_report(pp->diag, DL_ERROR, "", span_end(pp, s, at),
+        diag_report(pp->diag, DL_ERROR, DW_NONE, span_end(pp, s, at),
                     "missing ')' to complete answer");
         *i = k;
         return false;
     }
     if (sb->len == 0) {
-        diag_report(pp->diag, DL_ERROR, "", s.t[k].loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, s.t[k].loc,
                     "predicate's answer is empty");
         *i = k + 1;
         return false;
@@ -2426,7 +2426,7 @@ static void do_assert(PP *pp, const Tok *kw, bool add)
         pedantic(pp, kw->loc, "#%s is a GCC extension",
                  add ? "assert" : "unassert");
     else
-        diag_report(pp->diag, DL_WARNING, "deprecated", kw->loc,
+        diag_report(pp->diag, DL_WARNING, DW_DEPRECATED, kw->loc,
                     "#%s is a deprecated GCC extension",
                     add ? "assert" : "unassert");
     trad_directive(pp, add ? KW_ASSERT : KW_UNASSERT, kw);
@@ -2456,7 +2456,7 @@ static void do_ident(PP *pp, const Tok *hash, const Tok *kw)
     TokBuf tmp = {0};
     pp_expand_into(pp, line, &tmp);
     if (tmp.len == 0 || tmp.t[0].kind != TK_STRING) {
-        diag_report(pp->diag, DL_ERROR, "", tmp.len ? tmp.t[0].loc : kw->loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, tmp.len ? tmp.t[0].loc : kw->loc,
                     "invalid #%s directive", ident_by_id(pp->in, kw->aux)->str);
     } else {
         StrBuf *sb = &pp->sb;
@@ -2478,20 +2478,20 @@ static void do_ident(PP *pp, const Tok *hash, const Tok *kw)
 static void trad_directive(PP *pp, int k, const Tok *kw)
 {
     bool kandr, indented = pp->dir_indented;
-    if (k == KW_NONE || !diag_enabled(pp->diag, "traditional"))
+    if (k == KW_NONE || !diag_enabled(pp->diag, DW_TRADITIONAL))
         return;
     kandr = k == KW_IF || k == KW_IFDEF || k == KW_IFNDEF || k == KW_DEFINE ||
             k == KW_UNDEF || k == KW_INCLUDE || k == KW_LINE ||
             k == KW_ENDIF || k == KW_ELSE;
     if (k == KW_ELIF)
-        diag_report(pp->diag, DL_WARNING, "traditional", kw->loc,
+        diag_report(pp->diag, DL_WARNING, DW_TRADITIONAL, kw->loc,
                     "suggest not using #elif in traditional C");
     else if (indented && kandr)
-        diag_report(pp->diag, DL_WARNING, "traditional", kw->loc,
+        diag_report(pp->diag, DL_WARNING, DW_TRADITIONAL, kw->loc,
                     "traditional C ignores #%.*s with the # indented",
                     (int)kw->len, pp_text(pp, kw));
     else if (!indented && !kandr)
-        diag_report(pp->diag, DL_WARNING, "traditional", kw->loc,
+        diag_report(pp->diag, DL_WARNING, DW_TRADITIONAL, kw->loc,
                     "suggest hiding #%.*s from traditional C with an indented #",
                     (int)kw->len, pp_text(pp, kw));
 }
@@ -2523,7 +2523,7 @@ static void trad_stringification(PP *pp, const Macro *m, SrcLoc at)
             len = (size_t)(q - p);
             for (k = 0; k < m->nparams; k++)
                 if (m->params[k]->len == len && !memcmp(p, m->params[k]->str, len)) {
-                    diag_report(pp->diag, DL_WARNING, "traditional", at,
+                    diag_report(pp->diag, DL_WARNING, DW_TRADITIONAL, at,
                                 "macro argument \"%s\" would be stringified in "
                                 "traditional C", m->params[k]->str);
                     break;
@@ -2670,20 +2670,20 @@ void pp_directive(PP *pp, const Tok *hash)
         const char *dn = ident_by_id(pp->in, kw.aux)->str;
         const char *hint = directive_hint(dn);
         if (hint) {
-            Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", kw.loc,
+            Diagnostic *d = diag_report(pp->diag, DL_ERROR, DW_NONE, kw.loc,
                         "invalid preprocessing directive #%s; did you mean #%s?",
                         dn, hint);
             if (d)
                 fix_tok_replace(pp->diag, d, 0, pp->sm, pp->in, &kw,
                                 hint, FIX_MAYBE);
         } else
-            diag_report(pp->diag, DL_ERROR, "", kw.loc,
+            diag_report(pp->diag, DL_ERROR, DW_NONE, kw.loc,
                         "invalid preprocessing directive #%s", dn);
         read_line(pp);
     } else if (kw.kind == TK_PPNUM && pp->opt->gnu_extensions) {
         do_line(pp, hash, &kw, true);
     } else {
-        diag_report(pp->diag, DL_ERROR, "", kw.loc,
+        diag_report(pp->diag, DL_ERROR, DW_NONE, kw.loc,
                     "invalid preprocessing directive");
         read_line(pp);
     }

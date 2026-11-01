@@ -9,6 +9,7 @@
 #define CEREAL_LIT_H
 
 #include "common.h"
+#include "diag.h"
 #include "c/target.h"
 
 enum {
@@ -30,9 +31,9 @@ typedef struct Lit {
     uint64_t v;              /* integers, characters */
     long double f;           /* floating constants */
     /* a diagnostic (gcc's wording), if msg[0]: level 2 error, 1 warning
-     * (under option id, "" if none), 0 pedantic only */
+     * (under option id, DW_NONE if none), 0 pedantic only */
     int level;
-    const char *id;
+    DiagOpt id;
     char msg[96];
 } Lit;
 

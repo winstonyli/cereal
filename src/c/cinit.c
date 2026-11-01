@@ -324,7 +324,7 @@ static void iped(Checker *c, CCtx *x, uint32_t lt, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
-    d = cpedwarn(c, loc, "", "%s", buf);
+    d = cpedwarn(c, loc, DW_NONE, "%s", buf);
     near_note(c, x, d, loc);
 }
 
@@ -345,8 +345,8 @@ static void ipdt(Checker *c, CCtx *x, uint32_t lt, const char *fmt, ...)
     near_note(c, x, d, loc);
 }
 
-/* A warning with option id (NULL / "": unconditional). */
-static void iwarn(Checker *c, CCtx *x, uint32_t lt, const char *id,
+/* A warning with option id (DW_NONE: unconditional). */
+static void iwarn(Checker *c, CCtx *x, uint32_t lt, DiagOpt id,
                   const char *fmt, ...)
 {
     char buf[1024];
@@ -356,7 +356,7 @@ static void iwarn(Checker *c, CCtx *x, uint32_t lt, const char *id,
     va_start(ap, fmt);
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
-    d = cwarn_d(c, DL_WARNING, loc, id ? id : "", "%s", buf);
+    d = cwarn_d(c, DL_WARNING, loc, id, "%s", buf);
     near_note(c, x, d, loc);
 }
 
@@ -1118,7 +1118,7 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
                     iped(c, x, lt, "initializer-string for array of %s is "
                          "too long", type_q(TT, typ1));
                 else if (n < v->strn && cexpr_cxx_compat(c, v->node))
-                    cwarn(c, rloc(c, x, lt), "c++-compat", "initializer-string "
+                    cwarn(c, rloc(c, x, lt), DW_CPP_COMPAT, "initializer-string "
                           "for array of %s is too long for C++",
                           type_q(TT, typ1));
             }
@@ -1219,10 +1219,10 @@ static bool digest(Checker *c, CCtx *x, uint32_t lt, bool top, bool reqc,
 static void override_warn(Checker *c, CCtx *x, uint32_t lt, bool side)
 {
     if (side)
-        iwarn(c, x, lt, "override-init-side-effects",
+        iwarn(c, x, lt, DW_OVERRIDE_INIT_SIDE_EFFECTS,
               "initialized field with side-effects overwritten");
     else
-        iwarn(c, x, lt, "override-init", "initialized field overwritten");
+        iwarn(c, x, lt, DW_OVERRIDE_INIT, "initialized field overwritten");
 }
 
 static void fill_ent(PEnt *e, const IVal *v, bool zero, uint64_t strn)
@@ -1329,7 +1329,7 @@ static void positional_designated(Checker *c, CCtx *x, uint32_t lt)
     if (L->eldes || L->kind != LV_REC || ck_(c, L->type) != TY_STRUCT ||
         !(type_record(TT, type_canon(TT, L->type))->flags & RF_DESIGNATED))
         return;
-    d = cwarn_d(c, DL_WARNING, wloc(c, x, lt), "designated-init",
+    d = cwarn_d(c, DL_WARNING, wloc(c, x, lt), DW_DESIGNATED_INIT,
                 "positional initialization of field in 'struct' declared "
                 "with 'designated_init' attribute");
     if (d && x->path.len)
@@ -1580,7 +1580,7 @@ static void out_elem(Checker *c, CCtx *x, uint32_t lt, IVal v, TypeId type,
     if (k == LV_UNI && x->trad_loc && !des && (v.kind == V_CTOR || !zero) &&
         !pre_zero &&
         !cin_system(c, x->trad_loc))
-        cwarn(c, x->trad_loc, "traditional", "traditional C rejects "
+        cwarn(c, x->trad_loc, DW_TRADITIONAL, "traditional C rejects "
               "initialization of unions");
     /* output the element */
     if (use_ps(x, L)) {
@@ -1731,7 +1731,7 @@ static void push_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
     }
     if (N->kind == LV_SCAL) {
         if (!is_err(c, t))
-            iwarn(c, x, LT_IN, "", "braces around scalar initializer");
+            iwarn(c, x, LT_IN, DW_NONE, "braces around scalar initializer");
     }
     if (N->kind == LV_ARR && P->kind != LV_ARR && P->kind != LV_NULL &&
         (P->kind == LV_REC || P->kind == LV_UNI) && incomplete_arr(c, t)) {
@@ -1761,7 +1761,7 @@ static void missing_braces_warn(Checker *c, CCtx *x)
     size_t i;
     if (cl != NOB && cl < c->nn && ntag(c, cl) == N_COMPOUND_LIT)
         at = c->nodes[cl].tok;
-    d = cwarn_d(c, DL_WARNING, wloc(c, NULL, at), "missing-braces",
+    d = cwarn_d(c, DL_WARNING, wloc(c, NULL, at), DW_MISSING_BRACES,
                 "missing braces around initializer");
     if (!d || x->mbrange)
         return;
@@ -1835,7 +1835,7 @@ static IVal pop_level(Checker *c, CCtx *x, uint32_t lt, int implicit)
         if (L->uf < L->nf && !L->designated && !ci->zeroinit) {
             const Field *f = lf(c, L, L->uf);
             Diagnostic *d = cwarn_d(c, DL_WARNING, iloc_now(c, x),
-                                    "missing-field-initializers",
+                                    DW_MISSING_FIELD_INITIALIZERS,
                                     "missing initializer for field '%s' of %s",
                                     f->name ? cident(c, f->name) : "({anonymous})",
                                     type_q(TT, L->type));
@@ -2487,7 +2487,7 @@ void cinit_declared(Checker *c, uint32_t declared)
         x->decl_loc = cdecl_tag_loc(c, declared)
                           ? cdecl_tag_loc(c, declared)
                           : csym(c, c->cb[declared] - 1)->loc;
-    if (diag_enabled(c->diag, "traditional"))
+    if (diag_enabled(c->diag, DW_TRADITIONAL))
         x->trad_loc = ctrad_decl_loc(c, declared, c->nodes[list].tok);
     x->varroot = !is_err(c, type) && is_varsize(c, type);
     x->rtop = 0;
@@ -2623,7 +2623,7 @@ static void finalize_root(Checker *c, CCtx *x)
             ntag(c, cl) == N_COMPOUND_LIT && !cat_file_scope(c) &&
             (is_aggr(c, rtype) || is_arr(c, rtype)) &&
             !cin_system(c, x->trad_loc))
-            cwarn(c, x->trad_loc, "traditional", "traditional C rejects "
+            cwarn(c, x->trad_loc, DW_TRADITIONAL, "traditional C rejects "
                   "automatic aggregate initialization");
     }
     ctx_close(c, x);
@@ -2656,7 +2656,7 @@ static void open_complit(Checker *c, uint32_t tn)
     }
     c->ty[tn] = t;
     x = ctx_open(c, list, cat_file_scope(c), "(anonymous)", c->nodes[list].tok, false);
-    if (diag_enabled(c->diag, "traditional"))
+    if (diag_enabled(c->diag, DW_TRADITIONAL))
         x->trad_loc = ctrad_loc(c, ctrad_tag(c, tt_, c->nodes[list].tok),
                                 c->nodes[list].tok);
     x->varroot = false;
@@ -2755,7 +2755,7 @@ void cinit_post(Checker *c, uint32_t i)
     if (tag == N_DESIG_FIELD || tag == N_DESIG_INDEX || tag == N_DESIG_RANGE) {
         if (ntag(c, par) == N_DESIGNATED && par <= x->hi) {
             if (i == first_child(c, par))
-                cc90(c, tloc(c, des_start(c, par)), NULL, "ISO C90 forbids "
+                cc90(c, tloc(c, des_start(c, par)), DW_NONE, "ISO C90 forbids "
                      "specifying subobject to initialize");
             designator(c, x, i, par);
         }

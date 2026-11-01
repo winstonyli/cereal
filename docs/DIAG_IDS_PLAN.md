@@ -23,17 +23,14 @@ status: active
 
 ## Review focus
 
-- A call whose id is a string the registry does not contain (found 2026-11-01: `"invalid-memory-model"`, `"extra"`, `"c2x"`, `"inputloc"`). See **Open decision**; T2 does not start before it is answered.
+- A call whose id is a string the registry does not contain (found 2026-11-01: `"invalid-memory-model"`, `"extra"`, `"c2x"`, `"inputloc"`). See **Decision**: they are tags.
 - Ternaries and `id ? id : ""` forms: the script leaves them for hand (16 found); each must keep its meaning, with `""` becoming `DW_NONE`.
 - The string boundary: `diag_map_enabled(map, const char *id)` and `fixmode.c` still receive `Diagnostic.id` strings.
 - A misspelled name used to be silent; after T2 the compiler checks every site. The script's `unknown` list is the same check done early.
 
-## Open decision (blocks T2)
+## Decision: unregistered ids (answered 2026-11-01, "n1 n3")
 
-Four names are used as ids today without being in the registry, so they print as `[-Wextra]`, `[-Wc2x]` and so on and cannot be configured by name: `invalid-memory-model` (`ccall.c:793`), `extra` (`cwarn_expr.c:2314,2328`), `c2x` (`lit.c:324,376`), `inputloc` (`lit.c:319,330`). More may appear once the compiler checks every site. The enum needs a value for them.
-
-- **Tag rows** (recommended): add rows with group `"tag"` to the `.def`: printed on the diagnostic, never listed by `--list-warnings`, never matched by `-W` name parsing, never configurable (`diag_level_for` returns the requested level, as it does today for a name with no index). Behaviour is unchanged by construction.
-- **Register them as real options:** `-Wno-extra` and the others would then act on those sites and `--list-warnings` would list them. A behaviour change with gcc-compat risk, and `extra` is already an umbrella name.
+Four names were used as ids without being in the registry: `invalid-memory-model` (`ccall.c`), `extra` (`cwarn_expr.c`), `c2x` and `inputloc` (`lit.c`, read back by `cexpr.c`). They became **tags**: `DIAG_TAG(ID, "name")` rows in `diag_opts.def`, enum values above `DW_COUNT`, named by `tag_names[]` in `diag.c`, kept out of `options[]`. So no flag matches them, `--list-warnings` omits them and `diag_level_for` returns the requested level (`opt_index` is -1), as before; no skip logic in `name_matches` or the listing. Making them real options is parked (`PARKED.md`, "Unregistered diagnostic ids").
 
 ## File structure
 
@@ -88,7 +85,7 @@ const char *diag_opt_name(DiagOpt o)
 
 **Interfaces:** consumes T1. Produces: `diag_report`, `diag_vreport`, `diag_enabled`, `diag_option_state`, `diag_option_explicit`, `diag_option_requested`, `diag_option_level`, `diag_option_size` take `DiagOpt` where they took `const char *id`; `Diagnostic.id` stays `const char *`; `diag_map_enabled(const uint8_t *map, const char *id)` is unchanged.
 
-- [ ] **Step 1 (decision):** apply the user's answer to **Open decision**. For tag rows: add `DIAG_OPT(EXTRA, "extra", "tag", DL_WARNING, true, 0, "")` and the same for `INVALID_MEMORY_MODEL`, `C2X`, `INPUTLOC` to `diag_opts.def`; make `name_matches`, `diag_list_options` and the option-state tables skip group `"tag"`; make `diag_level_for` return `requested` for a row in group `"tag"`.
+- [x] **Step 1 (decision):** tags as in **Decision** above (done as `DIAG_TAG` rows outside `options[]`, not as group-`"tag"` rows that every consumer would have to skip).
 - [ ] **Step 2 (dry run):** write `rewrite_ids.py` (below) to the scratchpad and run it without `--write`. Expected before the tag rows: `rewritten 786 unknown-literal-in-id-position 6 left-for-hand 16`; after them, unknown is 0 (a name left over is a new row or a bug: report it).
 - [ ] **Step 3:** retype the base functions in `diag.h`/`diag.c`: the `const char *id` parameter of `diag_report`, `diag_vreport`, `diag_enabled`, `diag_option_*` becomes `DiagOpt`; in `diag_vreport` set `dg->id = diag_opt_name(opt)`; `diag_level_for` indexes `options[opt - 1]` (`DW_NONE` returns `requested`); delete `find_index_cached`, `idc_key`, `idc_val` and the `_Static_assert` on 512. Add `-Werror=int-conversion` to `WARN` in the `Makefile`.
 - [ ] **Step 4:** run `rewrite_ids.py --write`; `git diff --stat` must list only call-site files; its `rewritten` count equals the dry run's.

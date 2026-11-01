@@ -279,11 +279,11 @@ void std_attr_unknown(Checker *c, uint32_t attr)
         if (n < sizeof std_known / sizeof *std_known)
             continue;
         if (attr_scope_of(c, at))
-            cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), "attributes",
+            cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), DW_ATTRIBUTES,
                   "'%s::%s' scoped attribute directive ignored", name,
                   tstr(c, at + 3));
         else
-            cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), "attributes",
+            cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), DW_ATTRIBUTES,
                   "'%s' attribute ignored", name);
     }
 }
@@ -391,27 +391,27 @@ static void attr_malloc_dealloc(Checker *c, uint32_t arg, uint32_t pos,
     if (dr != SYM_NONE && (csym(c, dr)->flags & CSF_INLINE) &&
         (c->opt.optimize ||
          cdecl_aset_has(c, csym(c, dr)->aset, "always_inline", NULL)))
-        cwarn(c, loc, "attributes", "'malloc (%s)' attribute ignored with "
+        cwarn(c, loc, DW_ATTRIBUTES, "'malloc (%s)' attribute ignored with "
               "deallocation functions declared 'inline'",
               cident(c, cnode_ident(c, arg)));
     if (pos != NO_NODE) {
         uint32_t n = type_ent(TT, ft)->n;
         if (!(c->ck[pos] == K_ICE || c->ck[pos] == K_FOLD)) {
-            cwarn(c, loc, "attributes", "'malloc' attribute argument has type "
+            cwarn(c, loc, DW_ATTRIBUTES, "'malloc' attribute argument has type "
                   "%s", type_q(TT, c->ty[pos]));
         } else if (type_ent(TT, ft)->flags & TF_NOPROTO) {
             /* nothing is known of the parameters */
         } else if (c->cv[pos] < 1) {
-            cwarn(c, loc, "attributes", "'malloc' attribute argument value "
+            cwarn(c, loc, DW_ATTRIBUTES, "'malloc' attribute argument value "
                   "'%lld' does not refer to a function parameter",
                   (long long)c->cv[pos]);
         } else if (c->cv[pos] > n) {
-            cwarn(c, loc, "attributes", "'malloc' attribute argument value "
+            cwarn(c, loc, DW_ATTRIBUTES, "'malloc' attribute argument value "
                   "'%lld' exceeds the number of function parameters %u",
                   (long long)c->cv[pos], n);
         } else if (type_ckind(TT, type_params(TT, ft)[c->cv[pos] - 1]) !=
                    TY_PTR) {
-            cwarn(c, loc, "attributes", "'malloc' attribute argument value "
+            cwarn(c, loc, DW_ATTRIBUTES, "'malloc' attribute argument value "
                   "'%lld' refers to parameter type %s", (long long)c->cv[pos],
                   type_q(TT, type_params(TT, ft)[c->cv[pos] - 1]));
         }
@@ -646,7 +646,7 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         } else if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name) &&
                    !attr_scope_of(c, c->nodes[item].tok))   /* gnu:: is a [[]] scope */
             cwarn(c, c->attr_at_set ? c->attr_at : iloc(c, c->nodes[item].tok),
-                  "attributes", "'%s' attribute directive ignored",
+                  DW_ATTRIBUTES, "'%s' attribute directive ignored",
                   strcmp(name, "int128") ? name : "__int128");
         if (!strcmp(name, "aligned")) {
             uint32_t v;
@@ -661,7 +661,7 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 type_is_integer(TT, c->ty[arg]) && cexpr_sval(c, arg) == 0 &&
                 !(zero_warn_u == c->u->first_tok + 1 &&
                   zero_warn_node == arg)) {         /* once per attribute */
-                cwarn(c, iloc(c, after_tok(c, attr)), "attributes",
+                cwarn(c, iloc(c, after_tok(c, attr)), DW_ATTRIBUTES,
                       "requested alignment '0' is not a positive power of 2");
                 zero_warn_u = c->u->first_tok + 1;
                 zero_warn_node = arg;
@@ -708,7 +708,7 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 cerror(c, il, "%s priorities must be integers from 0 to "
                        "65535 inclusive", isc ? "constructor" : "destructor");
             else if (pv <= 100)
-                cwarn(c, il, "prio-ctor-dtor", "%s priorities from 0 to 100 "
+                cwarn(c, il, DW_PRIO_CTOR_DTOR, "%s priorities from 0 to 100 "
                       "are reserved for the implementation",
                       isc ? "constructor" : "destructor");
         } else if (!strcmp(name, "optimize") && arg != NO_NODE &&
@@ -729,7 +729,7 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                 s += l + (s[l] != 0);
             }
             if (bad)
-                cwarn(c, cinput_loc(c, c->nodes[item].tok), "attributes",
+                cwarn(c, cinput_loc(c, c->nodes[item].tok), DW_ATTRIBUTES,
                       "bad option '%s' to attribute 'optimize'", no);
             free(c->dep_msgs.data[--c->dep_msgs.len]);
         } else if (!strcmp(name, "section") && arg != NO_NODE) {
@@ -788,21 +788,21 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                     if (q)
                         snprintf(pre, sizeof pre, "%u ", (unsigned)q + 1);
                     if (type_ckind(TT, c->ty[x]) == TY_ERROR)
-                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                        cwarn(c, il, DW_ATTRIBUTES, "'nonnull' attribute "
                               "argument %sis invalid", pre);
                     else if (!(c->ck[x] == K_ICE || c->ck[x] == K_FOLD) ||
                              !type_is_integer(TT, c->ty[x]))
-                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                        cwarn(c, il, DW_ATTRIBUTES, "'nonnull' attribute "
                               "argument %shas type %s", pre,
                               type_q(TT, c->ty[x]));
                     else
-                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                        cwarn(c, il, DW_ATTRIBUTES, "'nonnull' attribute "
                               "argument %sis invalid", pre);
                     ok = false;
                 } else if (proto) {
                     const TypeEnt *fe = type_ent(TT, ft);
                     if ((uint64_t)v > fe->n && !(fe->flags & TF_VARIADIC)) {
-                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                        cwarn(c, il, DW_ATTRIBUTES, "'nonnull' attribute "
                               "argument value '%lld' exceeds the number of "
                               "function parameters %u", (long long)v,
                               (unsigned)fe->n);
@@ -810,7 +810,7 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                     } else if ((uint64_t)v <= fe->n &&
                                type_ckind(TT, type_params(TT, ft)[v - 1]) !=
                                    TY_PTR) {
-                        cwarn(c, il, "attributes", "'nonnull' attribute "
+                        cwarn(c, il, DW_ATTRIBUTES, "'nonnull' attribute "
                               "argument value '%lld' refers to parameter type "
                               "%s", (long long)v,
                               type_q(TT, type_params(TT, ft)[v - 1]));
@@ -827,7 +827,7 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             SrcLoc il = cinput_loc(c, c->nodes[item].tok);
             if (ft && type_ckind(TT, ft) == TY_FUNC &&
                 !(type_ent(TT, type_canon(TT, ft))->flags & TF_VARIADIC))
-                cwarn(c, il, "attributes", "'sentinel' attribute only applies "
+                cwarn(c, il, DW_ATTRIBUTES, "'sentinel' attribute only applies "
                       "to variadic functions");
             if (ft && type_ckind(TT, ft) == TY_FUNC && ak.n) {
                 uint32_t x = ak.p[0];
@@ -835,10 +835,10 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                     ;
                 else if (!(c->ck[x] == K_ICE || c->ck[x] == K_FOLD) ||
                          !type_is_integer(TT, c->ty[x]))
-                    cwarn(c, il, "attributes", "requested position is not an "
+                    cwarn(c, il, DW_ATTRIBUTES, "requested position is not an "
                           "integer constant");
                 else if (cexpr_sval(c, x) < 0)
-                    cwarn(c, il, "attributes", "requested position is less "
+                    cwarn(c, il, DW_ATTRIBUTES, "requested position is less "
                           "than zero");
             }
         } else if (!strcmp(name, "returns_nonnull")) {
@@ -855,10 +855,10 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
             attr_norm(tstr(c, c->nodes[ak.p[0]].tok), ar, sizeof ar);
             kind = format_kind(ar);
             if (!kind && !strcmp(ar, "NSString"))
-                cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), "format=", "'NSString' is "
+                cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), DW_FORMAT_V, "'NSString' is "
                       "only allowed in Objective-C dialects");
             else if (!kind && !format_type_known(ar))
-                cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), "format=", "'%s' is an "
+                cwarn(c, cdecl_line_start_loc(c, c->nodes[item].tok), DW_FORMAT_V, "'%s' is an "
                       "unrecognized format function type", ar);
             if (kind) {
                 uint32_t xs = ak.p[1], xf = ak.p[2];
@@ -964,13 +964,13 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                       !type_is_integer(TT, c->ty[x]) ||
                       (type_is_signed(TT, c->ty[x]) && cexpr_sval(c, x) < 0);
                 if (bad) {
-                    cwarn(c, patchable_loc(c, item), "attributes",
+                    cwarn(c, patchable_loc(c, item), DW_ATTRIBUTES,
                           "'patchable_function_entry' attribute argument '%s' "
                           "is not an integer constant", val);
                     break;
                 }
                 if ((uint64_t)cexpr_sval(c, x) > 65535) {
-                    cwarn(c, patchable_loc(c, item), "attributes",
+                    cwarn(c, patchable_loc(c, item), DW_ATTRIBUTES,
                           "'patchable_function_entry' attribute argument '%s' "
                           "exceeds 65535", val);
                     break;
@@ -1180,7 +1180,7 @@ void attrs_unknown_emit(Checker *c, const Attrs *sa, uint32_t tok)
 {
     uint8_t k;
     for (k = 0; k < sa->nunk; k++)
-        cwarn(c, iloc(c, tok), "attributes",
+        cwarn(c, iloc(c, tok), DW_ATTRIBUTES,
               "'%s' attribute directive ignored", sa->unk[k]);
 }
 
@@ -1195,30 +1195,30 @@ void attrs_misapplied(Checker *c, const Attrs *a, char where, bool local,
     bool nofn = where != 'f';
     SrcLoc loc = iloc(c, tok);
     if (a->noinline && nofn)
-        cwarn(c, loc, "attributes", "'noinline' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'noinline' attribute ignored");
     if (a->used && (where == 'a' || where == 'p' || where == 'm'))
-        cwarn(c, loc, "attributes", "'used' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'used' attribute ignored");
     if (a->nonstring && where == 'f')
-        cwarn(c, loc, "attributes", "'nonstring' attribute does not apply to "
+        cwarn(c, loc, DW_ATTRIBUTES, "'nonstring' attribute does not apply to "
               "functions");
     if (a->weak && (where == 't' || where == 'p' || where == 'm'))
-        cwarn(c, loc, "attributes", "'weak' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'weak' attribute ignored");
     if (a->packed && where != 'm')
-        cwarn(c, loc, "attributes", "'packed' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'packed' attribute ignored");
     if (a->packed && where == 'm' && fty && type_align(TT, fty) == 1)
-        cwarn(c, loc, "attributes", "'packed' attribute ignored for field of "
+        cwarn(c, loc, DW_ATTRIBUTES, "'packed' attribute ignored for field of "
               "type %s", type_q(TT, fty));
     if (a->alias && (where == 't' || where == 'p' || where == 'm' ||
                      (local && (where == 'f' || var))))
-        cwarn(c, loc, "attributes", "'alias' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'alias' attribute ignored");
     if (a->weakref && (where == 't' || where == 'p' || where == 'm'))
-        cwarn(c, loc, "attributes", "'weakref' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'weakref' attribute ignored");
     if (a->errattr && nofn)
-        cwarn(c, loc, "attributes", "'error' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'error' attribute ignored");
     if (a->warnattr && nofn)
-        cwarn(c, loc, "attributes", "'warning' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'warning' attribute ignored");
     if (a->cleanup && (where != 'a' && !(local && where == 'g')))
-        cwarn(c, loc, "attributes", "'cleanup' attribute ignored");
+        cwarn(c, loc, DW_ATTRIBUTES, "'cleanup' attribute ignored");
 }
 
 /* handle_section_attribute for a declaration of `name` at nloc.  where is
@@ -1422,18 +1422,18 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
     if (argno)
         snprintf(pre, sizeof pre, "%d ", argno);
     if (type_ckind(TT, t) == TY_ERROR) {
-        cwarn(c, loc, "attributes", "'%s' attribute argument %sis invalid",
+        cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute argument %sis invalid",
               name, pre);
         return false;
     }
     if (!type_is_integer(TT, t)) {
-        cwarn(c, loc, "attributes", "'%s' attribute argument %shas type %s",
+        cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute argument %shas type %s",
               name, pre, type_q(TT, t));
         return false;
     }
     pos_arg_str(c, arg, val, sizeof val);
     if (c->ck[arg] != K_ICE && c->ck[arg] != K_FOLD) {
-        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' is "
+        cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute argument %svalue '%s' is "
               "not an integer constant", name, pre, val);
         return false;
     }
@@ -1443,7 +1443,7 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
     if (!v && mode == PA_REST)      /* format's 0: no arguments to check */
         return true;
     if (!v) {
-        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' does "
+        cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute argument %svalue '%s' does "
               "not refer to a function parameter", name, pre, val);
         return false;
     }
@@ -1452,7 +1452,7 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
     n = type_ent(TT, fty)->n;
     pos = (uint64_t)v;
     if (pos > n) {
-        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' "
+        cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute argument %svalue '%s' "
               "exceeds the number of function parameters %u", name, pre, val, n);
         return false;
     }
@@ -1465,7 +1465,7 @@ static bool positional_arg(Checker *c, const char *name, uint32_t arg, int argno
         }
     } else if (!type_is_integer(TT, pt) ||
         type_kind(TT, TYPE_UNQUAL(type_canon(TT, pt))) == TY_BOOL) {
-        cwarn(c, loc, "attributes", "'%s' attribute argument %svalue '%s' "
+        cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute argument %svalue '%s' "
               "refers to parameter type %s", name, pre, val, type_q(TT, pt));
         return false;
     }
@@ -1525,7 +1525,7 @@ static void assume_aligned_check(Checker *c, const uint32_t *arg, uint32_t n,
     uint32_t k;
     int64_t first = 0;
     if (type_ckind(TT, rt) != TY_PTR) {
-        cwarn(c, loc, "attributes", "'assume_aligned' attribute ignored on a "
+        cwarn(c, loc, DW_ATTRIBUTES, "'assume_aligned' attribute ignored on a "
               "function returning %s", type_q(TT, rt));
         return;
     }
@@ -1537,25 +1537,25 @@ static void assume_aligned_check(Checker *c, const uint32_t *arg, uint32_t n,
         pos_arg_str(c, arg[k], val, sizeof val);
         if (!type_is_integer(TT, c->ty[arg[k]]) ||
             (c->ck[arg[k]] != K_ICE && c->ck[arg[k]] != K_FOLD)) {
-            cwarn(c, loc, "attributes", "'assume_aligned' attribute argument "
+            cwarn(c, loc, DW_ATTRIBUTES, "'assume_aligned' attribute argument "
                   "%s is not an integer constant", val);
             return;
         }
         v = cexpr_sval(c, arg[k]);
         if (v < 0) {
-            cwarn(c, loc, "attributes", "'assume_aligned' attribute argument "
+            cwarn(c, loc, DW_ATTRIBUTES, "'assume_aligned' attribute argument "
                   "%s is not positive", val);
             return;
         }
         if (k == 0) {
             if (v == 0 || (v & (v - 1))) {
-                cwarn(c, loc, "attributes", "'assume_aligned' attribute "
+                cwarn(c, loc, DW_ATTRIBUTES, "'assume_aligned' attribute "
                       "argument %s is not a power of 2", val);
                 return;
             }
             first = v;
         } else if (v >= first) {
-            cwarn(c, loc, "attributes", "'assume_aligned' attribute argument "
+            cwarn(c, loc, DW_ATTRIBUTES, "'assume_aligned' attribute argument "
                   "%s is not in the range [0, %lld]", val,
                   (long long)first - 1);
             return;
@@ -1589,7 +1589,7 @@ void strict_flex_check(Checker *c, uint32_t holder, bool field,
             if (tok0 != NO_NODE && c->nodes[k.p[j]].tok > tok0 &&
                 tokp(c, c->nodes[k.p[j]].tok)->kind == TK_PUNCT) {
                 /* [[...]] after a type specifier appertains to the type */
-                cwarn(c, tloc(c, tok0), "attributes", "'strict_flex_array' "
+                cwarn(c, tloc(c, tok0), DW_ATTRIBUTES, "'strict_flex_array' "
                       "attribute does not apply to types");
                 continue;
             }
@@ -1748,7 +1748,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
             if (!strcmp(name, "malloc")) {
-                cwarn(c, iloc(c, tok), "attributes", "'malloc' attribute "
+                cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'malloc' attribute "
                       "ignored; valid only for functions");
                 continue;
             }
@@ -1764,7 +1764,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                     if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
                         cdecl_aset_has(c, csym(c, ref)->aset, "tls_model",
                                        NULL))
-                        cwarn(c, iloc(c, tok), "attributes", "'tls_model' "
+                        cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'tls_model' "
                               "attribute ignored because '%s' does not have "
                               "thread storage duration", ctx_vname);
                 }
@@ -1774,17 +1774,17 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
             if (!strcmp(name, "leaf")) {
                 /* on anything but a function; a decl that is not public
                  * also trips the unit-local check */
-                cwarn(c, iloc(c, tok), "attributes", "'leaf' attribute "
+                cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'leaf' attribute "
                       "ignored");
                 if (!(ctx & AC_PUB))
-                    cwarn(c, iloc(c, tok), "attributes", "'leaf' attribute "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'leaf' attribute "
                           "has no effect on unit local functions");
                 continue;
             }
             if (!strcmp(name, "tls_model") && (ctx & (AC_G | AC_S | AC_L))) {
                 char v[24];
                 if (!(ctx & AC_TLS)) {
-                    cwarn(c, iloc(c, tok), "attributes", "'tls_model' "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'tls_model' "
                           "attribute ignored because '%s' does not have "
                           "thread storage duration", ctx_vname);
                     continue;
@@ -1803,7 +1803,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                 unsigned kd = type_ckind(TT, e);
                 bool ok = false;
                 if (ctx == AC_T || fnty) {
-                    cwarn(c, iloc(c, tok), "attributes", "'nonstring' "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'nonstring' "
                           "attribute does not apply to %s",
                           ctx == AC_T ? "types" : "functions");
                     continue;
@@ -1814,7 +1814,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                     ok = kd == TY_CHAR || kd == TY_SCHAR || kd == TY_UCHAR;
                 }
                 if (!ok)
-                    cwarn(c, iloc(c, tok), "attributes", "'nonstring' "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'nonstring' "
                           "attribute ignored on objects of type %s",
                           type_q(TT, oty));
                 continue;
@@ -1825,7 +1825,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                 continue;
             for (f = 0; f < sizeof attr_fnonly_tab / sizeof *attr_fnonly_tab; f++)
                 if (!strcmp(name, attr_fnonly_tab[f])) {
-                    cwarn(c, iloc(c, tok), "attributes", "'%s' attribute only "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute only "
                           "applies to function types", name);
                     break;
                 }
@@ -1842,10 +1842,10 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                         if (d != NO_NODE && ntag(c, d) == N_DECL &&
                             cfirst(c, d) == cfirst(c, k.p[j]))
                             cwarn(c, cdecl_line_start_loc(c, c->nodes[k.p[j]].tok),
-                                  "attributes", "'fallthrough' attribute "
+                                  DW_ATTRIBUTES, "'fallthrough' attribute "
                                   "not followed by ';'");
                     }
-                    cwarn(c, iloc(c, tok), "attributes", "'%s' attribute "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
                           "ignored", name);
                     break;
                 }
@@ -1895,7 +1895,7 @@ void cdecl_alloc_conflict(Checker *c, SrcLoc loc, const char *name,
             b[l++] = ' ';
     }
     b[l] = 0;
-    cwarn(c, loc, "attributes", "ignoring attribute '%s (%s)' because it "
+    cwarn(c, loc, DW_ATTRIBUTES, "ignoring attribute '%s (%s)' because it "
           "conflicts with previous '%s (%s)'", name, a, name, b);
 }
 
@@ -2022,26 +2022,26 @@ static void acc_diag(Checker *c, const AccSeen *e, const AccSeen *x, int kind)
              "access(%s, %u%s)", sx->mode, sx->ptr, sz);
     switch (kind) {
     case AK_CONFLICT:
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+        d = cwarn_d(c, DL_WARNING, alloc_loc, DW_ATTRIBUTES, "attribute '%s' "
                     "positional argument 2 conflicts with previous "
                     "designation by argument %u", spec, e->size);
         break;
     case AK_MODE:
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+        d = cwarn_d(c, DL_WARNING, alloc_loc, DW_ATTRIBUTES, "attribute '%s' "
                     "mismatch with mode '%s'", spec, e->mode);
         break;
     case AK_MISSING_OLD:
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+        d = cwarn_d(c, DL_WARNING, alloc_loc, DW_ATTRIBUTES, "attribute '%s' "
                     "positional argument 2 missing in previous designation",
                     spec);
         break;
     case AK_MISSING_NEW:
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+        d = cwarn_d(c, DL_WARNING, alloc_loc, DW_ATTRIBUTES, "attribute '%s' "
                     "missing positional argument 2 provided in previous "
                     "designation by argument %u", spec, e->size);
         break;
     case AK_VALUES:
-        d = cwarn_d(c, DL_WARNING, alloc_loc, "attributes", "attribute '%s' "
+        d = cwarn_d(c, DL_WARNING, alloc_loc, DW_ATTRIBUTES, "attribute '%s' "
                     "mismatched positional argument values %u and %u", spec,
                     x->size, e->size);
         break;
@@ -2234,7 +2234,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 /* handle_error_attribute: the message must be a string */
                 kids_get(c, it.p[q], &ak);
                 if (ak.n && ntag(c, ak.p[0]) != N_STRING)
-                    cwarn(c, iloc(c, tok), "attributes",
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES,
                           "'%s' attribute ignored", name);
                 kids_free(&ak);
                 continue;
@@ -2251,7 +2251,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 else
                     seen_const = true;
                 if (type_ckind(TT, type_base(TT, fty)) == TY_VOID)
-                    cwarn(c, iloc(c, tok), "attributes", "'%s' attribute on "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute on "
                           "function returning 'void'", name);
                 continue;
             }
@@ -2283,7 +2283,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                             cdecl_aset_has(c, csym(c, pr)->aset, "pure", NULL);
                 if (!excl && type_ckind(TT, rt) != TY_PTR &&
                     type_ckind(TT, rt) != TY_ERROR) {
-                    cwarn(c, iloc(c, tok), "attributes", "'malloc' attribute "
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'malloc' attribute "
                           "ignored on functions returning %s; valid only for "
                           "pointer return types", type_q(TT, rt));
                     if (c->nign < 8)
@@ -2311,7 +2311,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 type_ckind(TT, type_base(TT, fty)) == TY_VOID &&
                 type_ckind(TT, fty) == TY_FUNC) {
                 /* handle_warn_unused_result_attribute */
-                cwarn(c, iloc(c, tok), "attributes",
+                cwarn(c, iloc(c, tok), DW_ATTRIBUTES,
                       "'warn_unused_result' attribute ignored");
                 if (c->nign < 8)
                     snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
@@ -2343,7 +2343,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 for (w = 0; w < 2; w++)
                     for (m = 0; m < ns; m++)
                         if (cdecl_aset_has(c, s3[m], an2[w], NULL)) {
-                            cwarn(c, iloc(c, tok), "attributes", "'%s' "
+                            cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' "
                                   "attribute ignored on a function returning "
                                   "%s", an2[w],
                                   type_q(TT, type_base(TT, fty)));
@@ -2359,7 +2359,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 SrcLoc loc = iloc(c, tok);
                 TypeId rt = type_base(TT, fty);
                 if (type_ckind(TT, rt) != TY_PTR) {
-                    cwarn(c, loc, "attributes", "'%s' attribute ignored on a "
+                    cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute ignored on a "
                           "function returning %s", name, type_q(TT, rt));
                     if (c->nign < 8)
                         snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s",
@@ -2686,7 +2686,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
                 const char *ia = swap ? o : noipa ? "noinline" : an;
                 const char *io = swap || !strcmp(o, "noipa") ? "noinline" : o;
                 Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
-                                        "attributes", "ignoring attribute '%s' "
+                                        DW_ATTRIBUTES, "ignoring attribute '%s' "
                                         "because it conflicts with attribute "
                                         "'%s'", ia, io);
                 if (d && prev)
@@ -2697,7 +2697,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
                  * alloc_align or alloc_size (Wattributes-6.c) */
                 if (prev && !strcmp(an, "noreturn") &&
                     (!strcmp(o, "alloc_align") || !strcmp(o, "alloc_size"))) {
-                    d = cwarn_d(c, DL_WARNING, iloc(c, tok), "attributes",
+                    d = cwarn_d(c, DL_WARNING, iloc(c, tok), DW_ATTRIBUTES,
                                 "ignoring attribute '%s' because it conflicts "
                                 "with attribute '%s'", an, o);
                     if (d)
@@ -2727,7 +2727,7 @@ static void attr_excl(Checker *c, uint32_t tok, bool fn_pure, AttrState *st,
     /* fn_pure: the incoming attribute is 'pure', else 'const' */
     bool conflict = fn_pure ? st->cnst : st->pure;
     if (conflict) {
-        Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok), "attributes",
+        Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok), DW_ATTRIBUTES,
                                 "ignoring attribute '%s' because it conflicts "
                                 "with attribute '%s'", fn_pure ? "pure" : "const",
                                 fn_pure ? "const" : "pure");
@@ -2806,7 +2806,7 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                     bool note = st->palign > st->calign;
                     uint32_t shown = note ? st->palign : st->calign;
                     Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
-                                            "attributes", "ignoring attribute "
+                                            DW_ATTRIBUTES, "ignoring attribute "
                                             "'aligned (%u)' because it "
                                             "conflicts with attribute 'aligned "
                                             "(%u)'", na, shown);
@@ -2856,7 +2856,7 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                 }
                 if (r && r->name == name) {
                     Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
-                                            "attributes", "'copy' attribute "
+                                            DW_ATTRIBUTES, "'copy' attribute "
                                             "ignored on a redeclaration of the "
                                             "referenced symbol");
                     if (d)
@@ -2865,7 +2865,7 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                     /* copy of a type's attributes: nothing to diagnose */
                 } else if (!r || r->kind != kind) {
                     Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
-                                            "attributes", "'copy' attribute "
+                                            DW_ATTRIBUTES, "'copy' attribute "
                                             "ignored on a declaration of a "
                                             "different kind than referenced "
                                             "symbol");

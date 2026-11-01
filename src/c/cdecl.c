@@ -207,8 +207,8 @@ static unsigned quals_of_warn(Checker *c, uint32_t node)
             }
             /* gcc: a repeated pointer qualifier (not from a macro) */
             if ((seen & bit) && !tfrom_macro(c, tk) && !tfrom_macro(c, prev[ix]))
-                cwarn(c, tloc(c, tk), cc90_id(c, NULL) ? cc90_id(c, NULL)
-                      : "duplicate-decl-specifier",
+                cwarn(c, tloc(c, tk), cc90_id(c, DW_NONE) ? cc90_id(c, DW_NONE)
+                      : DW_DUPLICATE_DECL_SPECIFIER,
                       "duplicate '%s' declaration specifier", nm);
             seen |= bit;
             prev[ix] = tk;
@@ -366,7 +366,7 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
                "scope");
     if (empty && !funcdef)
         /* callers elsewhere may pass arguments to a declared (): MAYBE */
-        fix_void_params(c, cwarn_d(c, DL_WARNING, il, "strict-prototypes",
+        fix_void_params(c, cwarn_d(c, DL_WARNING, il, DW_STRICT_PROTOTYPES,
                                    "function declaration isn't a prototype"),
                         f, FIX_MAYBE);
     if (pi->krlist) {
@@ -387,7 +387,7 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
             if (last != NO_NODE && tpunct(c, last + 1) == P_COMMA &&
                 tpunct(c, last + 2) == P_RPAREN)
                 il = ctok_loc(c, last + 2);
-            cpedwarn(c, il, "", "parameter names (without types) in function "
+            cpedwarn(c, il, DW_NONE, "parameter names (without types) in function "
                      "declaration");
             quiet_restore(c, q);
             diag_ord(c->diag, o0);
@@ -427,11 +427,11 @@ static void grokparms(Checker *c, uint32_t f, bool funcdef, uint32_t ltok,
                 *incomplete_def = true;
             } else if (is_void(c, t)) {
                 if (named)
-                    cwarn(c, csym(c, c->cb[p] - 1)->loc, "",
+                    cwarn(c, csym(c, c->cb[p] - 1)->loc, DW_NONE,
                           "parameter %u ('%s') has void type",
                           parmno, cident(c, csym(c, c->cb[p] - 1)->name));
                 else
-                    cwarn(c, c->cb[p] ? csym(c, c->cb[p] - 1)->loc : il, "",
+                    cwarn(c, c->cb[p] ? csym(c, c->cb[p] - 1)->loc : il, DW_NONE,
                           "parameter %u has void type", parmno);
             }
         }
@@ -510,14 +510,14 @@ static int check_bitfield(Checker *c, SrcLoc loc, TypeId *ty, uint32_t w,
     if (TYPE_UNQUAL(type_canon(TT, t)) != TYPE_B(INT) &&
         TYPE_UNQUAL(type_canon(TT, t)) != TYPE_B(UINT) &&
         TYPE_UNQUAL(type_canon(TT, t)) != TYPE_B(BOOL))
-        cc90(c, loc, NULL, "type of bit-field '%s' is a GCC extension", nm);
+        cc90(c, loc, DW_NONE, "type of bit-field '%s' is a GCC extension", nm);
     max = tkind(c, t) == TY_BOOL ? 1 : type_int_bits(TT, t);
     if (width > (int64_t)max) {
         cerror(c, loc, "width of '%s' exceeds its type", nm);
         width = max;
     }
     if (tkind(c, t) == TY_ENUM && enum_narrower(c, t, (unsigned)width))
-        cwarn(c, loc, "", "'%s' is narrower than values of its type", nm);
+        cwarn(c, loc, DW_NONE, "'%s' is narrower than values of its type", nm);
     return (int)width;
 }
 
@@ -584,14 +584,14 @@ static void larger_than(Checker *c, SrcLoc loc, uint32_t name, TypeId ty)
 {
     uint64_t lim, sz;
     bool ok;
-    if (!name || !diag_enabled(c->diag, "larger-than="))
+    if (!name || !diag_enabled(c->diag, DW_LARGER_THAN_V))
         return;
     /* gcc: by default, the largest valid object */
-    if (!(lim = diag_option_size(c->diag, "larger-than=")))
+    if (!(lim = diag_option_size(c->diag, DW_LARGER_THAN_V)))
         lim = INT64_MAX;
     sz = type_size(TT, ty, &ok);
     if (ok && sz > lim)
-        cwarn(c, loc, "larger-than=", "size of '%s' %llu bytes exceeds "
+        cwarn(c, loc, DW_LARGER_THAN_V, "size of '%s' %llu bytes exceeds "
               "maximum object size %llu", cident(c, name),
               (unsigned long long)sz, (unsigned long long)lim);
 }
@@ -693,10 +693,10 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
     }
     if (default_int && !funcdef) {
         if (name)
-            cpedwarn(c, loc, "implicit-int", "type defaults to 'int' in "
+            cpedwarn(c, loc, DW_IMPLICIT_INT, "type defaults to 'int' in "
                      "declaration of '%s'", cident(c, name));
         else
-            cpedwarn(c, loc, "implicit-int", "type defaults to 'int' in type "
+            cpedwarn(c, loc, DW_IMPLICIT_INT, "type defaults to 'int' in type "
                      "name");
     }
     type_quals = sp->quals | all_quals(c, type);
@@ -706,7 +706,7 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
     if (funcdef && (threadp || sc == SC_AUTO || sc == SC_REGISTER ||
                     sc == SC_TYPEDEF)) {
         if (sc == SC_AUTO)
-            cpedwarn(c, loc, filescope ? "" : "pedantic",
+            cpedwarn(c, loc, filescope ? DW_NONE : DW_PEDANTIC,
                      "function definition declared 'auto'");
         if (sc == SC_REGISTER)
             cerror(c, loc, "function definition declared 'register'");
@@ -749,8 +749,8 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         if (filescope) {
             /* -Wc++-compat lets extern const pass (a C++ idiom for
              * internal linkage) */
-            if (!(type_quals & TQ_CONST) || !diag_enabled(c->diag, "c++-compat"))
-                cwarn(c, loc, "", "'%s' initialized and declared 'extern'",
+            if (!(type_quals & TQ_CONST) || !diag_enabled(c->diag, DW_CPP_COMPAT))
+                cwarn(c, loc, DW_NONE, "'%s' initialized and declared 'extern'",
                       cident(c, name));
         }
         else
@@ -804,10 +804,10 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             unspec = (an->flags & NF_STAR);
             array_parm_vla_unspec = unspec;
             if (unspec)
-                cc90(c, cnode_loc(c, dn), NULL, "ISO C90 does not support "
+                cc90(c, cnode_loc(c, dn), DW_NONE, "ISO C90 does not support "
                      "'[*]' array declarators");
             if (array_parm_static || array_ptr_quals)
-                cc90(c, cnode_loc(c, dn), NULL, "ISO C90 does not support "
+                cc90(c, cnode_loc(c, dn), DW_NONE, "ISO C90 does not support "
                      "'static' or type qualifiers in parameter array "
                      "declarators");
             if (is_void(c, type)) {
@@ -894,18 +894,18 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                     }
                     if (!size_int_const) {
                         if ((ctx == DC_NORMAL || ctx == DC_FIELD) && filescope)
-                            cpedwarn(c, iloc(c, ltok), "", "variably modified "
+                            cpedwarn(c, iloc(c, ltok), DW_NONE, "variably modified "
                                      "'%s' at file scope",
                                      name ? cident(c, name) : "");
                         else
                             this_varies = size_varies = true;
                         if (this_varies) {
                             if (name)
-                                cc90(c, iloc(c, ltok), "vla", "ISO C90 "
+                                cc90(c, iloc(c, ltok), DW_VLA, "ISO C90 "
                                      "forbids variable length array '%s'",
                                      cident(c, name));
                             else
-                                cc90(c, iloc(c, ltok), "vla", "ISO C90 "
+                                cc90(c, iloc(c, ltok), DW_VLA, "ISO C90 "
                                      "forbids variable length array");
                         }
                     }
@@ -917,10 +917,10 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 } else {
                     this_varies = size_varies = true;
                     if (name)
-                        cc90(c, iloc(c, ltok), "vla", "ISO C90 forbids "
+                        cc90(c, iloc(c, ltok), DW_VLA, "ISO C90 forbids "
                              "variable length array '%s'", cident(c, name));
                     else
-                        cc90(c, iloc(c, ltok), "vla", "ISO C90 forbids "
+                        cc90(c, iloc(c, ltok), DW_VLA, "ISO C90 forbids "
                              "variable length array");
                 }
                 if (this_varies)
@@ -940,7 +940,7 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             } else if (ctx == DC_FIELD) {
                 /* a flexible array member (or [*]) */
                 if (!array_parm_vla_unspec)
-                    cc90(c, loc, NULL, "ISO C90 does not support flexible "
+                    cc90(c, loc, DW_NONE, "ISO C90 does not support flexible "
                          "array members");
                 if (array_parm_vla_unspec) {
                     size_varies = true;
@@ -955,7 +955,7 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 }
             } else if (ctx == DC_TYPENAME) {
                 if (array_parm_vla_unspec) {
-                    cwarn(c, iloc(c, ltok), "", "'[*]' not in a declaration");
+                    cwarn(c, iloc(c, ltok), DW_NONE, "'[*]' not in a declaration");
                     vla = true;
                     size_varies = true;
                     itype_none = false;
@@ -1068,10 +1068,10 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                 if (!sl)
                     sl = loc;
                 if (is_void(c, type) && really && c->opt.std_year < 2011)
-                    cpedwarn(c, sl, "", "function definition has qualified "
+                    cpedwarn(c, sl, DW_NONE, "function definition has qualified "
                              "void return type");
                 else
-                    cwarn(c, sl, "ignored-qualifiers", "type qualifiers "
+                    cwarn(c, sl, DW_IGNORED_QUALIFIERS, "type qualifiers "
                           "ignored on function return type");
                 /* DR#423 (C11): the qualifiers are dropped, _Atomic stays;
                  * gcc still rejects a bad restrict */
@@ -1169,10 +1169,10 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         if (type_quals)
             type = qualify(c, type, type_quals, ltok);
         if (sp->is_inline)
-            cpedwarn(c, loc, "", "typedef '%s' declared 'inline'",
+            cpedwarn(c, loc, DW_NONE, "typedef '%s' declared 'inline'",
                      cident(c, name));
         if (sp->is_noreturn)
-            cpedwarn(c, loc, "", "typedef '%s' declared '_Noreturn'",
+            cpedwarn(c, loc, DW_NONE, "typedef '%s' declared '_Noreturn'",
                      cident(c, name));
         g->s.name = name;
         g->s.loc = loc;
@@ -1222,7 +1222,7 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
             if (type_quals)
                 type = qualify(c, type, type_quals, ltok);
             if (array_ptr_attrs)
-                cwarn(c, loc, "attributes", "attributes in parameter array "
+                cwarn(c, loc, DW_ATTRIBUTES, "attributes in parameter array "
                       "declarator ignored");
             arrp = true;
         } else if (is_func(c, type)) {
@@ -1236,11 +1236,11 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
         } else if (type_quals)
             type = qualify(c, type, type_quals, ltok);
         if (sp->is_inline)
-            cpedwarn(c, loc, "", "parameter '%s' declared 'inline'",
+            cpedwarn(c, loc, DW_NONE, "parameter '%s' declared 'inline'",
                      name && *cident(c, name) ? cident(c, name)
                                               : "({anonymous})");
         if (sp->is_noreturn)
-            cpedwarn(c, loc, "", "parameter '%s' declared '_Noreturn'",
+            cpedwarn(c, loc, DW_NONE, "parameter '%s' declared '_Noreturn'",
                      name && *cident(c, name) ? cident(c, name)
                                               : "({anonymous})");
         g->what = GD_PARM;
@@ -1317,9 +1317,9 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                                                           : LK_EXTERNAL;
         if (name && !strcmp(cident(c, name), "main")) {
             if (sp->is_inline)
-                cpedwarn(c, loc, "", "cannot inline function 'main'");
+                cpedwarn(c, loc, DW_NONE, "cannot inline function 'main'");
             if (sp->is_noreturn)
-                cpedwarn(c, loc, "", "'main' declared '_Noreturn'");
+                cpedwarn(c, loc, DW_NONE, "'main' declared '_Noreturn'");
         } else {
             if (sp->is_inline)
                 g->s.flags |= CSF_INLINE;
@@ -1355,10 +1355,10 @@ void cdecl_grok(Checker *c, const Spec *sp, uint32_t top, int ctx,
                        "redeclared 'extern'");
         }
         if (sp->is_inline)
-            cpedwarn(c, loc, "", "variable '%s' declared 'inline'",
+            cpedwarn(c, loc, DW_NONE, "variable '%s' declared 'inline'",
                      cident(c, name));
         if (sp->is_noreturn)
-            cpedwarn(c, loc, "", "variable '%s' declared '_Noreturn'",
+            cpedwarn(c, loc, DW_NONE, "variable '%s' declared '_Noreturn'",
                      cident(c, name));
         if (sc == SC_EXTERN)
             g->s.flags |= CSF_DECL_EXTERNAL;
@@ -1397,12 +1397,12 @@ static bool fn_pointer_type(Checker *c, TypeId t)
 /* The option of a parameter/local shadow warning: -Wshadow itself, else
  * -Wshadow=compatible-local when the types are compatible, else
  * -Wshadow=local. */
-static const char *shadow_id(Checker *c, const CSym *old, const CSym *x)
+static DiagOpt shadow_id(Checker *c, const CSym *old, const CSym *x)
 {
-    if (diag_enabled(c->diag, "shadow"))
-        return "shadow";
-    return type_compatible(TT, old->ty, x->ty) ? "shadow=compatible-local"
-                                               : "shadow=local";
+    if (diag_enabled(c->diag, DW_SHADOW))
+        return DW_SHADOW;
+    return type_compatible(TT, old->ty, x->ty) ? DW_SHADOW_VCOMPATIBLE_LOCAL
+                                               : DW_SHADOW_VLOCAL;
 }
 
 static void warn_if_shadowing(Checker *c, const CSym *x)
@@ -1426,7 +1426,7 @@ static void warn_if_shadowing(Checker *c, const CSym *x)
             if (old->kind == CS_FUNC && x->kind != CS_FUNC &&
                 !fn_pointer_type(c, x->ty))
                 continue;
-            d = cwarn_d(c, DL_WARNING, x->loc, "shadow", "declaration of '%s' "
+            d = cwarn_d(c, DL_WARNING, x->loc, DW_SHADOW, "declaration of '%s' "
                         "shadows a global declaration", sname(c, x));
         } else
             d = cwarn_d(c, DL_WARNING, x->loc, shadow_id(c, old, x),
@@ -1502,11 +1502,11 @@ static void bind_this_type(Checker *c, uint32_t bi, uint32_t ref, TypeId vt,
  * struct with that name would hide it in C++. */
 void cxx_typedef_in_struct(Checker *c, uint32_t ident, uint32_t tok)
 {
-    if (!diag_enabled(c->diag, "c++-compat"))
+    if (!diag_enabled(c->diag, DW_CPP_COMPAT))
         return;
     vec_push(&c->tdseen, ident);
     if (crecord_open_member(c, ident) && !cin_system(c, tloc(c, tok)))
-        cwarn(c, tloc(c, tok), "c++-compat", "C++ lookup of '%s' would "
+        cwarn(c, tloc(c, tok), DW_CPP_COMPAT, "C++ lookup of '%s' would "
               "return a field, not a type", cident(c, ident));
 }
 
@@ -1616,7 +1616,7 @@ static uint32_t pushdecl_(Checker *c, const CSym *xin, bool implicit_int)
             TypeId vt = visref != SYM_NONE ? bound_type(c, name, csym(c, visref))
                                            : 0;
             if (!filescope)
-                cwarn(c, x.loc, "nested-externs", "nested extern declaration "
+                cwarn(c, x.loc, DW_NESTED_EXTERNS, "nested extern declaration "
                       "of '%s'", sname(c, &x));
             if (e && !filescope && !is_err(c, newty))
                 outer_bindings(c, name, newty);
@@ -1918,19 +1918,19 @@ static void attr_only_check(Checker *c, uint32_t i, uint32_t tok, bool top)
         kids_free(&ak);
     }
     if (!nft)
-        cpedwarn(c, loc, "", "empty declaration");
+        cpedwarn(c, loc, DW_NONE, "empty declaration");
     else if (top)
-        cwarn(c, loc, "attributes", "'fallthrough' attribute at top level");
+        cwarn(c, loc, DW_ATTRIBUTES, "'fallthrough' attribute at top level");
     else {
         if (nft > 1)
-            cwarn(c, loc, "attributes", "attribute 'fallthrough' specified "
+            cwarn(c, loc, DW_ATTRIBUTES, "attribute 'fallthrough' specified "
                   "multiple times");
         if (param)
-            cwarn(c, loc, "attributes", "'fallthrough' attribute specified "
+            cwarn(c, loc, DW_ATTRIBUTES, "'fallthrough' attribute specified "
                   "with a parameter");
         for (j = 0; j < nother; j++) {
             attr_norm(tstr(c, c->nodes[other[j]].tok), name, sizeof name);
-            cwarn(c, loc, "attributes", "'%s' attribute ignored", name);
+            cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute ignored", name);
         }
     }
     kids_free(&k);
@@ -1965,32 +1965,32 @@ void cdecl_shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
                 uint32_t f;
                 for (f = 0; f < r->nfields; f++)
                     if (type_is_vm(TT, TT->fields.data[r->fields + f].ty)) {
-                        cpedwarn(c, cdecl_line_start_loc(c, ltok), "", "empty declaration");
+                        cpedwarn(c, cdecl_line_start_loc(c, ltok), DW_NONE, "empty declaration");
                         warned = 1;
                         break;
                     }
             }
             if (!name) {
                 if (warned != 1 && tk != TY_ENUM) {
-                    cpedwarn(c, il, "", "unnamed struct/union that defines no "
+                    cpedwarn(c, il, DW_NONE, "unnamed struct/union that defines no "
                              "instances");
                     warned = 1;
                 }
             } else if (!tagged && sp->sc != SC_NONE) {
                 if (warned != 1)
-                    cpedwarn(c, il, "", "empty declaration with storage class "
+                    cpedwarn(c, il, DW_NONE, "empty declaration with storage class "
                              "specifier does not redeclare tag");
                 warned = 1;
                 cdecl_pending_xref(c, sp);
             } else if (!tagged && anyq) {
                 if (warned != 1)
-                    cpedwarn(c, il, "", "empty declaration with type qualifier "
+                    cpedwarn(c, il, DW_NONE, "empty declaration with type qualifier "
                              "does not redeclare tag");
                 warned = 1;
                 cdecl_pending_xref(c, sp);
             } else if (!tagged && sp->alignas_seen) {
                 if (warned != 1)
-                    cpedwarn(c, il, "", "empty declaration with '_Alignas' "
+                    cpedwarn(c, il, DW_NONE, "empty declaration with '_Alignas' "
                              "does not redeclare tag");
                 warned = 1;
                 cdecl_pending_xref(c, sp);
@@ -2017,11 +2017,11 @@ void cdecl_shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
                 }
             }
         } else if (warned != 1) {
-            cpedwarn(c, il, "", "useless type name in empty declaration");
+            cpedwarn(c, il, DW_NONE, "useless type name in empty declaration");
             warned = 1;
         }
     } else if (warned != 1 && sp->kind == TSK_TYPEDEF) {
-        cpedwarn(c, il, "", "useless type name in empty declaration");
+        cpedwarn(c, il, DW_NONE, "useless type name in empty declaration");
         warned = 1;
     }
     sp->xref_name = 0;
@@ -2042,25 +2042,25 @@ void cdecl_shadow_tag(Checker *c, Spec *sp, int warned, uint32_t ltok)
         warned = 1;
     }
     if (!warned && sp->sc != SC_NONE) {
-        cwarn(c, il, "", "useless storage class specifier in empty "
+        cwarn(c, il, DW_NONE, "useless storage class specifier in empty "
               "declaration");
         warned = 2;
     }
     if (!warned && sp->thread) {
-        cwarn(c, il, "", "useless '%s' in empty declaration",
+        cwarn(c, il, DW_NONE, "useless '%s' in empty declaration",
               sp->thread_gnu ? "__thread" : "_Thread_local");
         warned = 2;
     }
     if (!warned && anyq) {
-        cwarn(c, il, "", "useless type qualifier in empty declaration");
+        cwarn(c, il, DW_NONE, "useless type qualifier in empty declaration");
         warned = 2;
     }
     if (!warned && sp->alignas_seen) {
-        cwarn(c, il, "", "useless '_Alignas' in empty declaration");
+        cwarn(c, il, DW_NONE, "useless '_Alignas' in empty declaration");
         warned = 2;
     }
     if (warned == 2 && sp->default_int)   /* no type specifier at all */
-        cpedwarn(c, cdecl_line_start_loc(c, ltok), "", "empty declaration");
+        cpedwarn(c, cdecl_line_start_loc(c, ltok), DW_NONE, "empty declaration");
 
 }
 
@@ -2247,7 +2247,7 @@ static unsigned fn_attr_walk(Checker *c, uint32_t h, int depth)
 static unsigned nocf_ignored(Checker *c, unsigned bits, SrcLoc loc)
 {
     if ((bits & TF_NOCF) && c->opt.cf_nobranch) {
-        cwarn(c, loc, "attributes", "'nocf_check' attribute ignored. Use "
+        cwarn(c, loc, DW_ATTRIBUTES, "'nocf_check' attribute ignored. Use "
               "'-fcf-protection' option to enable it");
         bits &= ~(unsigned)TF_NOCF;
     }
@@ -2286,7 +2286,7 @@ static void declared_visit(Checker *c, uint32_t i)
     if (si < 0 || ntag(c, sn) != N_SPECS)
         return;
     if (c->nodes[sn].size == 1 && cfirst(c, idecl) == sn + 1)
-        cpedwarn(c, tloc(c, c->specs.data[si].tok0), "", "data definition has "
+        cpedwarn(c, tloc(c, c->specs.data[si].tok0), DW_NONE, "data definition has "
                  "no type or storage class");
     cdecl_pending_xref(c, &c->specs.data[si]);
     sp = c->specs.data[si];
@@ -2382,7 +2382,7 @@ static void declared_visit(Checker *c, uint32_t i)
         type_ckind(TT, type_base(TT, s.ty)) == TY_FUNC) &&
         (attrs_item_named(c, sn, "assume_aligned") ||
          attrs_item_named(c, idecl, "assume_aligned"))) {
-        cwarn(c, iloc(c, ltok), "attributes", "'assume_aligned' attribute only "
+        cwarn(c, iloc(c, ltok), DW_ATTRIBUTES, "'assume_aligned' attribute only "
               "applies to function types");
     }
     bool ign_packed = false, ign_aligned = false;
@@ -2468,7 +2468,7 @@ static void declared_visit(Checker *c, uint32_t i)
             if (sok && sz == r->size && !(fl->flags & FF_BITFIELD))
                 r->flags |= RF_TRANSPARENT;
             else
-                cwarn(c, s.loc, "attributes", "'transparent_union' attribute "
+                cwarn(c, s.loc, DW_ATTRIBUTES, "'transparent_union' attribute "
                       "ignored");
         } else if (r && !(r->flags & RF_COMPLETE))
             r->flags |= RF_TRANSPARENT;
@@ -2521,7 +2521,7 @@ static void declared_visit(Checker *c, uint32_t i)
     }
     if (g.what == GD_VAR && g.name &&
         !strcmp(cident(c, g.name), "main") && sym_public(&s))
-        cwarn(c, s.loc, "main", "'main' is usually a function");
+        cwarn(c, s.loc, DW_MAIN, "'main' is usually a function");
     if (initialized) {
         switch (g.what) {
         case GD_TYPEDEF:
@@ -2634,7 +2634,7 @@ static void declared_visit(Checker *c, uint32_t i)
                     csym(c, ref)->kind == CS_FUNC) &&
             cdecl_aset_first_arg(c, tmp, "visibility", now, sizeof now) &&
             strcmp(was, now)) {
-            Diagnostic *vd = cwarn_d(c, DL_WARNING, s.loc, "", "redeclaration "
+            Diagnostic *vd = cwarn_d(c, DL_WARNING, s.loc, DW_NONE, "redeclaration "
                                      "of '%s' with different visibility (old "
                                      "visibility preserved)", sname(c, &s));
             cdecl_locate_old_decl(c, vd, c->vis_old_ok ? &c->vis_old : csym(c, ref));
@@ -2664,7 +2664,7 @@ static void declared_visit(Checker *c, uint32_t i)
     if (csym(c, ref)->kind == CS_FUNC && csym(c, ref)->linkage == LK_INTERNAL) {
         /* leaf only means something for external functions */
         if (attrs_item_named(c, sn, "leaf") || attrs_item_named(c, idecl, "leaf"))
-            cwarn(c, iloc(c, ltok), "attributes", "'leaf' attribute has no "
+            cwarn(c, iloc(c, ltok), DW_ATTRIBUTES, "'leaf' attribute has no "
                   "effect on unit local functions");
         aset_drop(c, csym(c, ref)->aset, "leaf");
     }
@@ -2724,7 +2724,7 @@ static void trad_aggr_init(Checker *c, uint32_t idecl, uint32_t declared,
     CSym *s;
     TypeKind k;
     SrcLoc loc;
-    if (!diag_enabled(c->diag, "traditional") || init == NO_NODE ||
+    if (!diag_enabled(c->diag, DW_TRADITIONAL) || init == NO_NODE ||
         !c->cb[declared])
         return;
     s = csym(c, c->cb[declared] - 1);
@@ -2735,7 +2735,7 @@ static void trad_aggr_init(Checker *c, uint32_t idecl, uint32_t declared,
         return;
     loc = ctrad_decl_loc(c, declared, first_tok(c, init));
     if (!cin_system(c, loc))
-        cwarn(c, loc, "traditional", "traditional C rejects automatic "
+        cwarn(c, loc, DW_TRADITIONAL, "traditional C rejects automatic "
               "aggregate initialization");
     (void)idecl;
 }
@@ -2759,7 +2759,7 @@ static void cxx_uninit_members(Checker *c, SrcLoc loc, TypeId top, TypeId t)
         while (is_arr(c, ft))
             ft = type_base(TT, type_canon(TT, ft));
         if (TYPE_QUALS(ft) & TQ_CONST) {
-            Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "c++-compat",
+            Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_CPP_COMPAT,
                                     "uninitialized const member in %s is "
                                     "invalid in C++", type_q(TT, top));
             if (d && fl->name)
@@ -2776,7 +2776,7 @@ static void cxx_anon_type(Checker *c, const CSym *s)
 {
     const TypeEnt *e;
     if (s->kind != CS_OBJ || !cat_file_scope(c) || s->sc == SC_STATIC ||
-        s->sc == SC_EXTERN || !diag_enabled(c->diag, "c++-compat") ||
+        s->sc == SC_EXTERN || !diag_enabled(c->diag, DW_CPP_COMPAT) ||
         cin_system(c, s->loc))
         return;
     e = type_ent(TT, s->ty & ~(TypeId)TQ_MASK);
@@ -2788,7 +2788,7 @@ static void cxx_anon_type(Checker *c, const CSym *s)
             return;
     } else
         return;
-    cwarn(c, s->loc, "c++-compat", "non-local variable '%s' with anonymous "
+    cwarn(c, s->loc, DW_CPP_COMPAT, "non-local variable '%s' with anonymous "
           "type is questionable in C++", sname(c, s));
 }
 
@@ -2797,12 +2797,12 @@ static void cxx_uninit_const(Checker *c, const CSym *s)
 {
     TypeId t = s->ty;
     if (s->kind != CS_OBJ || s->sc == SC_EXTERN || (s->flags & CSF_PARAM) ||
-        !diag_enabled(c->diag, "c++-compat") || cin_system(c, s->loc))
+        !diag_enabled(c->diag, DW_CPP_COMPAT) || cin_system(c, s->loc))
         return;
     while (is_arr(c, t))
         t = type_base(TT, t);
     if (TYPE_QUALS(t) & TQ_CONST)
-        cwarn(c, s->loc, "c++-compat", "uninitialized 'const %s' is invalid "
+        cwarn(c, s->loc, DW_CPP_COMPAT, "uninitialized 'const %s' is invalid "
               "in C++", sname(c, s));
     else
         cxx_uninit_members(c, s->loc, t, t);
@@ -3136,11 +3136,11 @@ static void func_visit(Checker *c, uint32_t f)
             if (tk == TY_UNION && !name)
                 continue;
             if (name)
-                cwarn(c, loc, "", "'%s %s' declared inside parameter list will "
+                cwarn(c, loc, DW_NONE, "'%s %s' declared inside parameter list will "
                       "not be visible outside of this definition or "
                       "declaration", kw, cident(c, name));
             else
-                cwarn(c, loc, "", "anonymous %s declared inside parameter list "
+                cwarn(c, loc, DW_NONE, "anonymous %s declared inside parameter list "
                       "will not be visible outside of this definition or "
                       "declaration", kw);
         }
@@ -3274,7 +3274,7 @@ static void check_main_params(Checker *c, SrcLoc loc, TypeId ft)
                    !(TYPE_QUALS(type_canon(TT, q)) & TQ_ATOMIC))
                 q = type_base(TT, q);
             if (TYPE_QUALS(type_canon(TT, q)) & TQ_ATOMIC)
-                cpedwarn(c, loc, "main", "'_Atomic'-qualified parameter "
+                cpedwarn(c, loc, DW_MAIN, "'_Atomic'-qualified parameter "
                          "type %s of 'main'",
                          type_q(TT, tkind(c, t) == TY_PTR ? t : plain_type(c, t)));
         }
@@ -3283,7 +3283,7 @@ static void check_main_params(Checker *c, SrcLoc loc, TypeId ft)
         switch (argct) {
         case 1:
             if (plain_type(c, t) != TYPE_B(INT))
-                cpedwarn(c, loc, "main", "first argument of '%s' should be "
+                cpedwarn(c, loc, DW_MAIN, "first argument of '%s' should be "
                          "'int'", nm);
             break;
         case 2:
@@ -3291,10 +3291,10 @@ static void check_main_params(Checker *c, SrcLoc loc, TypeId ft)
             if (tkind(c, t) != TY_PTR || tkind(c, b) != TY_PTR ||
                 plain_type(c, type_base(TT, b)) != TYPE_B(CHAR)) {
                 if (argct == 2)
-                    cpedwarn(c, loc, "main", "second argument of '%s' should "
+                    cpedwarn(c, loc, DW_MAIN, "second argument of '%s' should "
                              "be 'char **'", nm);
                 else
-                    cpedwarn(c, loc, "main", "third argument of '%s' should "
+                    cpedwarn(c, loc, DW_MAIN, "third argument of '%s' should "
                              "probably be 'char **'", nm);
             }
             break;
@@ -3303,9 +3303,9 @@ static void check_main_params(Checker *c, SrcLoc loc, TypeId ft)
         }
     }
     if (argct > 0 && (argct < 2 || argct > 3))
-        cpedwarn(c, loc, "main", "'%s' takes only zero or two arguments", nm);
+        cpedwarn(c, loc, DW_MAIN, "'%s' takes only zero or two arguments", nm);
     if (type_ent(TT, type_canon(TT, ft))->flags & TF_VARIADIC)
-        cpedwarn(c, loc, "main", "'%s' declared as variadic function", nm);
+        cpedwarn(c, loc, DW_MAIN, "'%s' declared as variadic function", nm);
 }
 
 static bool isnt_proto(Checker *c, const CSym *old)
@@ -3400,7 +3400,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         free(ps);
     }
     if (g.default_int)
-        cpedwarn(c, loc, "implicit-int", "return type defaults to 'int'");
+        cpedwarn(c, loc, DW_IMPLICIT_INT, "return type defaults to 'int'");
     b = cbound_here(c, NS_ORD, s.name);
     if (b && csym(c, c->log.data[b - 1].ref)->kind == CS_FUNC) {
         oldc = *csym(c, c->log.data[b - 1].ref);
@@ -3415,7 +3415,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         if (have_old && is_func(c, oldt) &&
             type_compatible(TT, type_base(TT, oldt), type_base(TT, s.ty))) {
             if (type_ent(TT, type_canon(TT, oldt))->flags & TF_VARIADIC) {
-                Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "", "'%s' defined "
+                Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_NONE, "'%s' defined "
                                         "as variadic function without "
                                         "prototype", name);
                 cdecl_locate_old_decl(c, d, &oldc);
@@ -3453,27 +3453,27 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     pub = sym_public(&s);
     is_main = !strcmp(name, "main");
     inl = (s.flags & CSF_INLINE) != 0;
-    if (diag_enabled(c->diag, "strict-prototypes") && !is_prototype(c, s.ty) &&
+    if (diag_enabled(c->diag, DW_STRICT_PROTOTYPES) && !is_prototype(c, s.ty) &&
         isnt_proto(c, have_old ? &oldc : NULL))
         /* a definition's () already takes no arguments: (void) is SAFE */
-        fix_void_params(c, cwarn_d(c, DL_WARNING, loc, "strict-prototypes",
+        fix_void_params(c, cwarn_d(c, DL_WARNING, loc, DW_STRICT_PROTOTYPES,
                                    "function declaration isn't a prototype"),
                         funcdef_fnode(c, top), FIX_SAFE);
-    else if (diag_enabled(c->diag, "missing-prototypes") && pub && !is_main &&
+    else if (diag_enabled(c->diag, DW_MISSING_PROTOTYPES) && pub && !is_main &&
              isnt_proto(c, have_old ? &oldc : NULL) && !inl)
-        cwarn(c, loc, "missing-prototypes", "no previous prototype for '%s'",
+        cwarn(c, loc, DW_MISSING_PROTOTYPES, "no previous prototype for '%s'",
               name);
-    else if (diag_enabled(c->diag, "missing-prototypes") && have_old &&
+    else if (diag_enabled(c->diag, DW_MISSING_PROTOTYPES) && have_old &&
              (oldc.flags & CSF_USED) && !is_prototype(c, oldc.ty))
-        cwarn(c, loc, "missing-prototypes", "'%s' was used with no prototype "
+        cwarn(c, loc, DW_MISSING_PROTOTYPES, "'%s' was used with no prototype "
               "before its definition", name);
-    else if (diag_enabled(c->diag, "missing-declarations") && pub &&
+    else if (diag_enabled(c->diag, DW_MISSING_DECLARATIONS) && pub &&
              !have_old && !is_main && !inl)
-        cwarn(c, loc, "missing-declarations", "no previous declaration for "
+        cwarn(c, loc, DW_MISSING_DECLARATIONS, "no previous declaration for "
               "'%s'", name);
-    else if (diag_enabled(c->diag, "missing-declarations") && have_old &&
+    else if (diag_enabled(c->diag, DW_MISSING_DECLARATIONS) && have_old &&
              (oldc.flags & CSF_USED) && (oldc.flags & CSF_IMPLICIT))
-        cwarn(c, loc, "missing-declarations", "'%s' was used with no "
+        cwarn(c, loc, DW_MISSING_DECLARATIONS, "'%s' was used with no "
               "declaration before its definition", name);
     s.flags |= CSF_DEFINED | CSF_TREE_STATIC;
     s.def_loc = loc;
@@ -3488,20 +3488,20 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     if (is_main) {
         TypeId r = type_base(TT, s.ty);
         if (plain_type(c, r) != TYPE_B(INT))
-            cpedwarn(c, loc, "main", "return type of 'main' is not 'int'");
+            cpedwarn(c, loc, DW_MAIN, "return type of 'main' is not 'int'");
         else if (TYPE_QUALS(type_canon(TT, r)) & TQ_ATOMIC)
-            cpedwarn(c, loc, "main", "'_Atomic'-qualified return type of "
+            cpedwarn(c, loc, DW_MAIN, "'_Atomic'-qualified return type of "
                      "'main'");
         check_main_params(c, loc, s.ty);
         if (!pub)
-            cpedwarn(c, loc, "main", "'main' is normally a non-static "
+            cpedwarn(c, loc, DW_MAIN, "'main' is normally a non-static "
                      "function");
     }
     s.parms = cparm_make(c, funcdef_fnode(c, top));
     iso_def = !nested && (s.flags & CSF_PROTO_DEF);
     ref = cdecl_pushdecl(c, &s, g.default_int, gname_tok(c, &g));
     if (iso_def && !cin_system(c, loc))
-        cwarn(c, loc, "traditional", "traditional C rejects ISO C style "
+        cwarn(c, loc, DW_TRADITIONAL, "traditional C rejects ISO C style "
               "function definitions");
     {
         CSym *t = csym(c, ref);
@@ -3634,7 +3634,7 @@ static void body_visit(Checker *c, uint32_t i)
     {
         uint32_t *pl, *seen, np = 0, ns = 0, nk;
         uint32_t cap;
-        cwarn(c, fnloc, "old-style-definition", "old-style function "
+        cwarn(c, fnloc, DW_OLD_STYLE_DEFINITION, "old-style function "
               "definition");
         if (c->ef[fd] & 1)
             cerror(c, il, "'[*]' not allowed in other than function "
@@ -3690,7 +3690,7 @@ static void body_visit(Checker *c, uint32_t i)
                 warn_if_shadowing(c, csym(c, ref));
                 DiagOrd o0 = diag_ord(c->diag, ORD_LATE);
                 if (!cexpr_undeclared_here(c, name))    /* gcc bound it to an error */
-                    cpedwarn(c, fnloc, "implicit-int", "type of '%s' "
+                    cpedwarn(c, fnloc, DW_IMPLICIT_INT, "type of '%s' "
                              "defaults to 'int'", cident(c, name));
                 diag_ord(c->diag, o0);
             }
@@ -3736,7 +3736,7 @@ static void body_visit(Checker *c, uint32_t i)
                 (void)variadic;
                 if (!parm || !tyvalid) {
                     if (c->cd_builtin)
-                        cwarn(c, fnloc, "", "number of arguments doesn't match "
+                        cwarn(c, fnloc, DW_NONE, "number of arguments doesn't match "
                               "built-in prototype");
                     else {
                         cerror(c, il, "number of arguments doesn't match "
@@ -3763,7 +3763,7 @@ static void body_visit(Checker *c, uint32_t i)
                             cpedantic(c, c->cd_proto_loc, "prototype "
                                       "declaration");
                     } else if (c->cd_builtin) {
-                        cwarn(c, s->loc, "", "argument '%s' doesn't match "
+                        cwarn(c, s->loc, DW_NONE, "argument '%s' doesn't match "
                               "built-in prototype", sname(c, s));
                     } else {
                         cerror(c, s->loc, "argument '%s' doesn't match "
@@ -3985,7 +3985,7 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
             (s->flags & CSF_USED) && !sym_public(s))
             need_read = true;
     }
-    if (need_read && diag_enabled(c->diag, "unused-but-set-variable"))
+    if (need_read && diag_enabled(c->diag, DW_UNUSED_BUT_SET_VARIABLE))
         read_scan(c, first, last, names, read, nc);
     else
         memset(read, 1, nc);
@@ -3995,14 +3995,14 @@ static void unused_scan(Checker *c, uint32_t first, uint32_t last)
         if (s->kind == CS_OBJ && !(s->flags & CSF_PARAM) && s->name) {
             if (!(s->flags & CSF_USED)) {
                 DiagOrd o0 = diag_ord(c->diag, ORD_LATE); /* reported when the scope closes */
-                cwarn(c, s->loc, "unused-variable", "unused variable '%s'",
+                cwarn(c, s->loc, DW_UNUSED_VARIABLE, "unused variable '%s'",
                       sname(c, s));
                 diag_ord(c->diag, o0);
                 if (sym_public(s))
                     s->flags |= CSF_USED;
             } else if (!read[j] && !sym_public(s) && s->sc != SC_EXTERN &&
                        !(s->flags & CSF_ATTR_UNUSED))
-                cwarn(c, s->loc, "unused-but-set-variable", "variable '%s' set "
+                cwarn(c, s->loc, DW_UNUSED_BUT_SET_VARIABLE, "variable '%s' set "
                       "but not used", sname(c, s));
         } else if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
                    s->name && !ref_file_scope(c->cb[cand[j]] - 1))
@@ -4069,7 +4069,7 @@ void cdecl_func_end(Checker *c, uint32_t se)
     for (j = 0; j < np; j++)
         names[j] = csym(c, pl[j])->name;
     if (np && fp.scope != NO_NODE &&
-        diag_enabled(c->diag, "unused-but-set-parameter"))
+        diag_enabled(c->diag, DW_UNUSED_BUT_SET_PARAMETER))
         read_scan(c, fp.scope, se - 1, names, read, np);
     else
         memset(read, 1, np);
@@ -4077,18 +4077,18 @@ void cdecl_func_end(Checker *c, uint32_t se)
         const CSym *s = csym(c, pl[j]);
         if ((s->flags & CSF_USED) && !read[j] &&
             !(s->flags & CSF_ATTR_UNUSED))
-            cwarn(c, s->loc, "unused-but-set-parameter", "parameter '%s' set "
+            cwarn(c, s->loc, DW_UNUSED_BUT_SET_PARAMETER, "parameter '%s' set "
                   "but not used", sname(c, s));
     }
     /* typedefs made in the function and never used */
     if (fp.scope != NO_NODE && c->diag->nerrors == 0 &&
-        diag_enabled(c->diag, "unused-local-typedefs")) {
+        diag_enabled(c->diag, DW_UNUSED_LOCAL_TYPEDEFS)) {
         uint32_t q;
         for (q = fp.scope; q < se; q++)
             if (ntag(c, q) == N_DECLARED && c->cb[q]) {
                 CSym *s = csym(c, c->cb[q] - 1);
                 if (s->kind == CS_TYPEDEF && s->name && !(s->flags & CSF_USED)) {
-                    cwarn(c, s->loc, "unused-local-typedefs", "typedef '%s' "
+                    cwarn(c, s->loc, DW_UNUSED_LOCAL_TYPEDEFS, "typedef '%s' "
                           "locally defined but not used", sname(c, s));
                     s->flags |= CSF_USED;
                 }
@@ -4097,7 +4097,7 @@ void cdecl_func_end(Checker *c, uint32_t se)
     for (j = 0; j < np; j++) {
         const CSym *s = csym(c, pl[j]);
         if (s->name && !(s->flags & CSF_USED))
-            cwarn(c, s->loc, "unused-parameter", "unused parameter '%s'",
+            cwarn(c, s->loc, DW_UNUSED_PARAMETER, "unused parameter '%s'",
                   sname(c, s));
     }
     free(pl);
@@ -4152,7 +4152,7 @@ void cdecl_check_inline_statics(Checker *c)
         const CSym *f = csym(c, is->fref);
         if (!extern_inline(f))
             continue;
-        cpedwarn(c, is->loc, "", is->modifiable
+        cpedwarn(c, is->loc, DW_NONE, is->modifiable
                  ? "'%s' is static but declared in inline function '%s' which "
                    "is not static"
                  : "'%s' is static but used in inline function '%s' which is "
@@ -4181,7 +4181,7 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
         if (s->kind == CS_FUNC && (s->flags & CSF_INLINE) && sym_public(s) &&
             !cdecl_aset_has(c, s->aset, "gnu_inline", NULL) &&
             !sym_defined(s) && s->name)
-            cpedwarn(c, s->loc, "", "inline function '%s' declared but never "
+            cpedwarn(c, s->loc, DW_NONE, "inline function '%s' declared but never "
                      "defined", sname(c, s));
     }
     /* the file scope */
@@ -4194,10 +4194,10 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
             (s->flags & CSF_DECL_EXTERNAL) && s->name &&
             !cdecl_aset_has(c, s->aset, "weakref", NULL)) {
             if (s->flags & CSF_CUSED)
-                cpedwarn(c, s->loc, "", "'%s' used but never defined",
+                cpedwarn(c, s->loc, DW_NONE, "'%s' used but never defined",
                          sname(c, s));
             else
-                cwarn(c, s->loc, "unused-function", "'%s' declared 'static' "
+                cwarn(c, s->loc, DW_UNUSED_FUNCTION, "'%s' declared 'static' "
                       "but never defined", sname(c, s));
         }
     }
@@ -4210,7 +4210,7 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
                     !(s->flags & CSF_DECL_EXTERNAL) && s->name &&
                     sym_public(s) == (pass == 1) &&
                     is_incomplete_array(c, s->ty)) {
-                    cwarn(c, s->loc, "", "array '%s' assumed to have one "
+                    cwarn(c, s->loc, DW_NONE, "array '%s' assumed to have one "
                           "element", sname(c, s));
                     s->ty = type_array(TT, type_base(TT, s->ty), 1);
                 }
@@ -4295,7 +4295,7 @@ void cdecl_node(Checker *c, uint32_t i)
                 attr_norm(tstr(c, c->nodes[ak.p[n]].tok), nm, sizeof nm);
                 if (!strcmp(nm, "fallthrough"))
                     cwarn(c, cdecl_line_start_loc(c, cnode(c, i)->tok),
-                          "attributes", "'fallthrough' attribute ignored");
+                          DW_ATTRIBUTES, "'fallthrough' attribute ignored");
             }
             kids_free(&ak);
         }

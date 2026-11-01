@@ -32,14 +32,14 @@ static Diagnostic *stray_token(Parser *p, const Tok *t, SrcLoc loc)
 {
     unsigned c = (unsigned char)*tok_text_raw(p->sm, p->in, t);
     if (c == '"' || c == '\'')
-        return diag_report(p->diag, DL_ERROR, "", loc,
+        return diag_report(p->diag, DL_ERROR, DW_NONE, loc,
                            "missing terminating %c character", (int)c);
     if (c == '#' && tok_text_raw(p->sm, p->in, t)[1] == '#')
-        return diag_report(p->diag, DL_ERROR, "", loc, "stray '##' in program");
+        return diag_report(p->diag, DL_ERROR, DW_NONE, loc, "stray '##' in program");
     if (c > ' ' && c < 0x7f)
-        return diag_report(p->diag, DL_ERROR, "", loc, "stray '%c' in program",
+        return diag_report(p->diag, DL_ERROR, DW_NONE, loc, "stray '%c' in program",
                            (int)c);
-    return diag_report(p->diag, DL_ERROR, "", loc, "stray '\\%o' in program", c);
+    return diag_report(p->diag, DL_ERROR, DW_NONE, loc, "stray '\\%o' in program", c);
 }
 
 static void add_macro_notes(Parser *p, Diagnostic *d, uint32_t i);
@@ -315,7 +315,7 @@ static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
 
 /* Report from the parser: the preprocessor has moved on, so the include
  * chain is not the one of the token's own place. */
-static Diagnostic *pvreport(Parser *p, DiagLevel lvl, const char *opt,
+static Diagnostic *pvreport(Parser *p, DiagLevel lvl, DiagOpt opt,
                             SrcLoc loc, const char *fmt, va_list ap)
 {
     void (*chain)(void *, SrcLoc **, int *) = p->diag->include_chain;
@@ -330,11 +330,11 @@ static void pdiag(Parser *p, DiagLevel lvl, SrcLoc loc, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    pvreport(p, lvl, "", loc, fmt, ap);
+    pvreport(p, lvl, DW_NONE, loc, fmt, ap);
     va_end(ap);
 }
 
-static void pdiag_tag(Parser *p, DiagLevel lvl, const char *tag, SrcLoc loc,
+static void pdiag_tag(Parser *p, DiagLevel lvl, DiagOpt tag, SrcLoc loc,
                       const char *fmt, ...)
 {
     va_list ap;
@@ -366,7 +366,7 @@ static void classify_char(Parser *p, const PTok *t, const char *s)
     Lit l;
     e.p = p;
     e.loc = ptok_loc(t);
-    lit_escape_diags(s, t->t.len, diag_option_state(p->diag, "pedantic") != 0,
+    lit_escape_diags(s, t->t.len, diag_option_state(p->diag, DW_PEDANTIC) != 0,
                      parse_esc_emit, &e);
     lit_char(&target_x86_64, s, t->t.len, &l);
     if (!l.msg[0])
@@ -374,7 +374,7 @@ static void classify_char(Parser *p, const PTok *t, const char *s)
     if (l.level == 2)
         pdiag(p, DL_ERROR, e.loc, "%s", l.msg);
     else if (l.level == 1)
-        pdiag_tag(p, DL_WARNING, l.id ? l.id : "", e.loc, "%s", l.msg);
+        pdiag_tag(p, DL_WARNING, l.id, e.loc, "%s", l.msg);
 }
 
 static Diagnostic *pvreport_f(Parser *p, DiagLevel lvl, SrcLoc loc,
@@ -383,7 +383,7 @@ static Diagnostic *pvreport_f(Parser *p, DiagLevel lvl, SrcLoc loc,
     Diagnostic *d;
     va_list ap;
     va_start(ap, fmt);
-    d = pvreport(p, lvl, "", loc, fmt, ap);
+    d = pvreport(p, lvl, DW_NONE, loc, fmt, ap);
     va_end(ap);
     return d;
 }
@@ -477,10 +477,10 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     if (i == ci(p))
         classify_num(p, i);
     if (!strncmp(fmt, "expected ", 9) && conflict_marker(p, i))
-        d = pvreport(p, DL_ERROR, "", loc,
+        d = pvreport(p, DL_ERROR, DW_NONE, loc,
                      "version control conflict marker in file", ap);
     else
-        d = pvreport(p, DL_ERROR, "", loc, fmt, ap);
+        d = pvreport(p, DL_ERROR, DW_NONE, loc, fmt, ap);
     add_macro_notes(p, d, i);
     return d;
 }
@@ -533,7 +533,7 @@ static void fix_missing(Parser *p, Diagnostic *d, uint32_t i, const char *text,
                          text, app);
 }
 
-static void pwarn_opt(Parser *p, const char *opt, uint32_t i, const char *fmt,
+static void pwarn_opt(Parser *p, DiagOpt opt, uint32_t i, const char *fmt,
                       ...);
 
 static void check_cxx_keyword(Parser *p, const Tok *t, size_t i)
@@ -551,20 +551,20 @@ static void check_cxx_keyword(Parser *p, const Tok *t, size_t i)
     if (n < 3 || n > 16)
         return;
     s = tok_text_raw(p->sm, p->in, t);
-    if (!strchr("abcdefmnoprstuv", *s) || !diag_enabled(p->diag, "c++-compat"))
+    if (!strchr("abcdefmnoprstuv", *s) || !diag_enabled(p->diag, DW_CPP_COMPAT))
         return;
     for (k = 0; k < sizeof kw / sizeof *kw; k++)
         if (strlen(kw[k]) == n && !memcmp(s, kw[k], n)) {
             PTok pt = p->toks.data[i];
             if (ckw_of(p, &pt))
                 return;
-            pwarn_opt(p, "c++-compat", (uint32_t)i,
+            pwarn_opt(p, DW_CPP_COMPAT, (uint32_t)i,
                       "identifier '%s' conflicts with C++ keyword", kw[k]);
             return;
         }
 }
 
-static void pwarn_opt(Parser *p, const char *opt, uint32_t i, const char *fmt,
+static void pwarn_opt(Parser *p, DiagOpt opt, uint32_t i, const char *fmt,
                       ...)
 {
     va_list ap;
@@ -582,7 +582,7 @@ static void pwarn(Parser *p, uint32_t i, const char *fmt, ...)
     if (p->unwind)
         return;
     va_start(ap, fmt);
-    pvreport(p, p->diag->pedantic_errors ? DL_ERROR : DL_WARNING, "",
+    pvreport(p, p->diag->pedantic_errors ? DL_ERROR : DL_WARNING, DW_NONE,
              tok_loc(p, i), fmt, ap);
     va_end(ap);
     diag_mark_last(p->diag, ORD_TIE);
@@ -624,7 +624,7 @@ static void fallthrough_not_followed(Parser *p, uint32_t i)
             first--;
         }
     }
-    pwarn_opt(p, "attributes", first, "'fallthrough' attribute not followed "
+    pwarn_opt(p, DW_ATTRIBUTES, first, "'fallthrough' attribute not followed "
               "by ';'");
 }
 

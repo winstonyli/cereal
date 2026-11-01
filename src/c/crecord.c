@@ -39,7 +39,7 @@ void cdecl_typedef_tag_clash(Checker *c, uint32_t name, SrcLoc at, SrcLoc old)
     Diagnostic *d;
     if (cin_system(c, at))
         return;
-    d = cwarn_d(c, DL_WARNING, at, "c++-compat", "using '%s' as both a typedef "
+    d = cwarn_d(c, DL_WARNING, at, DW_CPP_COMPAT, "using '%s' as both a typedef "
                 "and a tag is invalid in C++", cident(c, name));
     if (d && old)
         cnote(c, d, old, "originally defined here");
@@ -124,7 +124,7 @@ static void cxx_defining_cast(Checker *c, uint32_t st, bool lit_only)
             if (tg == N_CAST || tg == N_COMPOUND_LIT) {
                 if (first_child(c, a) == prev &&
                     (!lit_only || tg == N_COMPOUND_LIT))
-                    cwarn(c, tloc(c, cnode(c, a)->tok), "c++-compat",
+                    cwarn(c, tloc(c, cnode(c, a)->tok), DW_CPP_COMPAT,
                           "defining a type in a %s is invalid in C++",
                           tg == N_CAST ? "cast" : "compound literal");
                 break;
@@ -238,13 +238,13 @@ void cdecl_open_visit(Checker *c, uint32_t i)
             default: break;
             }
         if (in_sz || in_ty || in_al)
-            cwarn(c, loc, "c++-compat", "defining type in '%s' expression is "
+            cwarn(c, loc, DW_CPP_COMPAT, "defining type in '%s' expression is "
                   "invalid in C++", in_sz ? "sizeof" : in_ty ? "typeof"
                                                               : "alignof");
     }
     cxx_defining_cast(c, st, false);
     if (c->recs.len && !vec_last(&c->recs).is_enum &&
-        diag_enabled(c->diag, "c++-compat")) {
+        diag_enabled(c->diag, DW_CPP_COMPAT)) {
         if (want == TY_ENUM)
             type_enum(TT, t)->in_struct = true;
         else
@@ -266,7 +266,7 @@ void cxx_in_struct_use(Checker *c, SrcLoc at, const char *what,
     Diagnostic *d;
     if (cin_system(c, at))
         return;
-    d = cwarn_d(c, DL_WARNING, at, "c++-compat", "%s defined in struct or "
+    d = cwarn_d(c, DL_WARNING, at, DW_CPP_COMPAT, "%s defined in struct or "
                 "union is not visible in C++", what);
     if (d && def)
         cnote(c, d, def, "%s defined here", noted);
@@ -462,10 +462,10 @@ static void packed_unnecessary(Checker *c, TypeId t, uint32_t open,
     const Record *r = type_record(TT, t);
     SrcLoc loc = finish_loc(c, open, close_tok);
     if (r->tag)
-        cwarn(c, loc, "packed", "packed attribute is unnecessary for '%s'",
+        cwarn(c, loc, DW_PACKED, "packed attribute is unnecessary for '%s'",
               cident(c, r->tag));
     else
-        cwarn(c, loc, "packed", "packed attribute is unnecessary");
+        cwarn(c, loc, DW_PACKED, "packed attribute is unnecessary");
 }
 
 /* place_field and finalize_record_size: -Wpadded.  A field placed past the
@@ -481,7 +481,7 @@ static void padded_check(Checker *c, TypeId t, bool is_union, uint32_t open,
         bool bf = (fl->flags & FF_BITFIELD) != 0;
         uint64_t bits = bf ? fl->width : type_size(TT, fl->ty, NULL) * 8;
         if (!is_union && !bf && fl->off_bits > pos)
-            cwarn(c, fl->loc, "padded", "padding struct to align '%s'",
+            cwarn(c, fl->loc, DW_PADDED, "padding struct to align '%s'",
                   fl->name ? cident(c, fl->name) : "({anonymous})");
         if (is_union ? bits > end : fl->off_bits + bits > end)
             end = is_union ? bits : fl->off_bits + bits;
@@ -489,7 +489,7 @@ static void padded_check(Checker *c, TypeId t, bool is_union, uint32_t open,
     }
     end = (end + 7) / 8;
     if (r->size > end)
-        cwarn(c, finish_loc(c, open, close_tok), "padded", "padding struct "
+        cwarn(c, finish_loc(c, open, close_tok), DW_PADDED, "padding struct "
               "size to alignment boundary with %llu bytes",
               (unsigned long long)(r->size - end));
 }
@@ -544,8 +544,8 @@ static void wina_check(Checker *c, TypeId t, const FieldIn *f, uint32_t m,
     const Field *fl;
     unsigned rw = attr_wina, rp = 0;
     uint32_t k;
-    bool on_w = diag_enabled(c->diag, "if-not-aligned"),
-         on_p = diag_enabled(c->diag, "packed-not-aligned");
+    bool on_w = diag_enabled(c->diag, DW_IF_NOT_ALIGNED),
+         on_p = diag_enabled(c->diag, DW_PACKED_NOT_ALIGNED);
     if (!r || m != r->nfields)
         return;
     fl = TT->fields.data + r->fields;
@@ -572,7 +572,7 @@ static void wina_check(Checker *c, TypeId t, const FieldIn *f, uint32_t m,
         rp = 0;
     if (rw ? r->align < rw : rp && r->align < rp) {
         unsigned need = rw ? rw : rp;
-        cwarn(c, end, rw ? "if-not-aligned" : "packed-not-aligned",
+        cwarn(c, end, rw ? DW_IF_NOT_ALIGNED : DW_PACKED_NOT_ALIGNED,
               "alignment %u of '%s %s' is less than %u", r->align,
               r->flags & RF_UNION ? "union" : "struct",
               r->tag ? cident(c, r->tag) : "", need);
@@ -589,7 +589,7 @@ static void wina_check(Checker *c, TypeId t, const FieldIn *f, uint32_t m,
         if (!v || !(w ? on_w : on_p))
             continue;
         if ((fl[k].off_bits / 8) % v)
-            cwarn(c, f[k].loc, w ? "if-not-aligned" : "packed-not-aligned",
+            cwarn(c, f[k].loc, w ? DW_IF_NOT_ALIGNED : DW_PACKED_NOT_ALIGNED,
                   "'%s' offset %llu in '%s %s' isn't aligned to %u",
                   cident(c, f[k].name),
                   (unsigned long long)(fl[k].off_bits / 8),
@@ -643,13 +643,13 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     attrs_of_children(c, i, &a);
     c->attr_at_set = false;
     if (a.noinline)
-        cwarn(c, iloc(c, close_tok), "attributes",
+        cwarn(c, iloc(c, close_tok), DW_ATTRIBUTES,
               "'noinline' attribute does not apply to types");
     if (a.used)
-        cwarn(c, iloc(c, close_tok), "attributes",
+        cwarn(c, iloc(c, close_tok), DW_ATTRIBUTES,
               "'used' attribute does not apply to types");
     if (a.nonstring)
-        cwarn(c, iloc(c, close_tok), "attributes",
+        cwarn(c, iloc(c, close_tok), DW_ATTRIBUTES,
               "'nonstring' attribute does not apply to types");
     if (a.desig && want == TY_UNION)
         cerror(c, iloc(c, close_tok), "'designated_init' attribute is only "
@@ -737,18 +737,18 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
     wina_check(c, t, f, m, a.wina_al,
                cbol_tok(c, close_tok) == close_tok + 1 ? cinput_loc(c, close_tok)
                                                        : loc);
-    if (diag_enabled(c->diag, "padded"))
+    if (diag_enabled(c->diag, DW_PADDED))
         padded_check(c, t, want == TY_UNION, open, close_tok);
-    if (a.packed && want != TY_UNION && diag_enabled(c->diag, "packed") &&
+    if (a.packed && want != TY_UNION && diag_enabled(c->diag, DW_PACKED) &&
         type_packed_unnecessary(TT, t, f, m, c->pack, a.aligned, a.ms, -1))
         packed_unnecessary(c, t, open, close_tok);
-    if (!a.packed && want != TY_UNION && diag_enabled(c->diag, "packed"))
+    if (!a.packed && want != TY_UNION && diag_enabled(c->diag, DW_PACKED))
         for (k = 0; k < m; k++)
             if (f[k].packed && !f[k].align && f[k].name &&
                 type_align(TT, f[k].ty) != 1 &&
                 type_packed_unnecessary(TT, t, f, m, c->pack, a.aligned, a.ms,
                                         (long)k))
-                cwarn(c, f[k].loc, "attributes", "packed attribute is "
+                cwarn(c, f[k].loc, DW_ATTRIBUTES, "packed attribute is "
                       "unnecessary for '%s'", cident(c, f[k].name));
     if (want == TY_UNION)       /* a member of the other storage order */
         for (k = 0; k < m; k++) {
@@ -757,7 +757,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
                 ft = type_canon(TT, type_base(TT, ft));
             if (is_rec(c, ft) &&
                 ((type_record(TT, ft)->flags & RF_SSO) != 0) != (a.sso == 1))
-                cwarn(c, f[k].loc, "scalar-storage-order", "type punning "
+                cwarn(c, f[k].loc, DW_SCALAR_STORAGE_ORDER, "type punning "
                       "toggles scalar storage order");
         }
     if (a.desig && want != TY_UNION)
@@ -786,7 +786,7 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
         if (ok)
             r->flags |= RF_TRANSPARENT;
         else
-            cwarn(c, loc, "", "union cannot be made transparent");
+            cwarn(c, loc, DW_NONE, "union cannot be made transparent");
     }
     /* warn_cxx_compat_finish_struct: last, over every member (the erroneous
      * ones too; a duplicate's name is gone) */
@@ -799,13 +799,13 @@ static void struct_finish(Checker *c, uint32_t i, uint32_t open, int want)
         for (k = 0; k < n; k++)
             if (f[k].name && c->mseen[f[k].name] == c->mgen &&
                 !cin_system(c, f[k].loc))
-                cwarn(c, f[k].loc, "c++-compat", "using '%s' as both field "
+                cwarn(c, f[k].loc, DW_CPP_COMPAT, "using '%s' as both field "
                       "and typedef name is invalid in C++",
                       cident(c, f[k].name));
     }
     c->tdseen.len = rd.first_td;
     if (n == 0 && !cin_system(c, loc))
-        cwarn(c, loc, "c++-compat", "empty %s has size 0 in C, size 1 in C++",
+        cwarn(c, loc, DW_CPP_COMPAT, "empty %s has size 0 in C, size 1 in C++",
               want == TY_UNION ? "union" : "struct");
     if (c->opt.dump && !c->quiet) {
         StrBuf sb;
@@ -903,12 +903,12 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
                 csym(c, ref)->flags |= CSF_ATTR_UNUSED;
             if (!attr_known(an) || !strcmp(an, "maybe_unused") ||
                 !strcmp(an, "nodiscard")) {
-                cwarn(c, loc, "attributes", "'%s' attribute directive "
+                cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute directive "
                       "ignored", an);
                 continue;
             }
             if (!strcmp(an, "malloc")) {
-                cwarn(c, loc, "attributes", "'malloc' attribute ignored; "
+                cwarn(c, loc, DW_ATTRIBUTES, "'malloc' attribute ignored; "
                       "valid only for functions");
                 continue;
             }
@@ -924,7 +924,7 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
             }
             for (f = 0; f < sizeof fnonly / sizeof *fnonly; f++)
                 if (!strcmp(an, fnonly[f])) {
-                    cwarn(c, loc, "attributes", "'%s' attribute only applies "
+                    cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute only applies "
                           "to function types", an);
                     break;
                 }
@@ -932,7 +932,7 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
                 continue;
             for (f = 0; f < sizeof ignored / sizeof *ignored; f++)
                 if (!strcmp(an, ignored[f])) {
-                    cwarn(c, loc, "attributes", "'%s' attribute ignored", an);
+                    cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute ignored", an);
                     break;
                 }
         }
@@ -1129,7 +1129,7 @@ static void enum_finish(Checker *c, uint32_t i, uint32_t open)
     if (e->packed || c->opt.short_enums || prec > 32) {
         tem = type_for_bits(c, prec, uns);
         if (is_err(c, tem)) {
-            cpedwarn(c, iloc(c, after_tok(c, i)), "", "enumeration values "
+            cpedwarn(c, iloc(c, after_tok(c, i)), DW_NONE, "enumeration values "
                      "exceed range of largest integer");
             tem = TYPE_B(LLONG);
         }
@@ -1209,7 +1209,7 @@ static void tag_visibility(Checker *c, uint32_t i)
             if (!strcmp(an, "visibility") &&
                 !attr_scope_of(c, c->nodes[it.p[q]].tok))
                 cwarn(c, tloc(c, etok ? etok : cnode(c, tg)->tok),
-                      "attributes", "'visibility' attribute ignored on types");
+                      DW_ATTRIBUTES, "'visibility' attribute ignored on types");
         }
         kids_free(&it);
     }
@@ -1233,7 +1233,7 @@ void cdecl_struct_visit(Checker *c, uint32_t i)
                 en = ek.p[j];
         kids_free(&ek);
         if (en != NO_NODE && tpunct(c, last_tok(c, en) + 1) == P_COMMA)
-            cc90(c, tloc(c, last_tok(c, en) + 1), NULL, "comma at end of "
+            cc90(c, tloc(c, last_tok(c, en) + 1), DW_NONE, "comma at end of "
                  "enumerator list");
     }
     if (want == TY_ENUM && find_child(c, i, N_TYPE_NAME) != NO_NODE) {
@@ -1302,11 +1302,11 @@ static void ptr_type_attrs(Checker *c, uint32_t d, TypeId ty, uint32_t tok,
                     saw_aligned = true;
                 else if (!strcmp(an, "packed")) {
                     if (saw_aligned)
-                        cwarn(c, iloc(c, tok), "attributes", "ignoring "
+                        cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "ignoring "
                               "attribute 'packed' because it conflicts with "
                               "attribute 'aligned'");
                     else
-                        cwarn(c, iloc(c, tok), "attributes", "'packed' "
+                        cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'packed' "
                               "attribute ignored for type %s",
                               type_q(TT, ty));
                 }
@@ -1412,7 +1412,7 @@ void cdecl_member_decl_visit(Checker *c, uint32_t i)
             if ((tk == TY_STRUCT || tk == TY_UNION) && sp.kind != TSK_TYPEDEF)
                 ok = type_record(TT, type_canon(TT, sp.ty))->tag == 0;
             if (!ok)
-                cpedwarn(c, tloc(c, ltok), "", "declaration does not declare "
+                cpedwarn(c, tloc(c, ltok), DW_NONE, "declaration does not declare "
                          "anything");
             else {
                 GDecl g;

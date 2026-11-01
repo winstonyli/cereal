@@ -166,7 +166,7 @@ static void warn_about_goto(Checker *c, SrcLoc gloc, const CLabel *l,
         d = cerror_d(c, gloc, "jump into scope of identifier with variably "
                      "modified type");
     else
-        d = cwarn_d(c, DL_WARNING, gloc, "jump-misses-init", "jump skips "
+        d = cwarn_d(c, DL_WARNING, gloc, DW_JUMP_MISSES_INIT, "jump skips "
                     "variable initialization");
     if (!d)
         return;
@@ -259,7 +259,7 @@ static void define_label(Checker *c, CStmt *s, uint32_t node, uint32_t key)
     if (!name)
         return;
     if (lookup_ord(c, name) != SYM_NONE && !cin_system(c, loc))
-        cwarn(c, loc, "traditional", "traditional C lacks a separate "
+        cwarn(c, loc, DW_TRADITIONAL, "traditional C lacks a separate "
               "namespace for labels, identifier '%s' conflicts",
               cident(c, name));
     if (idx) {
@@ -338,10 +338,10 @@ static void emit_label(Checker *c, CLabel *l)
                label_name(c, l));
     else if (!l->used) {
         if (l->defined)
-            cwarn(c, l->loc, "unused-label", "label '%s' defined but not "
+            cwarn(c, l->loc, DW_UNUSED_LABEL, "label '%s' defined but not "
                   "used", label_name(c, l));
         else
-            cwarn(c, l->loc, "unused-label", "label '%s' declared but not "
+            cwarn(c, l->loc, DW_UNUSED_LABEL, "label '%s' declared but not "
                   "defined", label_name(c, l));
     }
 }
@@ -473,13 +473,13 @@ static void conv_check(Checker *c, SrcLoc loc, TypeId T, TypeId S,
             const char *s1 = type_q(TT, S);
             char sb1[96];
             snprintf(sb1, sizeof sb1, "%s", s1);
-            cwarn(c, loc, "overflow", "overflow in conversion from %s to %s "
+            cwarn(c, loc, DW_OVERFLOW, "overflow in conversion from %s to %s "
                   "changes value from '%s' to '%s'", sb1, type_q(TT, T), a, b);
         }
     } else if (!cexpr_fits(c, v, S, signed_of(c, T))) {
         char sb1[96];
         snprintf(sb1, sizeof sb1, "%s", type_q(TT, S));
-        cwarn(c, loc, "overflow", "%sconversion from %s to %s changes value "
+        cwarn(c, loc, DW_OVERFLOW, "%sconversion from %s to %s changes value "
               "from '%s' to '%s'", ssg ? "unsigned " : "", sb1,
               type_q(TT, T), a, b);
     }
@@ -545,7 +545,7 @@ static void start_switch(Checker *c, CStmt *s, uint32_t sw_node, uint32_t e)
             sw.orig = t;
             if ((type_ckind(TT, ct) == TY_LONG || type_ckind(TT, ct) == TY_ULONG) &&
                 !cin_system(c, first_loc(c, e)))
-                cwarn(c, first_loc(c, e), "traditional", "'long' switch "
+                cwarn(c, first_loc(c, e), DW_TRADITIONAL, "'long' switch "
                       "expression not converted to 'int' in ISO C");
             if (tg(c, p) == N_CHAR &&
                 type_ckind(TT, c->ty[p]) == TY_INT)
@@ -589,7 +589,7 @@ static bool switch_jump_checks(Checker *c, CStmt *s, const CSwitch *sw,
                 d = cerror_d(c, case_loc, "switch jumps into scope of "
                              "identifier with variably modified type");
             } else
-                d = cwarn_d(c, DL_WARNING, case_loc, "jump-misses-init",
+                d = cwarn_d(c, DL_WARNING, case_loc, DW_JUMP_MISSES_INIT,
                             "switch jumps over variable initialization");
             if (d) {
                 cnote(c, d, sw->loc, "switch starts here");
@@ -685,7 +685,7 @@ static void add_case_label(Checker *c, CStmt *s, SrcLoc loc, uint32_t lowe,
         if (hi == lo)
             have_hi = false;
         else if (cmp_key(sw, sgn, lo, hi) >= 0)
-            cwarn(c, loc, "", "empty range specified");
+            cwarn(c, loc, DW_NONE, "empty range specified");
     }
     pos = case_lower_bound(s, sw, sgn, lo);
     if (pos < s->cases.len && s->cases.data[pos].lo == lo) {
@@ -789,8 +789,8 @@ static void finish_switch(Checker *c, CStmt *s)
     bool sgn = type_is_signed(TT, sw.ty);
     size_t k, n = s->cases.len - sw.cbase;
     CCase *cs = s->cases.data + sw.cbase;
-    int sw_enum = diag_option_state(c->diag, "switch");
-    int sw_enum_all = diag_option_state(c->diag, "switch-enum");
+    int sw_enum = diag_option_state(c->diag, DW_SWITCH);
+    int sw_enum_all = diag_option_state(c->diag, DW_SWITCH_ENUM);
     if (sw.orig != ERRT && n) {
         unsigned ob = type_int_bits(TT, sw.orig), tb = type_int_bits(TT, sw.ty);
         bool osg = type_is_signed(TT, sw.orig);
@@ -810,20 +810,20 @@ static void finish_switch(Checker *c, CStmt *s)
                 bool hi_gt = cmp_val(cs[k].hi, sgn, mx, osg) > 0;
                 if (lo_lt) {
                     if (!cs[k].range || hi_lt)
-                        cwarn(c, cs[k].loc, "switch-outside-range", "case "
+                        cwarn(c, cs[k].loc, DW_SWITCH_OUTSIDE_RANGE, "case "
                               "label value is less than minimum value for "
                               "type");
                     else
-                        cwarn(c, cs[k].loc, "switch-outside-range", "lower "
+                        cwarn(c, cs[k].loc, DW_SWITCH_OUTSIDE_RANGE, "lower "
                               "value in case label range less than minimum "
                               "value for type");
                 }
                 if (hi_gt) {
                     if (!cs[k].range || lo_gt)
-                        cwarn(c, cs[k].loc, "switch-outside-range", "case "
+                        cwarn(c, cs[k].loc, DW_SWITCH_OUTSIDE_RANGE, "case "
                               "label value exceeds maximum value for type");
                     else
-                        cwarn(c, cs[k].loc, "switch-outside-range", "upper "
+                        cwarn(c, cs[k].loc, DW_SWITCH_OUTSIDE_RANGE, "upper "
                               "value in case label range exceeds maximum "
                               "value for type");
                 }
@@ -831,7 +831,7 @@ static void finish_switch(Checker *c, CStmt *s)
         }
     }
     if (!sw.has_default)
-        cwarn(c, sw.loc, "switch-default", "switch missing default case");
+        cwarn(c, sw.loc, DW_SWITCH_DEFAULT, "switch missing default case");
     bool covers_bool = false;
     if (sw.bool_cond && n && sw.has_default) {
         /* a default after labels for both 0 and 1 can never be taken */
@@ -848,7 +848,7 @@ static void finish_switch(Checker *c, CStmt *s)
     if (sw.bool_cond && n &&
         ((sgn && (int64_t)cs[0].lo < 0) ||
          cmp_val(cs[n - 1].hi, sgn, 1, false) > 0 || covers_bool))
-        cwarn(c, sw.loc, "switch-bool", "switch condition has boolean value");
+        cwarn(c, sw.loc, DW_SWITCH_BOOL, "switch condition has boolean value");
     if (sw.orig != ERRT && type_ckind(TT, sw.orig) == TY_ENUM &&
         (sw_enum > 0 || sw_enum_all > 0)) {
         CEnumSet *e;
@@ -864,10 +864,10 @@ static void finish_switch(Checker *c, CStmt *s)
             if (found || e->unused[q])      /* PR c++/105497 */
                 continue;
             if (!sw.has_default && sw_enum > 0)
-                cwarn(c, sw.loc, "switch", "enumeration value '%s' not "
+                cwarn(c, sw.loc, DW_SWITCH, "enumeration value '%s' not "
                       "handled in switch", cident(c, e->name[q]));
             else if (sw_enum_all > 0)
-                cwarn(c, sw.loc, "switch-enum", "enumeration value '%s' not "
+                cwarn(c, sw.loc, DW_SWITCH_ENUM, "enumeration value '%s' not "
                       "handled in switch", cident(c, e->name[q]));
         }
         if (sw_enum > 0 || sw_enum_all > 0)
@@ -884,12 +884,12 @@ static void finish_switch(Checker *c, CStmt *s)
                     fmt_val(buf, sizeof buf, v, sgn);
                     if (tg(c, strip_paren(c, sw.cond)) == N_CAST)
                         /* a cast has no original type to name */
-                        cwarn(c, cs[k].loc, sw_enum > 0 ? "switch"
-                              : "switch-enum", "case value '%s' not in "
+                        cwarn(c, cs[k].loc, sw_enum > 0 ? DW_SWITCH
+                              : DW_SWITCH_ENUM, "case value '%s' not in "
                               "enumerated type", buf);
                     else
-                        cwarn(c, cs[k].loc, sw_enum > 0 ? "switch"
-                              : "switch-enum", "case value '%s' not in "
+                        cwarn(c, cs[k].loc, sw_enum > 0 ? DW_SWITCH
+                              : DW_SWITCH_ENUM, "case value '%s' not in "
                               "enumerated type %s", buf, type_q(TT, sw.orig));
                 }
             }
@@ -953,7 +953,7 @@ static void cond_check(Checker *c, uint32_t e)
     if (a != NO_NODE) {
         /* cereal-only fix (gcc has none): the parentheses keep the meaning
          * but silence a warning that is often a real = for == */
-        Diagnostic *d = cwarn_d(c, DL_WARNING, first_loc(c, e), "parentheses",
+        Diagnostic *d = cwarn_d(c, DL_WARNING, first_loc(c, e), DW_PARENTHESES,
                                 "suggest parentheses around assignment used "
                                 "as truth value");
         cfix_ins(c, d, 0, first_tok(c, a), false, "(", FIX_MAYBE);
@@ -1141,10 +1141,10 @@ static SrcLoc func_loc(Checker *c)
 /* pedwarn (loc, warn_return_type >= 0 ? OPT_Wreturn_type : 0, ...) */
 static Diagnostic *return_pedwarn(Checker *c, SrcLoc loc, const char *msg)
 {
-    int st = diag_option_state(c->diag, "return-type");
+    int st = diag_option_state(c->diag, DW_RETURN_TYPE);
     if (st == 0)
         return NULL;
-    return cpedwarn(c, loc, st > 0 ? "return-type" : "", "%s", msg);
+    return cpedwarn(c, loc, st > 0 ? DW_RETURN_TYPE : DW_NONE, "%s", msg);
 }
 
 static bool is_local_var(Checker *c, uint32_t id)
@@ -1243,17 +1243,17 @@ static void return_local_addr(Checker *c, uint32_t e, SrcLoc loc)
             if (c->u->toks[c->nodes[e].tok].t.punct != P_AMP)
                 return;
             if (lvalue_root_local(c, e - 1))
-                cwarn(c, loc, "return-local-addr", "function returns address "
+                cwarn(c, loc, DW_RETURN_LOCAL_ADDR, "function returns address "
                       "of local variable");
             return;
         case N_ADDR_LABEL:
-            cwarn(c, loc, "return-local-addr", "function returns address of "
+            cwarn(c, loc, DW_RETURN_LOCAL_ADDR, "function returns address of "
                   "label");
             return;
         case N_IDENT: case N_MEMBER_EXPR: case N_INDEX:
             /* an array decays to the address of its first element */
             if (is_array_ty(c, c->ty[e]) && lvalue_root_local(c, e))
-                cwarn(c, istop ? first_loc(c, e) : loc, "return-local-addr", "function returns address "
+                cwarn(c, istop ? first_loc(c, e) : loc, DW_RETURN_LOCAL_ADDR, "function returns address "
                       "of local variable");
             return;
         default:
@@ -1285,7 +1285,7 @@ void stmt_return(Checker *c, uint32_t i)
             top(st(c))->rv = true;
     }
     if (f->flags & CSF_NORETURN)
-        cwarn(c, loc, "", "function declared 'noreturn' has a 'return' "
+        cwarn(c, loc, DW_NONE, "function declared 'noreturn' has a 'return' "
               "statement");
     if (e == NOB) {
         if (!is_void && valtype != ERRT) {
@@ -1540,7 +1540,7 @@ void stmt_declared(Checker *c, CStmt *s, uint32_t i)
         if (sy->kind != CS_OBJ || sy->sc == SC_STATIC || sy->sc == SC_EXTERN ||
             sy->linkage != LK_NONE || (sy->flags & CSF_PARAM) ||
             p == NOB || tg(c, p) != N_INIT_DECL || p == i + 1 ||
-            diag_option_state(c->diag, "jump-misses-init") <= 0)
+            diag_option_state(c->diag, DW_JUMP_MISSES_INIT) <= 0)
             return;
     }
     u.block = s->cur;
@@ -1584,7 +1584,7 @@ void stmt_if(Checker *c, uint32_t i)
 {
     uint32_t kids[32], n = node_children(c->nodes, i, kids, 32);
     if (n == 6 && has_bare_ifelse(c, kids[3]))
-        cwarn(c, ctok_loc(c, c->nodes[i].tok + 1), "dangling-else", "suggest "
+        cwarn(c, ctok_loc(c, c->nodes[i].tok + 1), DW_DANGLING_ELSE, "suggest "
               "explicit braces to avoid ambiguous 'else'");
 }
 
@@ -1657,7 +1657,7 @@ void cstmt_scope_end_post(Checker *c, uint32_t i)
             !implicit_int && !is_main_name(c, fs) &&
             !(fs->flags & CSF_NORETURN) &&
             !cdecl_aset_has(c, fs->aset, "naked", NULL))
-            cwarn(c, cinput_loc(c, c->nodes[i].tok), "return-type", "no return statement in "
+            cwarn(c, cinput_loc(c, c->nodes[i].tok), DW_RETURN_TYPE, "no return statement in "
                   "function returning non-void");
     }
     /* the function ends: what the scope scan did not report, then drop its

@@ -111,7 +111,7 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
             loc = tg(c, r) == N_IDENT ? dloc : cnode_loc(c, e);
         } else
             loc = value_loc(c, e, dloc);
-        cwarn(c, loc, "unused-value", mixed_complex(c, e) ?
+        cwarn(c, loc, DW_UNUSED_VALUE, mixed_complex(c, e) ?
               "value computed is not used" : "statement with no effect");
         return;
     }
@@ -125,7 +125,7 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
         }
         if (!(c->ef[r] & EF_SIDE) && !void_ty(c, r) && !node_err(c, r) &&
             tg(c, r) != N_CAST)
-            cwarn(c, cl, "unused-value", "right-hand operand of comma "
+            cwarn(c, cl, DW_UNUSED_VALUE, "right-hand operand of comma "
                   "expression has no effect");
         return;
     }
@@ -183,7 +183,7 @@ void unused_value(Checker *c, uint32_t e, SrcLoc dloc)
             default:
                 break;
             }
-        cwarn(c, value_loc(c, e, dloc), "unused-value", "value computed is "
+        cwarn(c, value_loc(c, e, dloc), DW_UNUSED_VALUE, "value computed is "
               "not used");
         return;
     }
@@ -202,7 +202,7 @@ static void stmt_empty(Checker *c, uint32_t i)
     if (p == NOB)
         return;
     if (tg(c, p) == N_DO) {
-        cwarn(c, cnode_loc(c, e), "empty-body", "suggest braces around empty "
+        cwarn(c, cnode_loc(c, e), DW_EMPTY_BODY, "suggest braces around empty "
               "body in 'do' statement");
         return;
     }
@@ -210,10 +210,10 @@ static void stmt_empty(Checker *c, uint32_t i)
         return;
     n = node_children(c->nodes, p, kids, 32);
     if (n == 6 && kids[3] == i)
-        cwarn(c, cnode_loc(c, e), "empty-body", "suggest braces around empty "
+        cwarn(c, cnode_loc(c, e), DW_EMPTY_BODY, "suggest braces around empty "
               "body in an 'if' statement");
     else if (n == 9 && kids[6] == i)
-        cwarn(c, cnode_loc(c, e), "empty-body", "suggest braces around empty "
+        cwarn(c, cnode_loc(c, e), DW_EMPTY_BODY, "suggest braces around empty "
               "body in an 'else' statement");
 }
 
@@ -257,7 +257,7 @@ static void decl_after_stmt(Checker *c, uint32_t i)
         /* a system header's macro (bool): gcc reports at its expansion */
         if (c->u->toks[t].exp && cin_system(c, l))
             l = c->u->toks[t].exp;
-        cc90(c, l, "declaration-after-statement",
+        cc90(c, l, DW_DECLARATION_AFTER_STATEMENT,
              "ISO C90 forbids mixed declarations and code");
     }
 }
@@ -277,7 +277,7 @@ void cstmt_node(Checker *c, uint32_t i)
         break;
     case N_DECL:
         if (c->par[i] != NOB && tg(c, c->par[i]) == N_FOR) {
-            cc90(c, ctok_loc(c, c->nodes[c->par[i]].tok), NULL,
+            cc90(c, ctok_loc(c, c->nodes[c->par[i]].tok), DW_NONE,
                  "ISO C90 does not support 'for' loop initial declarations");
             for_loop_decls(c, c->par[i]);
         }
@@ -569,7 +569,7 @@ static void misleading(Checker *c, uint32_t g, uint32_t body, uint32_t last,
     } else if (!(bp.vcol == np.vcol && bp.vcol > lp.vcol) ||
                (bp.vcol == gp.vcol && strcmp(kw, "else")))  /* body under the guard itself */
         return;
-    d = cwarn_d(c, DL_WARNING, ctok_loc(c, g), "misleading-indentation",
+    d = cwarn_d(c, DL_WARNING, ctok_loc(c, g), DW_MISLEADING_INDENTATION,
                 "this '%s' clause does not guard...", kw);
     cnote(c, d, ctok_loc(c, n), "...this statement, but the latter is "
           "misleadingly indented as if it were guarded by the '%s'", kw);
@@ -885,7 +885,7 @@ static uint32_t dup_key(const Checker *c, uint32_t k)
 void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end)
 {
     uint32_t k, n = 0, cap = 16, *v, j, p;
-    if (!diag_enabled(c->diag, "duplicated-branches"))
+    if (!diag_enabled(c->diag, DW_DUPLICATED_BRANCHES))
         return;
     v = xmalloc(cap * sizeof *v);
     for (k = cfirst(c, scope); k <= end; k++) {
@@ -914,7 +914,7 @@ void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end)
         if (tg(c, v[j]) == N_COND) {
             if (cstmt_cond_identical(c, v[j], false))
                 cwarn(c, cexpr_colon_loc(c, v[j], kids[1], kids[2]),
-                      "duplicated-branches", "this condition has identical "
+                      DW_DUPLICATED_BRANCHES, "this condition has identical "
                       "branches");
             continue;
         }
@@ -924,7 +924,7 @@ void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end)
             !dup_flatten(c, kids[6], o, &q, 64) || !m || !q)
             continue;
         if (dup_stmts_eq(c, kids[3], kids[6]))
-            cwarn(c, ctok_loc(c, c->nodes[v[j]].tok + 1), "duplicated-branches",
+            cwarn(c, ctok_loc(c, c->nodes[v[j]].tok + 1), DW_DUPLICATED_BRANCHES,
                   "this condition has identical branches");
     }
     free(v);
@@ -1096,7 +1096,7 @@ void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
 {
     uint32_t k, nw = 0, cap = 8, j;
     DupCond *w;
-    if (!diag_enabled(c->diag, "duplicated-cond"))
+    if (!diag_enabled(c->diag, DW_DUPLICATED_COND))
         return;
     w = xmalloc(cap * sizeof *w);
     for (k = cfirst(c, scope); k <= end; k++) {
@@ -1137,7 +1137,7 @@ void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
     qsort(w, nw, sizeof *w, dupcond_cmp);
     for (j = 0; j < nw; j++) {
         Diagnostic *dg = cwarn_d(c, DL_WARNING, dupcond_loc(c, w[j].cond),
-                                 "duplicated-cond", "duplicated 'if' "
+                                 DW_DUPLICATED_COND, "duplicated 'if' "
                                  "condition");
         if (dg)
             cnote(c, dg, dupcond_loc(c, w[j].prev), "previously used here");
@@ -1153,7 +1153,7 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
     uint32_t b = first_tok(c, body), n = last + 1;
     SrcLoc kb, kg;
     Diagnostic *d;
-    if (!diag_enabled(c->diag, "multistatement-macros") ||
+    if (!diag_enabled(c->diag, DW_MULTISTATEMENT_MACROS) ||
         n >= c->u->ntoks || c->u->toks[n].t.kind == TK_EOF)
         return;
     /* the body proper starts after its labels */
@@ -1193,7 +1193,7 @@ static void multistatement(Checker *c, uint32_t g, uint32_t body,
                 tok_expansion(c, k) == tok_expansion(c, b))
                 return;
     }
-    d = cwarn_d(c, DL_WARNING, ctok_loc(c, b), "multistatement-macros",
+    d = cwarn_d(c, DL_WARNING, ctok_loc(c, b), DW_MULTISTATEMENT_MACROS,
                 "macro expands to multiple statements");
     cnote(c, d, ctok_loc(c, g), "some parts of macro expansion are not "
           "guarded by this '%s' clause", kw);

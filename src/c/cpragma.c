@@ -167,7 +167,7 @@ static bool int_const(const Prag *p, const PrTok *t, long *v)
 
 static void pack_bad(Prag *p, const char *msg)
 {
-    cwarn(p->c, p->name, "pragmas", "%s", msg);
+    cwarn(p->c, p->name, DW_PRAGMAS, "%s", msg);
 }
 
 static void pack_pop(Prag *p, bool have_id, uint32_t idh, const char *idtxt)
@@ -175,7 +175,7 @@ static void pack_pop(Prag *p, bool have_id, uint32_t idh, const char *idtxt)
     Checker *c = p->c;
     size_t k;
     if (!c->pack_stack.len) {
-        cwarn(c, p->name, "pragmas", "'#pragma pack (pop)' encountered "
+        cwarn(c, p->name, DW_PRAGMAS, "'#pragma pack (pop)' encountered "
               "without matching '#pragma pack (push)'");
         return;
     }
@@ -190,7 +190,7 @@ static void pack_pop(Prag *p, bool have_id, uint32_t idh, const char *idtxt)
             c->pack_stack.len = k - 2;
             return;
         }
-    cwarn(c, p->name, "pragmas", "'#pragma pack(pop, %s)' encountered "
+    cwarn(c, p->name, DW_PRAGMAS, "'#pragma pack(pop, %s)' encountered "
           "without matching '#pragma pack(push, %s)'", idtxt, idtxt);
     /* gcc still pops the top entry */
     c->pack = c->pack_stack.data[c->pack_stack.len - 2];
@@ -215,7 +215,7 @@ static void pragma_pack(Prag *p)
         align = 0;
     } else if (t.kind == PK_NUM) {
         if (!int_const(p, &t, &align)) {
-            cwarn(c, t.loc, "pragmas", "invalid constant in '#pragma pack' "
+            cwarn(c, t.loc, DW_PRAGMAS, "invalid constant in '#pragma pack' "
                   "- ignored");
             return;
         }
@@ -230,7 +230,7 @@ static void pragma_pack(Prag *p)
         else if (name_is(p, &t, "pop"))
             action = POP;
         else {
-            cwarn(c, t.loc, "pragmas", "unknown action '%s' for "
+            cwarn(c, t.loc, DW_PRAGMAS, "unknown action '%s' for "
                   "'#pragma pack' - ignored", name_text(p, &t));
             return;
         }
@@ -245,12 +245,12 @@ static void pragma_pack(Prag *p)
                 if (action == PUSH && is_punct(&t, ',')) {
                     t = lex(p);
                     if (t.kind != PK_NUM) {
-                        cwarn(c, t.loc, "pragmas", "malformed "
+                        cwarn(c, t.loc, DW_PRAGMAS, "malformed "
                               "'#pragma pack(push[, id], <n>)' - ignored");
                         return;
                     }
                     if (!int_const(p, &t, &align)) {
-                        cwarn(c, t.loc, "pragmas", "invalid constant in "
+                        cwarn(c, t.loc, DW_PRAGMAS, "invalid constant in "
                               "'#pragma pack' - ignored");
                         return;
                     }
@@ -258,7 +258,7 @@ static void pragma_pack(Prag *p)
                 }
             } else if (action == PUSH && t.kind == PK_NUM) {
                 if (!int_const(p, &t, &align)) {
-                    cwarn(c, t.loc, "pragmas", "invalid constant in "
+                    cwarn(c, t.loc, DW_PRAGMAS, "invalid constant in "
                           "'#pragma pack' - ignored");
                     return;
                 }
@@ -282,13 +282,13 @@ static void pragma_pack(Prag *p)
     }
     t = lex(p);
     if (t.kind != PK_EOF)
-        cwarn(c, t.loc, "pragmas", "junk at end of '#pragma pack'");
+        cwarn(c, t.loc, DW_PRAGMAS, "junk at end of '#pragma pack'");
     if (action != POP) {
         if (align == -1 && action == PUSH)
             ;                   /* push without a value keeps the state */
         else if (!(align == 0 || align == 1 || align == 2 || align == 4 ||
                    align == 8 || align == 16)) {
-            cwarn(c, p->name, "pragmas", "alignment must be a small power "
+            cwarn(c, p->name, DW_PRAGMAS, "alignment must be a small power "
                   "of two, not %ld", align);
             return;
         }
@@ -341,7 +341,7 @@ static void pragma_diagnostic(Prag *p)
     char kind[24], opt[160];
     size_t n = 0;
     if (t.kind != PK_NAME) {
-        cwarn(c, t.loc, "pragmas", "missing 'error', 'warning', 'ignored', "
+        cwarn(c, t.loc, DW_PRAGMAS, "missing 'error', 'warning', 'ignored', "
               "'push', 'pop', or 'ignored_attributes' after "
               "'#pragma GCC diagnostic'");
         return;
@@ -371,14 +371,14 @@ static void pragma_diagnostic(Prag *p)
         return;
     if (strcmp(kind, "ignored") && strcmp(kind, "warning") &&
         strcmp(kind, "error")) {
-        cwarn(c, t.loc, "pragmas", "expected 'error', 'warning', 'ignored', "
+        cwarn(c, t.loc, DW_PRAGMAS, "expected 'error', 'warning', 'ignored', "
               "'push', 'pop', 'ignored_attributes' after "
               "'#pragma GCC diagnostic'");
         return;
     }
     o = lex(p);
     if (o.kind != PK_STR) {
-        cwarn(c, o.loc, "pragmas", "missing option after "
+        cwarn(c, o.loc, DW_PRAGMAS, "missing option after "
               "'#pragma GCC diagnostic' kind");
         return;
     }
@@ -411,7 +411,7 @@ static void pragma_diagnostic(Prag *p)
         const char *langs = NULL;
         switch (gcc_pragma_opt(opt, &langs)) {
         case PO_UNKNOWN: {
-            Diagnostic *d = cwarn_d(c, DL_WARNING, o.loc, "pragmas", "unknown "
+            Diagnostic *d = cwarn_d(c, DL_WARNING, o.loc, DW_PRAGMAS, "unknown "
                                     "option after '#pragma GCC diagnostic' kind");
             const char *dym = opt[0] == '-' && opt[1] == 'W'
                               ? gcc_wopt_suggest(opt + 2) : NULL;
@@ -420,11 +420,11 @@ static void pragma_diagnostic(Prag *p)
             return;
         }
         case PO_OTHER_LANG:
-            cwarn(c, o.loc, "pragmas", "option '%s' is valid for %s but not "
+            cwarn(c, o.loc, DW_PRAGMAS, "option '%s' is valid for %s but not "
                   "for C", opt, langs);
             return;
         case PO_NOT_WARNING:
-            cwarn(c, o.loc, "pragmas", "'%s' is not an option that controls "
+            cwarn(c, o.loc, DW_PRAGMAS, "'%s' is not an option that controls "
                   "warnings", opt);
             return;
         default:
@@ -450,7 +450,7 @@ static void pragma_redefine_extname(Prag *p)
     }
     t = lex(p);
     if (t.kind != PK_EOF)
-        cwarn(p->c, p->name, "pragmas", "junk at end of "
+        cwarn(p->c, p->name, DW_PRAGMAS, "junk at end of "
               "'#pragma redefine_extname'");
 }
 
@@ -460,20 +460,20 @@ static void pragma_sso(Prag *p)
     static const char want[] = "'big-endian', 'little-endian', or 'default' "
                                "after '#pragma scalar_storage_order'";
     if (t.kind != PK_NAME) {
-        cwarn(p->c, p->name, "pragmas", "missing %s", want);
+        cwarn(p->c, p->name, DW_PRAGMAS, "missing %s", want);
         return;
     }
     if (!name_is(p, &t, "default")) {
         bool big = name_is(p, &t, "big"), little = name_is(p, &t, "little");
         PrTok m, e;
         if (!big && !little) {
-            cwarn(p->c, p->name, "pragmas", "expected %s", want);
+            cwarn(p->c, p->name, DW_PRAGMAS, "expected %s", want);
             return;
         }
         m = lex(p);
         e = lex(p);
         if (!is_punct(&m, '-') || !name_is(p, &e, "endian")) {
-            cwarn(p->c, p->name, "pragmas", "expected %s", want);
+            cwarn(p->c, p->name, DW_PRAGMAS, "expected %s", want);
             return;
         }
     }
@@ -546,7 +546,7 @@ static void pragma_optimize(Prag *p, SrcLoc at)
         opt[n] = 0;
         if (!strchr(opt, ' ') && opt[0] &&
             cpragma_optimize_bad(opt, nopt, sizeof nopt)) {
-            cwarn(c, at, "pragmas", "bad option '%s' to pragma 'optimize'",
+            cwarn(c, at, DW_PRAGMAS, "bad option '%s' to pragma 'optimize'",
                   nopt);
             vec_push(&c->opt_bad, xstrdup(nopt));
             opt_digest(c);
@@ -585,7 +585,7 @@ void cpragma_optimize_repeat(Checker *c, SrcLoc loc)
         return;
     csum_read_pack(c);
     for (k = 0; k < c->opt_bad.len; k++)
-        cwarn(c, loc, "attributes", "bad option '%s' to attribute 'optimize'",
+        cwarn(c, loc, DW_ATTRIBUTES, "bad option '%s' to attribute 'optimize'",
               c->opt_bad.data[k]);
 }
 

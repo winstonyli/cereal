@@ -140,7 +140,7 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
              * B the directive already ran in phase A: advance the version. */
             if (pp->diag->pedantic)
                 diag_report(pp->diag, pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                            "directive-in-macro-args", t.loc,
+                            DW_DIRECTIVE_IN_MACRO_ARGS, t.loc,
                             "embedding a directive within macro arguments is not portable");
             if (t.kind == TK_DIRMARK)
                 pp_plan_apply_dir(pp, t.aux);
@@ -215,11 +215,11 @@ static bool collect_args(PP *pp, Macro *m, const Tok *name, const Tok *lparen,
         args_free(pp, a, 0);
         return false;
     }
-    if (m->nparams > 0 && diag_enabled(pp->diag, "c90-c99-compat")) {
+    if (m->nparams > 0 && diag_enabled(pp->diag, DW_C90_C99_COMPAT)) {
         int k;
         for (k = 0; k < m->nparams; k++)
             if (a->count.data[k] == 0)
-                diag_report(pp->diag, DL_WARNING, "c90-c99-compat",
+                diag_report(pp->diag, DL_WARNING, DW_C90_C99_COMPAT,
                             a->rparen_loc,
                             "invoking macro %s argument %d: empty macro "
                             "arguments are undefined in ISO C90",
@@ -317,7 +317,7 @@ static void expand_into(PP *pp, TokSpan in, TokBuf *out, SrcLoc exp_loc,
                     }
                     if (viamacro) {
                         Diagnostic *wd = diag_report(
-                            pp->diag, DL_WARNING, "expansion-to-defined",
+                            pp->diag, DL_WARNING, DW_EXPANSION_TO_DEFINED,
                             lastlex.loc, "this use of \"defined\" may not be "
                             "portable");
                         diag_set_range(wd, lastlex.loc,
@@ -429,7 +429,7 @@ static Tok stringize(PP *pp, TokSpan arg, const Tok *hash, SrcLoc site,
                     pp_text(pp, &arg.t[i - 1])[0] == 0x5c; i--)
         ;
     if ((arg.n - i) & 1) {
-        diag_report(pp->diag, DL_WARNING, "", pp->paste_loc,
+        diag_report(pp->diag, DL_WARNING, DW_NONE, pp->paste_loc,
                     "invalid string literal, ignoring final '\\'");
         sb->len--;
     }
@@ -482,7 +482,7 @@ static bool paste(PP *pp, const Tok *lhs, const Tok *rhs, const Tok *op,
         /* libcpp: at the lhs token (in the definition) with an expansion
          * note, or at the expansion point under -ftrack-macro-expansion=0 */
         bool t0 = pp->diag->track0;
-        Diagnostic *d = diag_report(pp->diag, DL_ERROR, "", t0 ? site : lhs->loc,
+        Diagnostic *d = diag_report(pp->diag, DL_ERROR, DW_NONE, t0 ? site : lhs->loc,
             "pasting \"%.*s\" and \"%.*s\" does not give a valid preprocessing "
             "token", (int)lhs->len, pp_text(pp, lhs), (int)rhs->len,
             pp_text(pp, rhs));
@@ -1017,8 +1017,8 @@ static Tok builtin_token(PP *pp, Macro *m, const Tok *name, SrcLoc exp_loc)
     TokKind k = TK_PPNUM;
     uint16_t fl = (uint16_t)((name->flags & (TF_SPACE | TF_BOL)) | TF_SYNTH);
     if ((m->builtin == BUILTIN_DATE || m->builtin == BUILTIN_TIME ||
-         m->builtin == BUILTIN_TIMESTAMP) && diag_enabled(pp->diag, "date-time"))
-        pp_warn_at(pp, name, "date-time", "macro \"%s\" might prevent "
+         m->builtin == BUILTIN_TIMESTAMP) && diag_enabled(pp->diag, DW_DATE_TIME))
+        pp_warn_at(pp, name, DW_DATE_TIME, "macro \"%s\" might prevent "
                    "reproducible builds",
                    m->builtin == BUILTIN_DATE ? "__DATE__" :
                    m->builtin == BUILTIN_TIME ? "__TIME__" : "__TIMESTAMP__");
@@ -1079,7 +1079,7 @@ static Ident *pragma_macro_name(PP *pp, TokSpan s)
 {
     if (s.n < 3 || !tok_is_punct(&s.t[0], P_LPAREN) || s.t[1].kind != TK_STRING ||
         !tok_is_punct(&s.t[2], P_RPAREN)) {
-        diag_report(pp->diag, DL_WARNING, "unknown-pragmas",
+        diag_report(pp->diag, DL_WARNING, DW_UNKNOWN_PRAGMAS,
                     s.n ? s.t[0].loc : 0,
                     "expected (\"name\") in push_macro/pop_macro pragma");
         return NULL;
@@ -1117,7 +1117,7 @@ static void pragma_dependency(PP *pp, TokSpan toks, SrcLoc at)
     struct stat a, b;
     if (!nt || nt->kind != TK_STRING || pp_text(pp, nt)[0] != '"') {
         const Tok *last = &toks.t[toks.n - 1];
-        diag_report(pp->diag, DL_ERROR, "",
+        diag_report(pp->diag, DL_ERROR, DW_NONE,
                     sc ? scratch_col(pp, at, toks.t[0].loc,
                                      nt ? nt->loc : last->loc + last->len)
                        : nt ? nt->loc : toks.t[1].loc,
@@ -1127,13 +1127,13 @@ static void pragma_dependency(PP *pp, TokSpan toks, SrcLoc at)
     name = arena_strndup(pp->arena, pp_text(pp, nt) + 1, nt->len - 2);
     f = pp_find_include(pp, name, false, false, &di);
     if (!f) {
-        diag_report(pp->diag, DL_ERROR, "", sc ? at : nt->loc, "%s: No such file or directory",
+        diag_report(pp->diag, DL_ERROR, DW_NONE, sc ? at : nt->loc, "%s: No such file or directory",
                     name);
         return;
     }
     if (stat(f->path, &a) == 0 && stat(pp->inc->file->path, &b) == 0 &&
         a.st_mtime > b.st_mtime)
-        diag_report(pp->diag, DL_WARNING, "", sc ? at : nt->loc,
+        diag_report(pp->diag, DL_WARNING, DW_NONE, sc ? at : nt->loc,
                     "current file is older than %s", name);
 }
 
@@ -1164,7 +1164,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
     PP_EMIT(pp, pragma, loc, toks);
     if (word(pp, toks, 0, "once")) {
         if (pp->inc->prev == NULL)
-            diag_report(pp->diag, DL_WARNING, "", PLOC(&toks.t[0]),
+            diag_report(pp->diag, DL_WARNING, DW_NONE, PLOC(&toks.t[0]),
                         "#pragma once in main file");
         pp->inc->file->pragma_once = true;
         emit = false;
@@ -1173,11 +1173,11 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
         if (pp->opt->pedantic)
             diag_report(pp->diag,
                         pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                        "pedantic", PLOC(&toks.t[0]),
+                        DW_PEDANTIC, PLOC(&toks.t[0]),
                         "ISO C does not support '#pragma STDC FLOAT_CONST_DECIMAL64'");
         if (toks.n != 3 || !(word(pp, toks, 2, "ON") || word(pp, toks, 2, "OFF") ||
                              word(pp, toks, 2, "DEFAULT")))
-            diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&toks.t[0]),
+            diag_report(pp->diag, DL_WARNING, DW_PRAGMAS, PLOC(&toks.t[0]),
                         "malformed '#pragma STDC FLOAT_CONST_DECIMAL64', ignored");
     } else if (word(pp, toks, 0, "STDC")) {
         if (!(word(pp, toks, 1, "FP_CONTRACT") || word(pp, toks, 1, "FENV_ACCESS") ||
@@ -1185,7 +1185,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             !(word(pp, toks, 2, "ON") || word(pp, toks, 2, "OFF") ||
               word(pp, toks, 2, "DEFAULT")) ||
             toks.n != 3)
-            diag_report(pp->diag, DL_WARNING, "stdc-pragma", PLOC(&toks.t[0]),
+            diag_report(pp->diag, DL_WARNING, DW_STDC_PRAGMA, PLOC(&toks.t[0]),
                         "malformed or unknown STDC pragma (C99 6.10.6p2)");
     } else if (word(pp, toks, 0, "GCC")) {
         if (word(pp, toks, 1, "system_header")) {
@@ -1193,7 +1193,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 pp->inc->file->system_header = true;
                 pp->inc->system = true;
             } else {
-                diag_report(pp->diag, DL_WARNING, "",
+                diag_report(pp->diag, DL_WARNING, DW_NONE,
                             from_scratch ? scratch_col(pp, loc, toks.t[0].loc,
                                                        toks.t[1].loc)
                                          : toks.t[1].loc,
@@ -1208,7 +1208,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             emit = false;
             for (i = 2; i < toks.n; i++) {
                 if (toks.t[i].kind != TK_IDENT) {
-                    diag_report(pp->diag, DL_ERROR, "", PLOC(&toks.t[i]),
+                    diag_report(pp->diag, DL_ERROR, DW_NONE, PLOC(&toks.t[i]),
                                 "invalid #pragma GCC poison directive");
                     break;
                 }
@@ -1222,7 +1222,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                     /* like GCC: the definition is dropped; versioned, so
                      * text before the pragma is unaffected */
                     if (m) {
-                        diag_report(pp->diag, DL_WARNING, "", PLOC(&toks.t[i]),
+                        diag_report(pp->diag, DL_WARNING, DW_NONE, PLOC(&toks.t[i]),
                                     "poisoning existing macro \"%s\"",
                                     id->str);
                         m->undef_loc = PLOC(&toks.t[0]);
@@ -1245,7 +1245,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             if (k < toks.n) {
                 msg = &toks.t[k];
                 diag_report(pp->diag, err ? DL_ERROR : DL_WARNING,
-                            err ? "" : "pp-warning-directive", PLOC(msg),
+                            err ? DW_NONE : DW_PP_WARNING_DIRECTIVE, PLOC(msg),
                             "%.*s",
                             msg->kind == TK_STRING ? (int)msg->len - 2 : (int)msg->len,
                             pp_text(pp, msg) + (msg->kind == TK_STRING));
@@ -1319,7 +1319,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             const Tok *t = &rest.t[k];
             if (t->kind == TK_OTHER && (t->flags & TF_UNTERMINATED)) {
                 if (from_scratch)   /* directive lines warned in read_line */
-                    pp_warn_at(pp, t, "",
+                    pp_warn_at(pp, t, DW_NONE,
                                "missing terminating \" character");
                 pp_error_at(pp, t, "missing terminating \" character");
             }
@@ -1339,19 +1339,19 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                 sb_putn(&msg, pp_text(pp, t) + 1, t->len - 2);
         }
         if (!nstr) {
-            diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&toks.t[0]),
+            diag_report(pp->diag, DL_WARNING, DW_PRAGMAS, PLOC(&toks.t[0]),
                         "expected a string after '#pragma message'");
         } else if (paren && !(k < en && tok_is_punct(&et[k], P_RPAREN))) {
-            diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&toks.t[0]),
+            diag_report(pp->diag, DL_WARNING, DW_PRAGMAS, PLOC(&toks.t[0]),
                         "malformed '#pragma message', ignored");
         } else {
             if (paren)
                 k++;
             if (k < en)
-                diag_report(pp->diag, DL_WARNING, "pragmas", PLOC(&et[k]),
+                diag_report(pp->diag, DL_WARNING, DW_PRAGMAS, PLOC(&et[k]),
                             "junk at end of '#pragma message'");
             if (msg.len)
-                diag_report(pp->diag, DL_NOTE, "", PLOC(&toks.t[0]),
+                diag_report(pp->diag, DL_NOTE, DW_NONE, PLOC(&toks.t[0]),
                             "#pragma message: %.*s", (int)msg.len, msg.data);
         }
         sb_free(&msg);
@@ -1365,7 +1365,7 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
             n2 = (int)toks.t[1].len;
         }
         pp->diag->nocol_next = true;
-        diag_report(pp->diag, DL_WARNING, "unknown-pragmas",
+        diag_report(pp->diag, DL_WARNING, DW_UNKNOWN_PRAGMAS,
                     toks.n ? PLOC(&toks.t[0]) : loc,
                     "ignoring '#pragma %.*s %.*s'", n1, s1, n2, s2);
     }
@@ -1605,8 +1605,8 @@ bool pp_try_expand(PP *pp, Tok *name, TokSrc src)
         if (!tok_is_punct(&lp, P_LPAREN)) {
             pp_unread(pp, &lp, ls);
             if (!pp->collecting_args && !(m->file && m->file->system_header) &&
-                diag_enabled(pp->diag, "traditional"))
-                diag_report(pp->diag, DL_WARNING, "traditional", name->loc,
+                diag_enabled(pp->diag, DW_TRADITIONAL))
+                diag_report(pp->diag, DL_WARNING, DW_TRADITIONAL, name->loc,
                             "function-like macro \"%s\" must be used with "
                             "arguments in traditional C", id->str);
             return false;

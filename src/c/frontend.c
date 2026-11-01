@@ -256,7 +256,7 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
                 continue;
             diag_report(&tu->diag,
                         tu->diag.pedantic_errors ? DL_ERROR : DL_WARNING,
-                        "pedantic", f->base + f->size,
+                        DW_PEDANTIC, f->base + f->size,
                         "ISO C forbids an empty translation unit");
             break;
         }

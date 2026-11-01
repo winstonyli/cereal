@@ -95,7 +95,7 @@ static void nonstatic_follows_static(Checker *c, CSym *nw, const CSym *o)
     Diagnostic *d;
     if (cin_system(c, nw->loc))
         return;
-    d = cwarn_d(c, DL_WARNING, nw->loc, "traditional", "non-static declaration "
+    d = cwarn_d(c, DL_WARNING, nw->loc, DW_TRADITIONAL, "non-static declaration "
                 "of '%s' follows static declaration", sname(c, nw));
     if (d)
         cdecl_locate_old_decl(c, d, o);
@@ -200,7 +200,7 @@ static bool validate_proto_after_old_defn(Checker *c, const CSym *nw,
             return false;
         }
     }
-    cwarn(c, nw->loc, "", "prototype for '%s' follows non-prototype "
+    cwarn(c, nw->loc, DW_NONE, "prototype for '%s' follows non-prototype "
           "definition", sname(c, nw));
     return true;
 }
@@ -266,7 +266,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 is_void(c, type_base(TT, oldtype)) &&
                 type_canon(TT, type_base(TT, newtype)) == TYPE_B(INT) &&
                 new_implicit_int && !sym_defined(o)) {
-                d = cpedwarn(c, nw->loc, "", "conflicting types "
+                d = cpedwarn(c, nw->loc, DW_NONE, "conflicting types "
                              "for '%s'", sname(c, nw));
                 pedwarned = d != NULL;
                 wd = d;
@@ -277,7 +277,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                        type_canon(TT, type_base(TT, oldtype)) == TYPE_B(INT) &&
                        (o->flags & CSF_IMPLICIT) && !sym_defined(o)) {
                 d = cpedwarn(c, sym_defined(nw) ? nw->loc : iloc(c, c->cd_ltok),
-                             "", "conflicting types for '%s'; have %s",
+                             DW_NONE, "conflicting types for '%s'; have %s",
                              sname(c, nw), type_q(TT, newtype));
                 pedwarned = d != NULL;
                 wd = d;
@@ -292,7 +292,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
                 int k;
                 /* comptypes runs three times (twice for a block-scope one) */
                 for (k = 0; k < (cat_file_scope(c) ? 3 : 2); k++)
-                    cpedwarn(c, cinput_loc(c, c->cd_ltok), "", "function "
+                    cpedwarn(c, cinput_loc(c, c->cd_ltok), DW_NONE, "function "
                              "return types not compatible due to 'volatile'");
             } else {
                 if (TYPE_QUALS(b) != TYPE_QUALS(a))
@@ -308,12 +308,12 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
         } else if (nw->kind == CS_FUNC && type_tu_mixed(TT, a, b)) {
             int k;
             for (k = 0; k < 2; k++)
-                cpedwarn(c, cinput_loc(c, c->cd_ltok), "pedantic", "function types "
+                cpedwarn(c, cinput_loc(c, c->cd_ltok), DW_PEDANTIC, "function types "
                          "not truly compatible in ISO C");
         } else if (nw->kind != CS_TYPEDEF && enum_int_pair(c, a, b) &&
                    type_canon(TT, a) != type_canon(TT, b)) {
             enum_and_int = true;
-            wd = cwarn_d(c, DL_WARNING, nw->loc, "enum-int-mismatch",
+            wd = cwarn_d(c, DL_WARNING, nw->loc, DW_ENUM_INT_MISMATCH,
                          "conflicting types for '%s' due to enum/integer "
                          "mismatch; have %s", sname(c, nw),
                          type_q(TT, newtype));
@@ -431,7 +431,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
     }
     if (nw->kind == CS_OBJ && nfile && ofile && !sym_external(nw) &&
         !sym_external(o) && !cin_system(c, nw->loc)) {
-        d = cwarn_d(c, DL_WARNING, nw->loc, "c++-compat", "duplicate "
+        d = cwarn_d(c, DL_WARNING, nw->loc, DW_CPP_COMPAT, "duplicate "
                     "declaration of '%s' is invalid in C++", sname(c, nw));
         cdecl_locate_old_decl(c, d, o);
     }
@@ -448,7 +448,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
         !(nw->kind == CS_FUNC && sym_defined(nw) && !sym_defined(o)) &&
         !(sym_external(o) && !sym_external(nw)) &&
         !(nw->kind == CS_OBJ && sym_defined(nw) && !sym_defined(o)))
-        wd = cwarn_d(c, DL_WARNING, nw->loc, "redundant-decls", "redundant "
+        wd = cwarn_d(c, DL_WARNING, nw->loc, DW_REDUNDANT_DECLS, "redundant "
                      "redeclaration of '%s'", sname(c, nw));
     if (wd || pedwarned)
     {
@@ -465,7 +465,7 @@ static bool diagnose_mismatched(Checker *c, CSym *nw, bool nfile,
 void cdecl_weak_apply(Checker *c, CSym *s, bool is_inline)
 {
     if (s->kind == CS_FUNC && is_inline) {
-        cwarn(c, s->loc, "attributes", "inline function '%s' declared weak",
+        cwarn(c, s->loc, DW_ATTRIBUTES, "inline function '%s' declared weak",
               sname(c, s));
         return;
     }
@@ -557,15 +557,15 @@ void cdecl_inline_given(Checker *c, const CSym *s, bool is_inline,
         (attrs_malloc_dealloc(c, sn, dn, sizeof dn) ||
          attrs_malloc_dealloc(c, idecl, dn, sizeof dn))) {
         if (c->opt.optimize)
-            cwarn(c, bol_loc(c, s->loc), "attributes", "'malloc (%s)' "
+            cwarn(c, bol_loc(c, s->loc), DW_ATTRIBUTES, "'malloc (%s)' "
                   "attribute ignored on functions declared 'inline'", dn);
         else
-            cwarn(c, s->loc, "attributes", "inline function '%s' given "
+            cwarn(c, s->loc, DW_ATTRIBUTES, "inline function '%s' given "
                   "attribute 'noinline'", sname(c, s));
         return;
     }
     if (s->kind == CS_FUNC && is_inline && given_noinline(c, sn, idecl))
-        cwarn(c, s->loc, "attributes", "inline function '%s' given attribute "
+        cwarn(c, s->loc, DW_ATTRIBUTES, "inline function '%s' given attribute "
               "'noinline'", sname(c, s));
 }
 
@@ -683,18 +683,18 @@ void cdecl_inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
     nw_noinline = given_noinline(c, sn, idecl);
     if ((nw->flags & CSF_INLINE) && !(o->flags & CSF_INLINE) &&
         cdecl_aset_has(c, o->aset, "noinline", NULL))
-        d = cwarn_d(c, DL_WARNING, iloc(c, ltok), "attributes", "inline declaration "
+        d = cwarn_d(c, DL_WARNING, iloc(c, ltok), DW_ATTRIBUTES, "inline declaration "
                     "of '%s' follows declaration with attribute 'noinline'",
                     sname(c, nw));
     else if ((o->flags & CSF_INLINE) && nw_noinline)
-        d = cwarn_d(c, DL_WARNING, nw->loc, "attributes", "declaration of "
+        d = cwarn_d(c, DL_WARNING, nw->loc, DW_ATTRIBUTES, "declaration of "
                     "'%s' with attribute 'noinline' follows inline "
                     "declaration", sname(c, nw));
     else if ((o->flags & CSF_DEFINED) &&
              ((sn != NO_NODE && attrs_item_named(c, sn, "optimize")) ||
               attrs_item_named(c, idecl, "optimize")) &&
              opt_mismatch(c, o, sn, idecl))
-        d = cwarn_d(c, DL_WARNING, iloc(c, ltok), "attributes", "optimization "
+        d = cwarn_d(c, DL_WARNING, iloc(c, ltok), DW_ATTRIBUTES, "optimization "
                     "attribute on '%s' follows definition but the attribute "
                     "doesn't match", sname(c, nw));
     cdecl_locate_old_decl(c, d, o);
@@ -734,7 +734,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
         m.dep_msg = o->dep_msg;
     if (o->sect && nw->sect &&
         strcmp(c->dep_msgs.data[o->sect - 1], c->dep_msgs.data[nw->sect - 1]))
-        cwarn(c, iloc(c, c->cd_ltok), "attributes", "ignoring attribute "
+        cwarn(c, iloc(c, c->cd_ltok), DW_ATTRIBUTES, "ignoring attribute "
               "'section (\"%s\")' because it conflicts with previous "
               "'section (\"%s\")'", c->dep_msgs.data[nw->sect - 1],
               c->dep_msgs.data[o->sect - 1]);

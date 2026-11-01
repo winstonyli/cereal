@@ -21,7 +21,7 @@ static bool fits(const Target *tgt, TypeKind k, uint64_t v)
                      : (UINT64_C(1) << (bits - 1)) - 1);
 }
 
-static void say(Lit *out, int level, const char *id, const char *fmt,
+static void say(Lit *out, int level, DiagOpt id, const char *fmt,
                 const char *arg, int n)
 {
     if (out->msg[0] && out->level >= level)
@@ -31,7 +31,7 @@ static void say(Lit *out, int level, const char *id, const char *fmt,
     snprintf(out->msg, sizeof out->msg, fmt, n, arg);
 }
 
-static void note(Lit *out, int level, const char *id, const char *msg)
+static void note(Lit *out, int level, DiagOpt id, const char *msg)
 {
     say(out, level, id, "%.*s", msg, (int)strlen(msg));
 }
@@ -39,7 +39,7 @@ static void note(Lit *out, int level, const char *id, const char *msg)
 static void bad(Lit *out, const char *msg)
 {
     out->flags |= LIT_BAD;
-    say(out, 2, "", "%.*s", msg, (int)strlen(msg));
+    say(out, 2, DW_NONE, "%.*s", msg, (int)strlen(msg));
 }
 
 /* libcpp's fixed-point suffix: [u] [h | l | ll] (r | k), one case throughout. */
@@ -62,7 +62,7 @@ static bool fixed_lit(Lit *out, const char *s, size_t len, unsigned radix)
     if (radix == 16 || radix == 2 || !fixed_suffix(s, len))
         return false;
     out->flags |= LIT_FIXED | LIT_BAD;
-    note(out, 0, "", "fixed-point constants are a GCC extension");
+    note(out, 0, DW_NONE, "fixed-point constants are a GCC extension");
     return true;
 }
 
@@ -263,7 +263,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
         radix = 10;
     if (max_digit >= radix) {
         char d = (char)('0' + max_digit);
-        say(out, 2, "", radix == 2 ? "invalid digit \"%.*s\" in binary constant"
+        say(out, 2, DW_NONE, radix == 2 ? "invalid digit \"%.*s\" in binary constant"
                                    : "invalid digit \"%.*s\" in octal constant",
             &d, 1);
         out->flags |= LIT_BAD;
@@ -299,14 +299,14 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
             return;
         t = float_suffix(str, (size_t)(limit - str), &imag, &nonstd, &unsup);
         if (t == TY_ERROR) {
-            say(out, 2, "", "invalid suffix \"%.*s\" on floating constant",
+            say(out, 2, DW_NONE, "invalid suffix \"%.*s\" on floating constant",
                 str, (int)(limit - str));
             out->flags |= LIT_BAD;
             return;
         }
         if ((t == TY_DEC32 || t == TY_DEC64 || t == TY_DEC128) &&
             radix != 10) {
-            say(out, 2, "",
+            say(out, 2, DW_NONE,
                 "invalid suffix \"%.*s\" with hexadecimal floating constant",
                 str, (int)(limit - str));
             out->flags |= LIT_BAD;
@@ -316,20 +316,20 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
         out->ty = t == TY_VOID ? TY_DOUBLE : t;
         if (unsup || !tgt->size[out->ty]) {
             bad(out, "unsupported non-standard suffix on floating constant");
-            out->id = "inputloc";   /* gcc reports it at input_location */
+            out->id = DW_INPUTLOC;   /* gcc reports it at input_location */
             out->ty = TY_DOUBLE;
             return;
         }
         if (t == TY_DEC32 || t == TY_DEC64 || t == TY_DEC128)
-            note(out, 0, "c2x", "decimal float constants are a C2X feature");
+            note(out, 0, DW_C2X, "decimal float constants are a C2X feature");
         else if (t == TY_DOUBLE && !imag && !nonstd &&
                  (memchr(str, 'd', (size_t)(limit - str)) ||
                   memchr(str, 'D', (size_t)(limit - str))))
-            note(out, 0, "pedantic", "suffix for double constant is a GCC extension");
+            note(out, 0, DW_PEDANTIC, "suffix for double constant is a GCC extension");
         if (nonstd)
-            note(out, 0, "inputloc", "non-standard suffix on floating constant");
+            note(out, 0, DW_INPUTLOC, "non-standard suffix on floating constant");
         else if (imag)
-            note(out, 0, "pedantic", "imaginary constants are a GCC extension");
+            note(out, 0, DW_PEDANTIC, "imaginary constants are a GCC extension");
         m = (size_t)(str - s);
         if (m + 1 > sizeof buf)
             copy = xmalloc(m + 1);
@@ -363,17 +363,17 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
         if (fixed_lit(out, str, (size_t)(limit - str), radix))
             return;
         if (!int_suffix(str, (size_t)(limit - str), &u, &nl, &imag)) {
-            say(out, 2, "", "invalid suffix \"%.*s\" on integer constant", str,
+            say(out, 2, DW_NONE, "invalid suffix \"%.*s\" on integer constant", str,
                 (int)(limit - str));
             out->flags |= LIT_BAD;
             return;
         }
         if (imag) {
             out->flags |= LIT_IMAGINARY;
-            note(out, 0, "pedantic", "imaginary constants are a GCC extension");
+            note(out, 0, DW_PEDANTIC, "imaginary constants are a GCC extension");
         }
         if (radix == 2)
-            note(out, 0, "c2x", "binary constants are a C2X feature or GCC extension");
+            note(out, 0, DW_C2X, "binary constants are a C2X feature or GCC extension");
         for (q = digits; q < str; q++) {
             unsigned d = (unsigned)hexval((unsigned char)*q);
             if (v > (UINT64_MAX - d) / radix)
@@ -382,7 +382,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
         }
         out->v = v;
         if (over) {
-            note(out, 1, "", "integer constant is too large for its type");
+            note(out, 1, DW_NONE, "integer constant is too large for its type");
             out->flags |= LIT_WIDE | LIT_TOO_LARGE;
             out->v = 0;
             out->ty = tgt->size[TY_INT128] ? (u ? TY_UINT128 : TY_INT128)
@@ -390,7 +390,7 @@ void lit_number(const Target *tgt, const char *s, size_t n, Lit *out)
             return;
         }
         if (!u && radix == 10 && v > (uint64_t)INT64_MAX) {
-            note(out, 1, "", "integer constant is so large that it is unsigned");
+            note(out, 1, DW_NONE, "integer constant is so large that it is unsigned");
             out->flags |= LIT_UNSIGNED_WARN;
         }
         if (u) {
@@ -581,7 +581,7 @@ void lit_char(const Target *tgt, const char *s, size_t n, Lit *out)
     }
     if (prefix && prefix != '8') {
         if (nchars > 1)
-            note(out, 1, "", "character constant too long for its type");
+            note(out, 1, DW_NONE, "character constant too long for its type");
         if (bits < 64)
             v &= (UINT64_C(1) << bits) - 1;
         if (bits < 64 && (out->ty == TY_INT || out->ty == TY_LONG ||
@@ -597,10 +597,10 @@ void lit_char(const Target *tgt, const char *s, size_t n, Lit *out)
         if (prefix == '8')
             maxc = 1;
         if (nchars > maxc)
-            note(out, prefix == '8' ? 2 : 1, "",
+            note(out, prefix == '8' ? 2 : 1, DW_NONE,
                  "character constant too long for its type");
         else
-            note(out, 1, "multichar", "multi-character character constant");
+            note(out, 1, DW_MULTICHAR, "multi-character character constant");
         out->flags |= LIT_MULTICHAR;
         if (prefix == '8') {
             v &= 0xFF;

@@ -292,9 +292,9 @@ void cdep_named(Checker *c, SrcLoc loc, const char *name, uint32_t flags,
         d = msg ? cerror_d(c, loc, "%s is unavailable: %s", what, msg)
                 : cerror_d(c, loc, "%s is unavailable", what);
     else
-        d = msg ? cwarn_d(c, DL_WARNING, loc, "deprecated-declarations",
+        d = msg ? cwarn_d(c, DL_WARNING, loc, DW_DEPRECATED_DECLARATIONS,
                           "%s is deprecated: %s", what, msg)
-                : cwarn_d(c, DL_WARNING, loc, "deprecated-declarations",
+                : cwarn_d(c, DL_WARNING, loc, DW_DEPRECATED_DECLARATIONS,
                           "%s is deprecated", what);
     if (d && note)
         cnote(c, d, *note, "declared here");

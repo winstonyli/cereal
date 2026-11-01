@@ -121,7 +121,7 @@ static void overflow(EP *p, const Tok *op, bool eval)
     (void)op;
     /* libcpp: at the token that triggered the reduction */
     if (eval)
-        pp_warn_at(p->pp, p->t, "integer-overflow-in-if",
+        pp_warn_at(p->pp, p->t, DW_INTEGER_OVERFLOW_IN_IF,
                    "integer overflow in preprocessor expression");
 }
 
@@ -219,31 +219,31 @@ static Val parse_number(EP *p, const Tok *t)
         return mkval(0, false);
     }
     uns = nu > 0;
-    if (nu > 0 && p->ok && diag_enabled(p->pp->diag, "traditional") &&
+    if (nu > 0 && p->ok && diag_enabled(p->pp->diag, DW_TRADITIONAL) &&
         !diag_hidden_in_system_header(p->pp->diag, t->loc)) {
         Tok u = *t;
         size_t k;
         for (k = 0; k + 1 < p->pp->if_exp.len; k += 2)   /* track0: where used */
             if (p->pp->if_exp.data[k] == t->loc)
                 u.loc = p->pp->if_exp.data[k + 1];
-        pp_warn_at(p->pp, &u, "traditional", "traditional C rejects the "
+        pp_warn_at(p->pp, &u, DW_TRADITIONAL, "traditional C rejects the "
                    "\"%.*s\" suffix", (int)(end - s), s);
     }
     if (base == 2 && (p->pp->opt->pedantic ||
-                       diag_option_explicit(p->pp->diag, "c11-c2x-compat"))) {
+                       diag_option_explicit(p->pp->diag, DW_C11_C2X_COMPAT))) {
         Tok u = *t;
         size_t k;
         for (k = 0; k + 1 < p->pp->if_exp.len; k += 2)   /* track0: where used */
             if (p->pp->if_exp.data[k] == t->loc)
                 u.loc = p->pp->if_exp.data[k + 1];
         if (!p->pp->opt->pedantic)
-            pp_warn_at(p->pp, &u, "c11-c2x-compat", "binary constants are a "
+            pp_warn_at(p->pp, &u, DW_C11_C2X_COMPAT, "binary constants are a "
                        "C2X feature");
         else if (p->pp->diag->pedantic_errors)
             pp_error_at(p->pp, &u, "binary constants are a C2X feature or GCC "
                         "extension");
         else
-            pp_warn_at(p->pp, &u, "", "binary constants are a C2X feature or "
+            pp_warn_at(p->pp, &u, DW_NONE, "binary constants are a C2X feature or "
                        "GCC extension");
     }
     if (overflowed) {
@@ -255,7 +255,7 @@ static Val parse_number(EP *p, const Tok *t)
             pp_error_at(p->pp, t, "integer constant is so large that it is "
                                   "unsigned");
         else
-            pp_warn_at(p->pp, t, "", "integer constant is so large that it "
+            pp_warn_at(p->pp, t, DW_NONE, "integer constant is so large that it "
                                      "is unsigned");
         uns = true;
     }
@@ -274,7 +274,7 @@ static void esc_emit(void *ctx, int level, const char *msg)
 {
     PEsc *e = ctx;
     if (level == 2)
-        diag_report(e->pp->diag, DL_ERROR, "", e->loc, "%s", msg);
+        diag_report(e->pp->diag, DL_ERROR, DW_NONE, e->loc, "%s", msg);
     else
         pp_pedwarn(e->pp, e->loc, "%s", msg);
 }
@@ -299,7 +299,7 @@ static void ucn_diags(EP *p, const Tok *t)
             v = v << 4 | (uint64_t)(isdigit((unsigned char)*q)
                                     ? *q - '0' : (*q | 32) - 'a' + 10);
         if (want) {
-            diag_report(p->pp->diag, DL_ERROR, "", t->loc,
+            diag_report(p->pp->diag, DL_ERROR, DW_NONE, t->loc,
                         "incomplete universal character name %.*s",
                         (int)(q - b), b);
         } else if (v > 0x10FFFF && v < 0x80000000u) {
@@ -307,7 +307,7 @@ static void ucn_diags(EP *p, const Tok *t)
                        (int)(q - b), b);
         } else if ((v < 0xA0 && v != 0x24 && v != 0x40 && v != 0x60) ||
                    v >= 0x80000000u || (v >= 0xD800 && v <= 0xDFFF)) {
-            diag_report(p->pp->diag, DL_ERROR, "", t->loc,
+            diag_report(p->pp->diag, DL_ERROR, DW_NONE, t->loc,
                         "%.*s is not a valid universal character",
                         (int)(q - b), b);
         }
@@ -355,10 +355,10 @@ static Val parse_char_(EP *p, const Tok *t)
     if (nchars == 0)
         fail(p, t, "empty character constant", NULL, 0);
     else if (nchars > (wide ? 1 : 4))   /* libcpp: more than fits its type */
-        diag_report(p->pp->diag, DL_WARNING, "", t->loc,
+        diag_report(p->pp->diag, DL_WARNING, DW_NONE, t->loc,
                     "character constant too long for its type");
     else if (nchars > 1)
-        diag_report(p->pp->diag, DL_WARNING, "multichar", t->loc,
+        diag_report(p->pp->diag, DL_WARNING, DW_MULTICHAR, t->loc,
                     "multi-character character constant");
     return mkval((uintmax_t)v, uns);
 }
@@ -400,7 +400,7 @@ static Val primary(EP *p, bool eval)
         /* C99 6.10.1p4: remaining identifiers are replaced with 0 */
         PP_EMIT(p->pp, macro_ref, pp_ident(p->pp, t), NULL, t, REF_IF_VALUE);
         {
-            Diagnostic *d = diag_report(p->pp->diag, DL_WARNING, "undef",
+            Diagnostic *d = diag_report(p->pp->diag, DL_WARNING, DW_UNDEF,
                                         t->loc,
                                         "\"%s\" is not defined, evaluates to 0",
                                         pp_ident(p->pp, t)->str);
@@ -439,8 +439,8 @@ static Val unary(EP *p, bool eval)
         advance(p);
         v = unary(p, eval);
         v.loc = op->loc;
-        if (eval && p->ok && diag_enabled(p->pp->diag, "traditional"))   /* at the lookahead */
-            diag_report(p->pp->diag, DL_WARNING, "traditional", p->t->loc,
+        if (eval && p->ok && diag_enabled(p->pp->diag, DW_TRADITIONAL))   /* at the lookahead */
+            diag_report(p->pp->diag, DL_WARNING, DW_TRADITIONAL, p->t->loc,
                         "traditional C rejects the unary plus operator");
         return v;
     }
@@ -485,11 +485,11 @@ static Val unary(EP *p, bool eval)
 static void convert(EP *p, const Tok *op, Val *a, Val *b)
 {
     if (a->uns != b->uns && p->ok &&
-        diag_enabled(p->pp->diag, "sign-promo-in-if")) {
+        diag_enabled(p->pp->diag, DW_SIGN_PROMO_IN_IF)) {
         bool left = !a->uns;
         Val *neg = left ? a : b;
         if (sv(*neg) < 0)
-            diag_report(p->pp->diag, DL_WARNING, "sign-promo-in-if", neg->loc,
+            diag_report(p->pp->diag, DL_WARNING, DW_SIGN_PROMO_IN_IF, neg->loc,
                         "the %s operand of \"%.*s\" changes sign when promoted",
                         left ? "left" : "right", (int)op->len, TXT(p, op));
     }
@@ -692,7 +692,7 @@ static Val expr_comma(EP *p, bool eval)
         if (eval && p->ok && p->pp->opt->pedantic)   /* at the token that ends the operand */
             diag_report(p->pp->diag,
                         p->pp->diag->pedantic_errors ? DL_ERROR : DL_WARNING,
-                        "pedantic", p->t->loc,
+                        DW_PEDANTIC, p->t->loc,
                         "comma operator in operand of #if");
     }
     return v;
@@ -740,7 +740,7 @@ static bool resolve_defined(PP *pp, TokSpan in, TokBuf *out)
             if (pp->opt->pedantic)
                 pp_pedwarn(pp, t->loc, "assertions are a GCC extension");
             else
-                diag_report(pp->diag, DL_WARNING, "deprecated", t->loc,
+                diag_report(pp->diag, DL_WARNING, DW_DEPRECATED, t->loc,
                             "assertions are a deprecated extension");
             i++;
             /* GCC: a malformed assertion is reported and tests false */

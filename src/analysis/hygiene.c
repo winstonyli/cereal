@@ -142,12 +142,12 @@ static void check_name(Analysis *a, Macro *m)
     const char *s = m->name->str;
     Diagnostic *d = NULL;
     if (is_c_keyword(s, m->name->len)) {
-        d = diag_report(a->diag, DL_WARNING, "macro-reserved-name", m->name_loc,
+        d = diag_report(a->diag, DL_WARNING, DW_MACRO_RESERVED_NAME, m->name_loc,
                         "macro name '%s' is a keyword (undefined behavior if "
                         "a standard header is included, C99 7.1.2p4)", s);
     } else if (s[0] == '_' && (s[1] == '_' || (s[1] >= 'A' && s[1] <= 'Z')) &&
                !feature_test_macro(s)) {
-        d = diag_report(a->diag, DL_WARNING, "macro-reserved-name", m->name_loc,
+        d = diag_report(a->diag, DL_WARNING, DW_MACRO_RESERVED_NAME, m->name_loc,
                         "macro name '%s' is a reserved identifier (C99 7.1.3)",
                         s);
     }
@@ -284,7 +284,7 @@ static void check_params(Analysis *a, Macro *m, const Tok **v, int n, MacroInfo 
             continue;
         /* `(T)x` is only a cast if the parenthesized part looks like a type;
          * `f(a) x` is not valid C, so treat ')' before x as a cast */
-        d = diag_report(a->diag, DL_WARNING, "macro-unparenthesized-param",
+        d = diag_report(a->diag, DL_WARNING, DW_MACRO_UNPARENTHESIZED_PARAM,
                         t->loc,
                         "macro parameter '%s' is an operand of '%s' but is not "
                         "parenthesized; an argument like 'a + b' changes the "
@@ -387,13 +387,13 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
         unbalanced = true;
 
     if (unbalanced) {
-        diag_report(a->diag, DL_REMARK, "macro-unbalanced", m->name_loc,
+        diag_report(a->diag, DL_REMARK, DW_MACRO_UNBALANCED, m->name_loc,
                     "replacement list of '%s' has unbalanced delimiters",
                     m->name->str);
         return;
     }
     if (self_ref)
-        diag_report(a->diag, DL_REMARK, "macro-self-reference", m->name_loc,
+        diag_report(a->diag, DL_REMARK, DW_MACRO_SELF_REFERENCE, m->name_loc,
                     "'%s' refers to itself; the inner occurrence is not "
                     "expanded again (C99 6.10.3.4p2)", m->name->str);
     if (decl)
@@ -401,7 +401,7 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
 
     /* statement-like bodies */
     if (tok_is_word(in, v[0], "if") && !top_else) {
-        d = diag_report(a->diag, DL_WARNING, "macro-dangling-else", v[0]->loc,
+        d = diag_report(a->diag, DL_WARNING, DW_MACRO_DANGLING_ELSE, v[0]->loc,
                         "body of '%s' is an 'if' without 'else'; 'if (c) %s; "
                         "else ...' binds the else to the macro's if",
                         m->name->str, macro_signature(a->arena, m));
@@ -412,7 +412,7 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
         return; /* if ... else ...: a single statement */
     if (tok_is_word(in, v[0], "do")) {
         if (tok_is_punct(v[n - 1], P_SEMI))
-            diag_report(a->diag, DL_WARNING, "macro-trailing-semicolon",
+            diag_report(a->diag, DL_WARNING, DW_MACRO_TRAILING_SEMICOLON,
                         v[n - 1]->loc,
                         "do-while(0) body of '%s' ends with ';'; the ';' at "
                         "the call site makes an extra empty statement",
@@ -423,7 +423,7 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
         return;
     if ((top_semis > 0 && last_semi != n - 1) || top_semis > 1 ||
         (top_brace && tok_is_punct(v[0], P_LBRACE))) {
-        d = diag_report(a->diag, DL_WARNING, "macro-multi-statement", v[0]->loc,
+        d = diag_report(a->diag, DL_WARNING, DW_MACRO_MULTI_STATEMENT, v[0]->loc,
                         "body of '%s' is not a single statement; under "
                         "'if (c) %s;' only the first part is conditional",
                         m->name->str, macro_signature(a->arena, m));
@@ -431,7 +431,7 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
         return;
     }
     if (top_semis == 1 && last_semi == n - 1) {
-        diag_report(a->diag, DL_WARNING, "macro-trailing-semicolon",
+        diag_report(a->diag, DL_WARNING, DW_MACRO_TRAILING_SEMICOLON,
                     v[n - 1]->loc,
                     "body of '%s' ends with ';'; uses like 'if (c) %s; else' "
                     "will not compile", m->name->str,
@@ -443,7 +443,7 @@ static void check_body(Analysis *a, Macro *m, const Tok **v, int n)
 
     /* expression-like body */
     if (binop && !wrapped_in_parens(v, n)) {
-        d = diag_report(a->diag, DL_WARNING, "macro-unparenthesized-body",
+        d = diag_report(a->diag, DL_WARNING, DW_MACRO_UNPARENTHESIZED_BODY,
                         binop_tok->loc,
                         "replacement list of '%s' has a top-level '%s' but is "
                         "not parenthesized; '%s' in an expression may bind "
@@ -526,7 +526,7 @@ static void on_define(void *ctx, Macro *m, Macro *replaced)
                 if ((m->body[k].flags & TF_PARAM) && m->body[k].punct == i)
                     used = true;
             if (!used)
-                diag_report(a->diag, DL_REMARK, "macro-unused-param",
+                diag_report(a->diag, DL_REMARK, DW_MACRO_UNUSED_PARAM,
                             m->param_locs[i],
                             "parameter '%s' of '%s' is never used",
                             m->params[i]->str, m->name->str);
@@ -600,8 +600,8 @@ static void on_expand(void *ctx, const Expansion *e, const TokSpan *args,
             if (already_reported(a, loc))
                 continue;
             d = diag_report(a->diag, DL_WARNING,
-                            se == SE_MODIFY ? "macro-multi-eval"
-                                            : "macro-multi-eval-call",
+                            se == SE_MODIFY ? DW_MACRO_MULTI_EVAL
+                                            : DW_MACRO_MULTI_EVAL_CALL,
                             loc,
                             "argument %d of '%s' %s and is evaluated %d times",
                             i + 1, m->name->str,
@@ -612,7 +612,7 @@ static void on_expand(void *ctx, const Expansion *e, const TokSpan *args,
                    mi->mentions[i] == 0) {
             if (already_reported(a, loc))
                 continue;
-            d = diag_report(a->diag, DL_WARNING, "macro-discarded-side-effect",
+            d = diag_report(a->diag, DL_WARNING, DW_MACRO_DISCARDED_SIDE_EFFECT,
                             loc,
                             "argument %d of '%s' has side effects but is never "
                             "evaluated", i + 1, m->name->str);
@@ -676,7 +676,7 @@ static void report_cycles(Analysis *a)
     MacroGraph g;
     size_t n, i;
     Macro ***cs;
-    if (!diag_enabled(a->diag, "macro-recursion"))
+    if (!diag_enabled(a->diag, DW_MACRO_RECURSION))
         return;
     mgraph_build(&g, a->pp);
     cs = mgraph_cycles(&g, a->pp->seq, a->arena, &n);
@@ -689,7 +689,7 @@ static void report_cycles(Analysis *a)
         for (p = c; *p; p++)
             sb_printf(&sb, "%s'%s'", p == c ? "" : p[1] ? ", " : " and ",
                       (*p)->name->str);
-        d = diag_report(a->diag, DL_REMARK, "macro-recursion", c[0]->name_loc,
+        d = diag_report(a->diag, DL_REMARK, DW_MACRO_RECURSION, c[0]->name_loc,
                         "macros %s expand to each other in a cycle; a name "
                         "met inside its own expansion is not expanded again "
                         "(C99 6.10.3.4p2)", sb_cstr(&sb));

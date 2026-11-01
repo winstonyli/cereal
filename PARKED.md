@@ -259,3 +259,9 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | What | Why parked | Status |
 |---|---|---|
 | Fold float negate, conversions and compares into the AR8 float kernel (`fparith.h`) | By decision (the user's "park b3", 2026-10-31): `rel_cmp_f` already covers compares (AR2), and conversions carry per-site trap rules, so it grows the spec without fixing a defect. Trigger: a second float-arithmetic bug of the double-rounding kind outside `+ - * /`. Evidence: `eval.c:560 convert`, `cexpr.c:173 fround`. | parked |
+
+## Unregistered diagnostic ids: `-Wno-invalid-memory-model` and `-Wno-extra` (docs/DIAG_IDS_DESIGN.md; 2026-11-01)
+
+| What | Why parked | Status |
+|---|---|---|
+| Make `invalid-memory-model` a real option, and let `-Wno-extra` act on the two pointer-versus-zero ordered-comparison warnings that print `[-Wextra]` | By decision (the user's "n1 n3", 2026-11-01): the enum conversion keeps behaviour identical, so these ids became tags (`DIAG_TAG` rows in `src/diag_opts.def`) that no flag matches. gcc honours `-Wno-invalid-memory-model` and, checked 2026-11-01, drops the `[-Wextra]` comparison warning under `-Wextra -Wno-extra`; cereal does neither. `extra` is already an umbrella name (`diag.c` `diag_config_apply`), so it needs gating, not a row. `c2x` and `inputloc` are internal parser tags and stay tags. Trigger: a corpus file or test that sets either flag. Evidence: `src/c/ccall.c` (`DW_INVALID_MEMORY_MODEL`), `src/c/cwarn_expr.c` (`DW_EXTRA`). | parked |

@@ -60,7 +60,7 @@ static void on_include(void *ctx, const IncludeEvent *ev)
             if (p->from == e.from && p->to == e.to &&
                 p->from_instance == e.from_instance) {
                 Diagnostic *d = diag_report(a->diag, DL_WARNING,
-                    "duplicate-include", ev->hash_loc,
+                    DW_DUPLICATE_INCLUDE, ev->hash_loc,
                     "'%s' is already included by this file; this #include "
                     "has no effect", ev->spelled);
                 diag_note(a->diag, d, p->hash_loc, "previously included here");
@@ -80,7 +80,7 @@ static void on_file_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
     if (via && an_user_file(via->from)) {
         for (i = 0; i < s->stack.len; i++)
             if (s->stack.data[i] == f) {
-                Diagnostic *d = diag_report(a->diag, DL_REMARK, "include-cycle",
+                Diagnostic *d = diag_report(a->diag, DL_REMARK, DW_INCLUDE_CYCLE,
                     via->hash_loc, "include cycle: '%s' includes itself "
                     "(directly or indirectly)", f->name);
                 (void)d;
@@ -98,7 +98,7 @@ static void on_file_enter(void *ctx, SrcFile *f, const IncludeEvent *via)
         Skeleton *sk = an_skeleton(a, f);
         Macro *m = sk->guard_ifndef ? mt_cur(a->pp->mt, sk->guard_ifndef) : NULL;
         if (m && sk->guard_covers_file && m->file != f && !m->predefined) {
-            Diagnostic *d = diag_report(a->diag, DL_WARNING, "guard-collision",
+            Diagnostic *d = diag_report(a->diag, DL_WARNING, DW_GUARD_COLLISION,
                 sk->dirs.data[0].kw_loc,
                 "include guard '%s' is already defined by '%s'; the contents "
                 "of this header are silently skipped", m->name->str,
@@ -295,7 +295,7 @@ static void check_header(Analysis *a, SrcFile *f)
         Ident *g = sk->guard_ifndef, *d = sk->guard_define;
         unsigned lim = MAX(2u, g->len / 4);
         if (edit_distance(g->str, g->len, d->str, d->len, lim) <= lim) {
-            Diagnostic *dg = diag_report(a->diag, DL_WARNING, "header-guard",
+            Diagnostic *dg = diag_report(a->diag, DL_WARNING, DW_HEADER_GUARD,
                 sk->dirs.data[1].kw_loc,
                 "'%s' is used as a header guard here, followed by #define of "
                 "a different macro '%s'", g->str, d->str);
@@ -314,7 +314,7 @@ static void check_header(Analysis *a, SrcFile *f)
         info && info->ok_includes == 1 && sk->ntokens + sk->dirs.len > 0 &&
         !name_has_suffix(f->name, ".def") && !name_has_suffix(f->name, ".inc") &&
         !name_has_suffix(f->name, ".x")) {
-        diag_report(a->diag, DL_WARNING, "missing-header-guard", f->base,
+        diag_report(a->diag, DL_WARNING, DW_MISSING_HEADER_GUARD, f->base,
                     "header '%s' has no include guard or #pragma once",
                     f->name);
     }
@@ -363,7 +363,7 @@ void include_finish(Analysis *a)
             if (!defines)
                 continue;
         }
-        diag_report(a->diag, DL_WARNING, "unused-include", e->hash_loc,
+        diag_report(a->diag, DL_WARNING, DW_UNUSED_INCLUDE, e->hash_loc,
                     "no macro from '%s' is used; this #include has no effect",
                     e->to->name);
     }
@@ -378,7 +378,7 @@ void include_finish(Analysis *a)
         sk = an_skeleton(a, m->file);
         if (sk->guard_define == m->name)
             continue;
-        diag_report(a->diag, DL_WARNING, "unused-macros", m->name_loc,
+        diag_report(a->diag, DL_WARNING, DW_UNUSED_MACROS, m->name_loc,
                     "macro '%s' is defined but never used", m->name->str);
     }
 

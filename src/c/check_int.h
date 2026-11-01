@@ -705,26 +705,27 @@ static inline bool is_declarator_tag(unsigned tag)
 }
 
 void cerror(Checker *c, SrcLoc loc, const char *fmt, ...);
-void cwarn(Checker *c, SrcLoc loc, const char *id, const char *fmt, ...);
-const char *cc90_id(Checker *c, const char *own);
-void cc90(Checker *c, SrcLoc loc, const char *own, const char *fmt, ...);
+void cwarn(Checker *c, SrcLoc loc, DiagOpt id, const char *fmt, ...);
+/* The option a C90-only restriction is reported under; DW_NONE when none applies. */
+DiagOpt cc90_id(Checker *c, DiagOpt own);
+void cc90(Checker *c, SrcLoc loc, DiagOpt own, const char *fmt, ...);
 /* A pedwarn: a warning (an error with -pedantic-errors), enabled when its
- * option id is ("" / NULL: always). */
-Diagnostic *cpedwarn(Checker *c, SrcLoc loc, const char *id,
+ * option id is (DW_NONE: always). */
+Diagnostic *cpedwarn(Checker *c, SrcLoc loc, DiagOpt id,
                      const char *fmt, ...);
 /* A pedwarn under -Wpedantic only ([-Wpedantic]). */
 Diagnostic *cpedantic(Checker *c, SrcLoc loc, const char *fmt, ...);
 /* constant_expression_warning: only under -pedantic, tagged -Woverflow */
 void cconst_overflow(Checker *c, SrcLoc loc);
-Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, const char *opt,
+Diagnostic *cpedstd(Checker *c, SrcLoc loc, int year, DiagOpt opt,
                     const char *fmt, ...);
 #define cped11(c, loc, ...) \
-    cpedstd(c, loc, 2011, "c99-c11-compat", __VA_ARGS__)
+    cpedstd(c, loc, 2011, DW_C99_C11_COMPAT, __VA_ARGS__)
 #define cped2x(c, loc, ...) \
-    cpedstd(c, loc, 2023, "c11-c2x-compat", __VA_ARGS__)
+    cpedstd(c, loc, 2023, DW_C11_C2X_COMPAT, __VA_ARGS__)
 bool cin_system(Checker *c, SrcLoc loc);
 Diagnostic *cerror_d(Checker *c, SrcLoc loc, const char *fmt, ...);
-Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, const char *id,
+Diagnostic *cwarn_d(Checker *c, DiagLevel lvl, SrcLoc loc, DiagOpt id,
                     const char *fmt, ...);
 void cnote(Checker *c, Diagnostic *d, SrcLoc loc, const char *fmt, ...);
 void cheader_note(Checker *c, Diagnostic *d, SrcLoc loc, const char *hdr,
@@ -938,8 +939,8 @@ typedef struct ConvInfo {
      * 'TEXT')" is added at `loc`.  NULL: none. */
     const char *near;
     /* CONV_ARG to an unprototyped builtin etc.: report as this warning
-     * option instead of an error (NULL: normal). */
-    const char *warnopt;
+     * option instead of an error (DW_NONE: normal). */
+    DiagOpt warnopt;
     unsigned lhs_bits;       /* the target is a bit-field of this width */
     bool lhs_bitfield;       /* the target is a bit-field (gcc's -Wc++-compat
                               * enum message then omits the types) */

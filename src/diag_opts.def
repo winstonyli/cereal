@@ -193,3 +193,10 @@ DIAG_OPT(LONG_LONG, "long-long", "c", DL_WARNING, false, 0, "long long type")
 DIAG_OPT(UNUSED_CONST_VARIABLE, "unused-const-variable", "c", DL_WARNING, false, 0, "unused static const variable")
 DIAG_OPT(PACKED, "packed", "c", DL_WARNING, false, 0, "packed attribute has no effect or hurts alignment")
 DIAG_OPT(PADDED, "padded", "c", DL_WARNING, false, 0, "padding added to a struct")
+/* Tags: ids printed on a diagnostic (and read back by the parser) that are not
+ * configurable options: no -W flag matches them, --list-warnings omits them,
+ * and diag_level_for leaves the requested level alone.  DIAG_TAG(ID, name). */
+DIAG_TAG(INVALID_MEMORY_MODEL, "invalid-memory-model")
+DIAG_TAG(EXTRA, "extra")
+DIAG_TAG(C2X, "c2x")
+DIAG_TAG(INPUTLOC, "inputloc")

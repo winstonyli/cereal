@@ -458,7 +458,7 @@ bool inhibited(Checker *c, uint32_t i, bool fold)
 
 bool cexpr_cxx_compat(Checker *c, uint32_t node)
 {
-    return diag_enabled(c->diag, "c++-compat") &&
+    return diag_enabled(c->diag, DW_CPP_COMPAT) &&
            (node == NO_NODE || !cexpr_in_extension(c, node));
 }
 
@@ -496,7 +496,7 @@ static void ped_arith(Checker *c, uint32_t i, SrcLoc loc, const char *msg)
 {
     if (cexpr_in_extension(c, i))
         return;
-    cpedwarn(c, loc, "pointer-arith", "%s", msg);
+    cpedwarn(c, loc, DW_POINTER_ARITH, "%s", msg);
 }
 
 /* ---- members ------------------------------------------------------------- */
@@ -1155,7 +1155,7 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
     switch (l->level) {
     case 2: {
         size_t k = c->diag->all.len, lim = k > 64 ? k - 64 : 0;
-        if (l->id && !strcmp(l->id, "inputloc"))
+        if (l->id == DW_INPUTLOC)
             loc = cinput_loc(c, c->nodes[i].tok);
         for (; k-- > lim;)      /* the parser reported it when it skipped the token */
             if (c->diag->all.data[k]->loc == loc &&
@@ -1174,28 +1174,28 @@ static void lit_report(Checker *c, uint32_t i, const Lit *l)
         /* libcpp's pedwarns carry no option tag; interpret_float's
          * non-standard suffix pedwarn is c-family's: [-Wpedantic] at
          * input_location */
-        if (l->id && !strcmp(l->id, "c2x") && c->opt.std_year >= 2023)
+        if (l->id == DW_C2X && c->opt.std_year >= 2023)
             break;              /* standard in C23 */
-        if (l->id && !strcmp(l->id, "c2x") && !c->opt.pedantic) {
+        if (l->id == DW_C2X && !c->opt.pedantic) {
             /* libcpp: the compat option's own, shorter wording */
             const char *or_gcc = strstr(l->msg, " or GCC");
-            if (diag_option_explicit(c->diag, "c11-c2x-compat"))
-                cwarn(c, loc, "c11-c2x-compat", "%.*s",
+            if (diag_option_explicit(c->diag, DW_C11_C2X_COMPAT))
+                cwarn(c, loc, DW_C11_C2X_COMPAT, "%.*s",
                       or_gcc ? (int)(or_gcc - l->msg) : (int)strlen(l->msg),
                       l->msg);
         } else if (c->opt.pedantic && !cexpr_in_extension(c, i)) {
-            if (l->id && !strcmp(l->id, "inputloc"))
-                cpedwarn(c, cinput_loc(c, c->nodes[i].tok), "pedantic", "%s",
+            if (l->id == DW_INPUTLOC)
+                cpedwarn(c, cinput_loc(c, c->nodes[i].tok), DW_PEDANTIC, "%s",
                          l->msg);
             else
-                cpedwarn(c, loc, "", "%s", l->msg);
+                cpedwarn(c, loc, DW_NONE, "%s", l->msg);
         }
         break;
     }
     if (l->flags & LIT_FIXED)
         cerror(c, loc, "fixed-point types not supported for this target");
     if ((l->flags & LIT_UNSIGNED_WARN) && !cin_system(c, loc))
-        cwarn(c, cinput_loc(c, c->nodes[i].tok), "traditional",
+        cwarn(c, cinput_loc(c, c->nodes[i].tok), DW_TRADITIONAL,
               "this decimal constant would be unsigned in ISO C90");
 }
 
@@ -1207,7 +1207,7 @@ static void traditional_suffix(Checker *c, uint32_t i, const char *s,
     size_t k = 0;
     bool hex = len > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
     char suf[16];
-    if (!diag_enabled(c->diag, "traditional"))
+    if (!diag_enabled(c->diag, DW_TRADITIONAL))
         return;
     if (len > 1 && s[0] == '0' && (hex || s[1] == 'b' || s[1] == 'B'))
         k = 2;
@@ -1232,7 +1232,7 @@ static void traditional_suffix(Checker *c, uint32_t i, const char *s,
     /* cpp_sys_macro_p: a token of a system header's macro */
     if (!cin_system(c, cnode_loc(c, i)) &&
         !cin_system(c, c->u->toks[c->nodes[i].tok].t.loc))
-        cwarn(c, cnode_loc(c, i), "traditional",
+        cwarn(c, cnode_loc(c, i), DW_TRADITIONAL,
               "traditional C rejects the \"%s\" suffix", suf);
 }
 
@@ -1314,7 +1314,7 @@ static void e_number(Checker *c, uint32_t i)
             return;
         if (!hex && len && !isalpha((unsigned char)s[len - 1]))
             cwarn(c, cinput_loc(c, c->nodes[i].tok),
-                  "unsuffixed-float-constants", "unsuffixed floating constant");
+                  DW_UNSUFFIXED_FLOAT_CONSTANTS, "unsuffixed floating constant");
         for (k = hex ? 2 : 0; k < len; k++) {
             char ch = s[k];
             if ((!hex && (ch == 'e' || ch == 'E')) ||
@@ -1325,10 +1325,10 @@ static void e_number(Checker *c, uint32_t i)
                 nonzero = true;
         }
         if (isinf(v) && !(tkind(c, t) == TY_FLOAT128 && f128_decimal_fits(s, len)))
-            cwarn(c, cinput_loc(c, c->nodes[i].tok), "overflow",
+            cwarn(c, cinput_loc(c, c->nodes[i].tok), DW_OVERFLOW,
                   "floating constant exceeds range of %s", type_q(TT, t));
         else if (v == 0 && nonzero)
-            cwarn(c, cinput_loc(c, c->nodes[i].tok), "overflow",
+            cwarn(c, cinput_loc(c, c->nodes[i].tok), DW_OVERFLOW,
                   "floating constant truncated to zero");
         c->ck[i] = K_FLOAT;
         c->cv[i] = fpush(c, v);
@@ -1357,9 +1357,9 @@ static void traditional_escapes(Checker *c, uint32_t tok, const char *s,
         return;
     for (k = 0; k + 1 < len; k++)
         if (s[k] == '\\') {
-            if (diag_enabled(c->diag, "traditional") &&
+            if (diag_enabled(c->diag, DW_TRADITIONAL) &&
                 (s[k + 1] == 'a' || s[k + 1] == 'x'))
-                cwarn(c, loc, "traditional", "the meaning of '\\%c' is "
+                cwarn(c, loc, DW_TRADITIONAL, "the meaning of '\\%c' is "
                       "different in traditional C", s[k + 1]);
             k++;
         }
@@ -1376,7 +1376,7 @@ static void esc_emit(void *ctx, int level, const char *msg)
     if (level == 2)
         cerror(e->c, e->loc, "%s", msg);
     else
-        cpedwarn(e->c, e->loc, "", "%s", msg);
+        cpedwarn(e->c, e->loc, DW_NONE, "%s", msg);
 }
 
 /* libcpp's convert_escape and friends: bad hex/octal/unknown escapes. */
@@ -1451,7 +1451,7 @@ static void ucn_literal(Checker *c, uint32_t tok, const char *s, size_t len,
                 cerror(c, loc, "empty named universal character escape "
                        "sequence");
             else if (ped)
-                cpedwarn(c, loc, "", "named universal character escapes are "
+                cpedwarn(c, loc, DW_NONE, "named universal character escapes are "
                          "only valid in C++23");
             /* a name is not looked up: the Unicode database is not here */
             k = p;
@@ -1476,7 +1476,7 @@ static void ucn_literal(Checker *c, uint32_t tok, const char *s, size_t len,
             if (p == ds)
                 cerror(c, loc, "empty delimited escape sequence");
             else if (ped)
-                cpedwarn(c, loc, "", "delimited escape sequences are only "
+                cpedwarn(c, loc, DW_NONE, "delimited escape sequences are only "
                          "valid in C++23");
             p++;
         } else {
@@ -1495,7 +1495,7 @@ static void ucn_literal(Checker *c, uint32_t tok, const char *s, size_t len,
             }
         }
         if (v > 0x10FFFF && v < 0x80000000u)
-            cpedwarn(c, loc, "", "%.*s is outside the UCS codespace",
+            cpedwarn(c, loc, DW_NONE, "%.*s is outside the UCS codespace",
                      (int)(p - b), s + b);
         else if ((v < 0xA0 && v != 0x24 && v != 0x40 && v != 0x60) ||
                  v >= 0x80000000u || (v >= 0xD800 && v <= 0xDFFF))
@@ -1543,10 +1543,10 @@ static void e_string(Checker *c, uint32_t i)
     uint64_t units = 0;
     unsigned width;
     TypeKind ek = TY_CHAR;
-    if (np > 1 && diag_enabled(c->diag, "traditional")) {
+    if (np > 1 && diag_enabled(c->diag, DW_TRADITIONAL)) {
         SrcLoc il = cinput_loc(c, c->nodes[i].tok + 1);
         if (!cin_system(c, il))
-            cwarn(c, il, "traditional", "traditional C rejects string "
+            cwarn(c, il, DW_TRADITIONAL, "traditional C rejects string "
                   "constant concatenation");
     }
     for (k = 0; k < np; k++) {
@@ -1603,12 +1603,12 @@ static void e_string(Checker *c, uint32_t i)
         lit_str_units(s, len, width, &units);
     }
     if (units > 4095 && !cexpr_in_extension(c, i) && !in_asm_string(c, i))
-        cpedwarn(c, cinput_loc(c, c->nodes[i].tok + np), "overlength-strings",
+        cpedwarn(c, cinput_loc(c, c->nodes[i].tok + np), DW_OVERLENGTH_STRINGS,
                  "string length '%llu' is greater than the length '%d' ISO "
                  "C99 compilers are required to support",
                  (unsigned long long)units, 4095);
     /* -Wwrite-strings: the literal is an array of const char */
-    c->ty[i] = type_array(TT, TYPE_MK(ek, diag_enabled(c->diag, "write-strings")
+    c->ty[i] = type_array(TT, TYPE_MK(ek, diag_enabled(c->diag, DW_WRITE_STRINGS)
                                           ? TQ_CONST : 0), units + 1);
     c->ef[i] = EF_LVALUE | EF_STRING | EF_ADDRLV;
     c->cb[i] = CB_NODE | i;
@@ -1656,7 +1656,7 @@ static void old_decl_note(Checker *c, Diagnostic *d, const CSym *s)
  * int() of a library built-in whose type differs. */
 static void builtin_mismatch(Checker *c, SrcLoc loc, const BTab *bt)
 {
-    Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "builtin-declaration-mismatch",
+    Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_BUILTIN_DECLARATION_MISMATCH,
                             "incompatible implicit declaration of built-in "
                             "function '%s'", bt->name);
     if (d && bt->hdr[0])
@@ -1678,7 +1678,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
     if (ref != SYM_NONE && csym(c, ref)->kind == CS_FUNC) {
         CSym *o = csym(c, ref);
         if (!(o->flags & CSF_IMPLICIT)) {
-            d = cpedwarn(c, loc, "implicit-function-declaration",
+            d = cpedwarn(c, loc, DW_IMPLICIT_FUNCTION_DECLARATION,
                          "implicit declaration of function '%s'", name);
             old_decl_note(c, d, o);
             o->flags |= CSF_IMPLICIT;
@@ -1694,7 +1694,7 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
         return;
     }
     if (bt) {
-        d = cpedwarn(c, loc, "implicit-function-declaration",
+        d = cpedwarn(c, loc, DW_IMPLICIT_FUNCTION_DECLARATION,
                      "implicit declaration of function '%s'", name);
         if (d && bt->hdr[0])
             cheader_note(c, d, loc, bt->hdr, "include '%s' or provide a "
@@ -1705,12 +1705,12 @@ static void implicit_decl(Checker *c, uint32_t i, uint32_t id)
         const char *hdr = std_header(name);
         const char *sug = hdr ? NULL : fuzzy_name(c, name, true);
         if (sug) {
-            d = cpedwarn(c, loc, "implicit-function-declaration",
+            d = cpedwarn(c, loc, DW_IMPLICIT_FUNCTION_DECLARATION,
                          "implicit declaration of function '%s'; did you mean "
                          "'%s'?", name, sug);
             cfix_tok(c, d, 0, c->nodes[i].tok, sug, FIX_MAYBE);
         } else
-            d = cpedwarn(c, loc, "implicit-function-declaration",
+            d = cpedwarn(c, loc, DW_IMPLICIT_FUNCTION_DECLARATION,
                          "implicit declaration of function '%s'", name);
         if (hdr)
             header_note(c, d, loc, name, hdr);
@@ -1951,7 +1951,7 @@ static void e_ident(Checker *c, uint32_t i)
             if (in_function(c))
                 n = strlen(cident(c, csym(c, c->func_sym)->name));
             else if (!strcmp(name, "__func__"))
-                cpedwarn(c, cnode_loc(c, i), "",
+                cpedwarn(c, cnode_loc(c, i), DW_NONE,
                          "'%s' is not defined outside of function scope",
                          name);
             c->ty[i] = type_array(TT, type_qual(TYPE_B(CHAR), TQ_CONST), n + 1);
@@ -2374,7 +2374,7 @@ SrcLoc exp_if_system(Checker *c, SrcLoc l, uint32_t expr)
 
 /* One diagnostic of a conversion, the text per context in m[] (indexed by
  * CONV_*); the notes gcc adds follow a reported one. */
-static void conv_diag(Conv *x, int rk, const char *opt, char (*m)[640],
+static void conv_diag(Conv *x, int rk, DiagOpt opt, char (*m)[640],
                       bool near)
 {
     Checker *c = x->c;
@@ -2437,7 +2437,7 @@ static int comp_target(Conv *x, TypeId lt, TypeId rt)
     val = type_compatible(TT, mvt(c, mvl), mvt(c, mvr));
     if (val && cexpr_cxx_compat(c, x->expr) &&
         cexpr_enum_int_mix(c, mvl, mvr, 0))
-        cwarn(c, x->loc, "c++-compat", "pointer target types incompatible in "
+        cwarn(c, x->loc, DW_CPP_COMPAT, "pointer target types incompatible in "
               "C++");
     if (val && !val_ped)
         cped2x(c, x->loc, "invalid use of pointers to arrays with "
@@ -2500,7 +2500,7 @@ static void builtin_noproto_arg(Conv *x)
     if ((pc == ac || (pc == 1 && ac == 2)) &&
         TYPE_UNQUAL(type_canon(TT, pt)) == TYPE_UNQUAL(type_canon(TT, pr)))
         return;
-    d = cwarn_d(c, DL_WARNING, x->eloc, "builtin-declaration-mismatch",
+    d = cwarn_d(c, DL_WARNING, x->eloc, DW_BUILTIN_DECLARATION_MISMATCH,
                 pr == mainv(c, at)
                 ? "'%s' argument %d type is %s where %s is expected in a call "
                   "to built-in function declared without prototype"
@@ -2562,13 +2562,13 @@ bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
     else
         snprintf(rs, sizeof rs, "%" PRId64, (int64_t)r);
     if (su) {
-        cwarn(c, loc, "overflow", "conversion from %s to %s "
+        cwarn(c, loc, DW_OVERFLOW, "conversion from %s to %s "
               "changes value from '%s' to '%s'", type_q(TT, rt), tname, vs, rs);
         return true;
     } else if (tu) {
         bool sfit = sv >= -(int64_t)(mask >> 1) - 1 && sv <= (int64_t)(mask >> 1);
         if (!sfit) {
-            cwarn(c, loc, "overflow", "unsigned conversion from "
+            cwarn(c, loc, DW_OVERFLOW, "unsigned conversion from "
                   "%s to %s changes value from '%s' to '%s'", type_q(TT, rt),
                   tname, vs, rs);
             return true;
@@ -2576,7 +2576,7 @@ bool cexpr_bf_overflow(Checker *c, SrcLoc loc, uint32_t n, TypeId ft,
     } else {
         bool ufit = sv >= 0 && uv <= mask;
         if (!ufit || c->opt.pedantic) {
-            cwarn(c, loc, "overflow", "overflow in conversion "
+            cwarn(c, loc, DW_OVERFLOW, "overflow in conversion "
                   "from %s to %s changes value from '%s' to '%s'",
                   type_q(TT, rt), tname, vs, rs);
             return true;
@@ -2790,7 +2790,7 @@ static void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode,
                 if (ra < ta) {
                     Diagnostic *d = cwarn_d(c, DL_WARNING,
                         cdecl_iloc(c, last_tok(c, e) + 1),
-                        "address-of-packed-member", "converting a packed %s "
+                        DW_ADDRESS_OF_PACKED_MEMBER, "converting a packed %s "
                         "pointer (alignment %u) to a %s pointer (alignment "
                         "%u) may result in an unaligned pointer value",
                         type_q(TT, rt), ra, type_q(TT, type), ta);
@@ -2834,7 +2834,7 @@ static void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode,
                 SrcLoc wl = mode == 2 && castloc ? castloc : pk_loc(c, e);
                 if (arg && mode == 0 && ntag(c, e) == N_MEMBER_EXPR && !castloc)
                     wl = expr_loc(c, e);
-                cwarn(c, wl, "address-of-packed-member",
+                cwarn(c, wl, DW_ADDRESS_OF_PACKED_MEMBER,
                       "taking address of packed member of %s may result in "
                       "an unaligned pointer value", type_q(TT, mainv(c, rec)));
                 return;
@@ -3010,7 +3010,7 @@ static void sso_decay(Checker *c, uint32_t i)
             break;
         }
     }
-    cwarn(c, first_loc(c, i), "scalar-storage-order", "address of array with "
+    cwarn(c, first_loc(c, i), DW_SCALAR_STORAGE_ORDER, "address of array with "
           "reverse scalar storage order requested");
 }
 
@@ -3061,8 +3061,8 @@ static void trad_conv(Checker *c, uint32_t e, TypeId lt, TypeId rt, SrcLoc l,
         w = "floating rather than complex";
     else if (lr && rr) {
         if (uc_prec(c, cl) == (unsigned)float_prec(c, TY_FLOAT) &&
-            diag_enabled(c->diag, "traditional-conversion"))
-            cwarn(c, l, "", "passing argument %d of '%s' as 'float' rather "
+            diag_enabled(c->diag, DW_TRADITIONAL_CONVERSION))
+            cwarn(c, l, DW_NONE, "passing argument %d of '%s' as 'float' rather "
                   "than 'double' due to prototype", pn, fn);
         return;
     } else if (li && ri) {
@@ -3079,13 +3079,13 @@ static void trad_conv(Checker *c, uint32_t e, TypeId lt, TypeId rt, SrcLoc l,
                 return;
             w = lu ? "as unsigned" : "as signed";
         }
-        if (diag_enabled(c->diag, "traditional-conversion"))
-            cwarn(c, l, "traditional-conversion", "passing argument %d of "
+        if (diag_enabled(c->diag, DW_TRADITIONAL_CONVERSION))
+            cwarn(c, l, DW_TRADITIONAL_CONVERSION, "passing argument %d of "
                   "'%s' %s due to prototype", pn, fn, w);
         return;
     }
-    if (w && diag_enabled(c->diag, "traditional-conversion"))
-        cwarn(c, l, "traditional-conversion", "passing argument %d of '%s' as "
+    if (w && diag_enabled(c->diag, DW_TRADITIONAL_CONVERSION))
+        cwarn(c, l, DW_TRADITIONAL_CONVERSION, "passing argument %d of '%s' as "
               "%s due to prototype", pn, fn, w);
 }
 
@@ -3169,7 +3169,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
         x.loc = x.eloc = ci->loc ? ci->loc : expr_loc(c, expr);
         break;
     }
-    if (ctx == CONV_ARG && diag_enabled(c->diag, "traditional-conversion") &&
+    if (ctx == CONV_ARG && diag_enabled(c->diag, DW_TRADITIONAL_CONVERSION) &&
         strncmp(fn, "__builtin_", 10)) {
         SrcLoc tl = has_ival(c, strip_paren(c, expr))
                     ? (c->u->toks[first_tok(c, expr)].exp
@@ -3200,13 +3200,13 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
         }
         sp(m[CONV_RETURN], "enum conversion from %s to %s in return is "
            "invalid in C++", cmp_tstr(c, expr), type_q(TT, lt));
-        conv_diag(&x, RK_PED, "c++-compat", m, true);
+        conv_diag(&x, RK_PED, DW_CPP_COMPAT, m, true);
     }
-    if (diag_enabled(c->diag, "enum-conversion")) {
+    if (diag_enabled(c->diag, DW_ENUM_CONVERSION)) {
         TypeId ot = orig_type(c, expr);
         if (tkind(c, ot) == TY_ENUM && kl == TY_ENUM &&
             mainv(c, ot) != mainv(c, lt))
-            cwarn(c, x.loc, "enum-conversion", "implicit conversion from %s "
+            cwarn(c, x.loc, DW_ENUM_CONVERSION, "implicit conversion from %s "
                   "to %s", type_q(TT, ot), type_q(TT, lt));
     }
     if (mainv(c, lt) == mainv(c, rt)) {
@@ -3255,7 +3255,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
             return true;
         if (lax_ok && !c->lax_noted) {
             c->lax_noted = true;
-            diag_report(c->diag, DL_NOTE, "", cinput_loc(c, c->nodes[expr].tok),
+            diag_report(c->diag, DL_NOTE, DW_NONE, cinput_loc(c, c->nodes[expr].tok),
                         "use '-flax-vector-conversions' to permit conversions "
                         "between vectors with differing element types or "
                         "numbers of subparts");
@@ -3321,7 +3321,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                "incompatible scalar storage order", T, R);
             sp(m[CONV_RETURN], "returning %s from pointer type with "
                "incompatible scalar storage order %s", R, T);
-            conv_diag(&x, RK_WARN, "scalar-storage-order", m, true);
+            conv_diag(&x, RK_WARN, DW_SCALAR_STORAGE_ORDER, m, true);
         }
         if (!ok)
             ok = (target_cmp = comp_target(&x, cl, cr)) != 0 || opaque;
@@ -3346,7 +3346,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                        "from pointer target type", qs);
                     sp(m[CONV_RETURN], "return discards '%s' qualifier from "
                        "pointer target type", qs);
-                    conv_diag(&x, RK_WARN, "discarded-array-qualifiers", m,
+                    conv_diag(&x, RK_WARN, DW_DISCARDED_ARRAY_QUALIFIERS, m,
                               false);
                 }
             } else if (c->opt.pedantic &&
@@ -3360,7 +3360,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                    "function pointer and 'void *'");
                 sp(m[CONV_RETURN], "ISO C forbids return between function "
                    "pointer and 'void *'");
-                conv_diag(&x, RK_PED, "pedantic", m, true);
+                conv_diag(&x, RK_PED, DW_PEDANTIC, m, true);
             } else if (!is_func(c, ttr) && !is_func(c, ttl)) {
                 unsigned warn_ped = TYPE_QUALS(ttr) & qnoat & ~TYPE_QUALS(ttl);
                 unsigned warn_q = TYPE_QUALS(ttr) & qnoat &
@@ -3385,12 +3385,12 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                        "from pointer target type", qs);
                     sp(m[CONV_RETURN], "return discards '%s' qualifier from "
                        "pointer target type", qs);
-                    conv_diag(&x, RK_PED, "discarded-qualifiers", m, true);
+                    conv_diag(&x, RK_PED, DW_DISCARDED_QUALIFIERS, m, true);
                 } else if (warn_ped) {
                     /* pedwarn_c11 before C2X: only when pedantic (above) */
                 } else if (is_void(c, ttl) || is_void(c, ttr) || target_cmp) {
                     /* a mismatch in signedness is ignored */
-                } else if (diag_enabled(c->diag, "pointer-sign")) {
+                } else if (diag_enabled(c->diag, DW_POINTER_SIGN)) {
                     sp(m[CONV_ARG], "pointer targets in passing argument %d of "
                        "'%s' differ in signedness", pn, fn);
                     sp(m[CONV_ASSIGN], "pointer targets in assignment from %s to "
@@ -3399,7 +3399,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                        "from %s differ in signedness", T, R);
                     sp(m[CONV_RETURN], "pointer targets in returning %s from a "
                        "function with return type %s differ in signedness", R, T);
-                    conv_diag(&x, RK_PED, "pointer-sign", m, true);
+                    conv_diag(&x, RK_PED, DW_POINTER_SIGN, m, true);
                 }
             } else if (is_func(c, ttl) && is_func(c, ttr)) {
                 unsigned lq = TYPE_QUALS(ttl) & qnoat, rq = TYPE_QUALS(ttr) & qnoat;
@@ -3413,7 +3413,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                        "function pointer from unqualified", qs);
                     sp(m[CONV_RETURN], "return makes '%s' qualified function "
                        "pointer from unqualified", qs);
-                    conv_diag(&x, RK_PED, "discarded-qualifiers", m, true);
+                    conv_diag(&x, RK_PED, DW_DISCARDED_QUALIFIERS, m, true);
                 }
             }
             /* C++ has no implicit void * -> T *; a null pointer constant
@@ -3422,7 +3422,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                 cwarn(c, ctx == CONV_ASSIGN ? x.loc
                       : c->u->toks[first_tok(c, expr)].exp
                       ? c->u->toks[first_tok(c, expr)].exp : x.loc,
-                      "c++-compat",
+                      DW_CPP_COMPAT,
                       "request for implicit conversion "
                       "from %s to %s not permitted in C++", type_q(TT, rt),
                       type_q(TT, lt));
@@ -3446,7 +3446,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                 sp(m[CONV_RETURN], "returning %s from a function with "
                    "incompatible return type %s", R, T);
             }
-            conv_diag(&x, RK_PED, "incompatible-pointer-types", m, true);
+            conv_diag(&x, RK_PED, DW_INCOMPATIBLE_POINTER_TYPES, m, true);
         }
         return true;
     }
@@ -3462,7 +3462,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
                "integer without a cast", T, R);
             sp(m[CONV_RETURN], "returning %s from a function with return type "
                "%s makes pointer from integer without a cast", R, T);
-            conv_diag(&x, RK_PED, "int-conversion", m, true);
+            conv_diag(&x, RK_PED, DW_INT_CONVERSION, m, true);
         }
         return true;
     }
@@ -3477,7 +3477,7 @@ static bool assign_check(Checker *c, uint32_t expr, TypeId lhs,
            "pointer without a cast", T, R);
         sp(m[CONV_RETURN], "returning %s from a function with return type %s "
            "makes integer from pointer without a cast", R, T);
-        conv_diag(&x, RK_PED, "int-conversion", m, true);
+        conv_diag(&x, RK_PED, DW_INT_CONVERSION, m, true);
         return true;
     }
     if (kl == TY_BOOL && kr == TY_PTR) {
@@ -3511,7 +3511,7 @@ incompatible:
     }
     case CONV_ASSIGN:
         if (ci->warnopt)
-            cwarn(c, x.eloc, "", "incompatible types when assigning to type %s "
+            cwarn(c, x.eloc, DW_NONE, "incompatible types when assigning to type %s "
                   "from type %s", T, R);
         else
             cerror(c, x.eloc, "incompatible types when assigning to type %s "
@@ -3519,7 +3519,7 @@ incompatible:
         break;
     case CONV_INIT:
         if (ci->warnopt)
-            cwarn(c, x.loc, "", "incompatible types when initializing type %s "
+            cwarn(c, x.loc, DW_NONE, "incompatible types when initializing type %s "
                   "using type %s", T, R);
         else
             cerror(c, x.loc, "incompatible types when initializing type %s "
@@ -3527,7 +3527,7 @@ incompatible:
         break;
     default:
         if (ci->warnopt)
-            cwarn(c, x.loc, "", "incompatible types when returning type %s but "
+            cwarn(c, x.loc, DW_NONE, "incompatible types when returning type %s but "
                   "%s was expected", R, T);
         else
             cerror(c, x.loc, "incompatible types when returning type %s but "
@@ -3650,7 +3650,7 @@ static void unary_value(Checker *c, uint32_t i, uint32_t a, uint64_t v,
         if (ovf || (c->ef[a] & EF_OVERFLOW))
             c->ef[i] |= EF_OVERFLOW;
         if (ovf && !(c->ef[a] & EF_OVERFLOW) && !inhibited(c, i, false))
-            cwarn(c, cnode_loc(c, i), "overflow", "integer overflow in "
+            cwarn(c, cnode_loc(c, i), DW_OVERFLOW, "integer overflow in "
                   "expression '%s' of type %s results in '%s'", estr(c, a),
                   type_q(TT, t), vstr(c, t, c->cv[i]));
         return;
@@ -3700,7 +3700,7 @@ bool readonly_check(Checker *c, uint32_t a, SrcLoc loc, int use)
         {
             /* at the literal, or at a prefix operator before it */
             SrcLoc fl = first_loc(c, a);
-            cwarn(c, loc < fl ? loc : fl, "", "%s of read-only location '%s'",
+            cwarn(c, loc < fl ? loc : fl, DW_NONE, "%s of read-only location '%s'",
                   verb[use], estr(c, a));
         }
     }
@@ -3761,11 +3761,11 @@ static void incdec(Checker *c, uint32_t i, uint32_t a, bool inc)
         return;
     }
     if (tkind(c, t) == TY_ENUM && cexpr_cxx_compat(c, i))
-        cwarn(c, loc, "c++-compat", inc ? "increment of enumeration value is "
+        cwarn(c, loc, DW_CPP_COMPAT, inc ? "increment of enumeration value is "
               "invalid in C++" : "decrement of enumeration value is invalid in "
               "C++");
     if (tkind(c, t) == TY_BOOL)
-        cwarn(c, loc, "bool-operation", inc ? "increment of a boolean "
+        cwarn(c, loc, DW_BOOL_OPERATION, inc ? "increment of a boolean "
               "expression" : "decrement of a boolean expression");
     if (is_complex(c, t))
         ped(c, i, loc, "ISO C does not support '++' and '--' on complex types");
@@ -3784,7 +3784,7 @@ static void incdec(Checker *c, uint32_t i, uint32_t a, bool inc)
                    type_q(TT, b));
         else if ((is_func(c, b) || is_void(c, b)) &&
                  !cexpr_in_extension(c, i))
-            cpedwarn(c, loc, "pointer-arith", inc ? "wrong type argument to "
+            cpedwarn(c, loc, DW_POINTER_ARITH, inc ? "wrong type argument to "
                      "increment" : "wrong type argument to decrement");
         /* gcc lowers an atomic ++/-- to a pointer + 1 sum */
         if (tquals(c, c->ty[a]) & TQ_ATOMIC)
@@ -3809,7 +3809,7 @@ static void addr_of(Checker *c, uint32_t i, uint32_t a)
     }
     if (is_void(c, t) && !tquals(c, t) &&
         !(ntag(c, s) == N_UNARY && npunct(c, s) == P_STAR))
-        cpedwarn(c, loc, "", "taking address of expression of type 'void'");
+        cpedwarn(c, loc, DW_NONE, "taking address of expression of type 'void'");
     if (ntag(c, s) == N_UNARY && npunct(c, s) == P_STAR) {
         uint32_t p = first_child(c, s);
         c->ty[i] = rvt(c, p);
@@ -3842,7 +3842,7 @@ static void addr_of(Checker *c, uint32_t i, uint32_t a)
         return;
     }
     if (sso_arr(c, s))
-        cwarn(c, loc, "scalar-storage-order", "address of array with reverse "
+        cwarn(c, loc, DW_SCALAR_STORAGE_ORDER, "address of array with reverse "
               "scalar storage order requested");
     if (c->ef[a] & EF_REGISTER) {
         uint32_t ref = lookup_ord(c, cnode_ident(c, s));
@@ -3946,23 +3946,23 @@ static void alias_warn(Checker *c, SrcLoc loc, TypeId obj, TypeId pt,
         return;
     if (!complete(c, tg)) {
         if (at_cast)
-            cwarn(c, loc, "strict-aliasing=", "type-punning to incomplete "
+            cwarn(c, loc, DW_STRICT_ALIASING_V, "type-punning to incomplete "
                   "type might break strict-aliasing rules");
         return;
     }
     r = type_alias_rel(TT, obj, tg);
     if (r == AL_DISJOINT)
-        cwarn(c, loc, "strict-aliasing=", "dereferencing type-punned "
+        cwarn(c, loc, DW_STRICT_ALIASING_V, "dereferencing type-punned "
               "pointer will break strict-aliasing rules");
     else if (r == AL_MAY && at_cast)
-        cwarn(c, loc, "strict-aliasing=", "dereferencing type-punned "
+        cwarn(c, loc, DW_STRICT_ALIASING_V, "dereferencing type-punned "
               "pointer might break strict-aliasing rules");
 }
 
 static bool alias_wanted(Checker *c, int lvl)
 {
-    return strict_alias_on(c) && diag_enabled(c->diag, "strict-aliasing=") &&
-           diag_option_level(c->diag, "strict-aliasing=", 3) == lvl;
+    return strict_alias_on(c) && diag_enabled(c->diag, DW_STRICT_ALIASING_V) &&
+           diag_option_level(c->diag, DW_STRICT_ALIASING_V, 3) == lvl;
 }
 
 /* *p, p->m, p[0] with p = (T *)&obj (level 3); loc: where gcc reports a
@@ -4020,7 +4020,7 @@ static void deref(Checker *c, uint32_t i, uint32_t a)
     /* *&&label folds to the label (a void) */
     if (is_void(c, b) && !inhibited(c, i, false) &&
         ntag(c, s) != N_ADDR_LABEL)
-        cwarn(c, loc, "", "dereferencing 'void *' pointer");
+        cwarn(c, loc, DW_NONE, "dereferencing 'void *' pointer");
     alias_deref(c, a, false, loc);
     c->ty[i] = b;
     c->ef[i] = EF_LVALUE | (c->ef[a] & EF_PROP);
@@ -4051,7 +4051,7 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
     SrcLoc loc = cnode_loc(c, i);
     TypeId t;
     if (op == P_PLUS && !cin_system(c, loc))
-        cwarn(c, loc, "traditional", "traditional C rejects the unary plus "
+        cwarn(c, loc, DW_TRADITIONAL, "traditional C rejects the unary plus "
               "operator");
     if (node_err(c, a) || !rvalue_ok(c, a)) {
         set_err(c, i);
@@ -4093,7 +4093,7 @@ static void arith_unary(Checker *c, uint32_t i, uint32_t a, int op)
             return;
         } else if (bool_operand(c, a)) {
             /* -Wbool-operation (-Wall) */
-            Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "bool-operation",
+            Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_BOOL_OPERATION,
                                     "'~' on a boolean expression");
             cnote(c, d, loc, "did you mean to use logical not?");
         }
@@ -4586,7 +4586,7 @@ static void e_sizeof(Checker *c, uint32_t i, bool align)
             uint32_t ref = lookup_ord(c, cnode_ident(c, s));
             if (ref != SYM_NONE && (csym(c, ref)->flags & CSF_ARRAY_PARM)) {
                 Diagnostic *d = cwarn_d(c, DL_WARNING, loc,
-                                        "sizeof-array-argument", "'sizeof' on "
+                                        DW_SIZEOF_ARRAY_ARGUMENT, "'sizeof' on "
                                         "array function parameter '%s' will "
                                         "return size of %s",
                                         cident(c, cnode_ident(c, s)),
@@ -4693,15 +4693,15 @@ static void cast_align(Checker *c, SrcLoc loc, TypeId pt, TypeId po)
 {
     bool ok;
     if (is_void(c, po) || is_func(c, po) || is_void(c, pt) || is_func(c, pt) ||
-        !diag_enabled(c->diag, "cast-align=") ||
-        diag_option_level(c->diag, "cast-align=", 1) < 2)
+        !diag_enabled(c->diag, DW_CAST_ALIGN_V) ||
+        diag_option_level(c->diag, DW_CAST_ALIGN_V, 1) < 2)
         return;
     type_size(TT, po, &ok);
     if (!ok)
         return;                 /* an opaque type's alignment is unknown */
     type_size(TT, pt, &ok);
     if (ok && type_align(TT, pt) > type_align(TT, po))
-        cwarn(c, loc, "cast-align=", "cast increases required alignment of "
+        cwarn(c, loc, DW_CAST_ALIGN_V, "cast increases required alignment of "
               "target type");
 }
 
@@ -4748,10 +4748,10 @@ static void cast_function_type(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
 {
     TypeId pt = type_canon(TT, pointee(c, t)), po = type_canon(TT, pointee(c, ot));
     if (!is_func(c, pt) || !is_func(c, po) ||
-        !diag_enabled(c->diag, "cast-function-type") ||
+        !diag_enabled(c->diag, DW_CAST_FUNCTION_TYPE) ||
         safe_function_cast(c, pt, po))
         return;
-    cwarn(c, loc, "cast-function-type", "cast between incompatible function "
+    cwarn(c, loc, DW_CAST_FUNCTION_TYPE, "cast between incompatible function "
           "types from %s to %s", type_q(TT, ot),
           type_q(TT, type_canon(TT, t)));
 }
@@ -4762,7 +4762,7 @@ static void cast_qual(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
     unsigned discarded = 0, added = 0, qnoat = TQ_CONST | TQ_VOLATILE | TQ_RESTRICT | TQ_ATOMIC;
     bool is_const;
     char b[48];
-    if (!diag_enabled(c->diag, "cast-qual"))
+    if (!diag_enabled(c->diag, DW_CAST_QUAL))
         return;
     do {
         it = type_canon(TT, type_base(TT, type_canon(TT, it)));
@@ -4773,12 +4773,12 @@ static void cast_qual(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
             discarded |= tquals(c, strip_arr(c, io)) & ~tquals(c, strip_arr(c, it)) & qnoat;
     } while (tkind(c, it) == TY_PTR && tkind(c, io) == TY_PTR);
     if (added)
-        cwarn(c, loc, "cast-qual", "cast adds '%s%s%s' qualifier to function "
+        cwarn(c, loc, DW_CAST_QUAL, "cast adds '%s%s%s' qualifier to function "
               "type", added & TQ_CONST ? "__attribute__((const))" : "",
               (added & TQ_CONST) && (added & TQ_VOLATILE) ? " " : "",
               added & TQ_VOLATILE ? "__attribute__((noreturn))" : "");
     if (discarded)
-        cwarn(c, loc, "cast-qual", "cast discards '%s' qualifier from pointer "
+        cwarn(c, loc, DW_CAST_QUAL, "cast discards '%s' qualifier from pointer "
               "target type", qual_str(b, discarded));
     if (added || discarded)
         return;
@@ -4803,7 +4803,7 @@ static void cast_qual(Checker *c, SrcLoc loc, TypeId t, TypeId ot)
         io = type_canon(TT, type_base(TT, type_canon(TT, io)));
         if (!is_func(c, it) && (tquals(c, it) & ~tquals(c, io) & qnoat) &&
             !is_const) {
-            cwarn(c, loc, "cast-qual", "to be safe all intermediate pointers "
+            cwarn(c, loc, DW_CAST_QUAL, "to be safe all intermediate pointers "
                   "in cast from %s to %s must be 'const' qualified",
                   type_q(TT, ot), type_q(TT, t));
             break;
@@ -5021,7 +5021,7 @@ static void e_cast(Checker *c, uint32_t i)
     } else if (is_ptr(c, ot) && is_int(c, t) &&
                tk != TY_BOOL && tk != TY_ENUM &&
                int_bits(c, t) != int_bits(c, ot)) {
-        cwarn(c, loc, "pointer-to-int-cast",
+        cwarn(c, loc, DW_POINTER_TO_INT_CAST,
               "cast from pointer to integer of different size");
     }
     packed_ptr_check_x(c, t, a, noop_ptr_cast(c, t, a) ? 1 : 3, 0, false);
@@ -5030,15 +5030,15 @@ static void e_cast(Checker *c, uint32_t i)
     if (tk == TY_BOOL && (is_ptr(c, ot) || is_int(c, ot) || is_flt(c, ot) || is_complex(c, ot)))
         cexpr_truth_warn(c, a, cinput_loc(c, c->nodes[i].tok));
     /* -Wbad-function-cast: a call cast to a type of another tree code */
-    if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, "bad-function-cast") &&
+    if (ntag(c, strip_paren(c, a)) == N_CALL && diag_enabled(c->diag, DW_BAD_FUNCTION_CAST) &&
         cast_class(c, t) != cast_class(c, ot))
-        cwarn(c, loc, "bad-function-cast", "cast from function call of type "
+        cwarn(c, loc, DW_BAD_FUNCTION_CAST, "cast from function call of type "
               "%s to non-matching type %s", type_q(TT, ot), type_q(TT, t));
     if (!(is_ptr(c, t) && is_ptr(c, ot)) &&
         is_ptr(c, t) && is_int(c, ot) && tkind(c, ot) != TY_BOOL &&
         tkind(c, ot) != TY_ENUM && int_bits(c, t) != int_bits(c, ot) &&
         c->ck[a] != K_ICE && c->ck[a] != K_FOLD) {
-        cwarn(c, loc, "int-to-pointer-cast",
+        cwarn(c, loc, DW_INT_TO_POINTER_CAST,
               "cast to pointer from integer of different size");
     }
     conv_const(c, i, a, c->ty[i]);
@@ -5072,7 +5072,7 @@ static void e_complit(Checker *c, uint32_t i)
         uint64_t n = c->ck[k[1]] == K_ICE ? c->cv[k[1]] : 1;
         t = type_array(TT, elem_of(c, t), n);
     }
-    cc90(c, ctok_loc(c, c->nodes[k[1]].tok), NULL, "ISO C90 forbids compound "
+    cc90(c, ctok_loc(c, c->nodes[k[1]].tok), DW_NONE, "ISO C90 forbids compound "
          "literals");
     if (c->ck[k[1]] == K_ERR) {
         set_err(c, i);
@@ -5188,7 +5188,7 @@ static void e_va_arg(Checker *c, uint32_t i)
         return;
     }
     if (tkind(c, t) == TY_ENUM && cexpr_cxx_compat(c, i))
-        cwarn(c, first_loc(c, k[1]), "c++-compat", "C++ requires promoted "
+        cwarn(c, first_loc(c, k[1]), DW_CPP_COMPAT, "C++ requires promoted "
               "type, not enum type, in 'va_arg'");
     c->ty[i] = t;
     c->ef[i] = EF_SIDE;
@@ -5280,7 +5280,7 @@ typedef struct OffStep {
 static void offsetof_bounds(Checker *c, const OffStep *st, uint32_t ns, SrcLoc loc)
 {
     uint32_t j, q;
-    if (!diag_enabled(c->diag, "array-bounds="))
+    if (!diag_enabled(c->diag, DW_ARRAY_BOUNDS_V))
         return;
     for (j = 0; j < ns; j++) {
         uint64_t up;
@@ -5295,7 +5295,7 @@ static void offsetof_bounds(Checker *c, const OffStep *st, uint32_t ns, SrcLoc l
             q--;
         if (q == 0)
             continue;               /* reached the base: a trailing array */
-        cwarn(c, loc, "array-bounds=", "index %llu denotes an offset greater "
+        cwarn(c, loc, DW_ARRAY_BOUNDS_V, "index %llu denotes an offset greater "
               "than size of %s", (unsigned long long)st[j].idx,
               type_q(TT, st[j].ty));
     }
@@ -5569,13 +5569,13 @@ static void e_has_attr(Checker *c, uint32_t i)
         }
     }
     if (!strcmp(an, "mode")) {
-        cwarn(c, ctok_loc(c, c->nodes[k[1]].tok), "attributes", "'mode' attribute "
+        cwarn(c, ctok_loc(c, c->nodes[k[1]].tok), DW_ATTRIBUTES, "'mode' attribute "
               "not supported in '__builtin_has_attribute'");
         set_ice(c, i, TYPE_B(INT), 0);
         return;
     }
     if (!strcmp(an, "aligned") && !strcmp(args, "0"))
-        cwarn(c, cnode_loc(c, i), "attributes", "requested alignment '0' is "
+        cwarn(c, cnode_loc(c, i), DW_ATTRIBUTES, "requested alignment '0' is "
               "not a positive power of 2");
     if (!strcmp(an, "aligned") && args[0] && !isdigit((unsigned char)args[0])) {
         uint32_t ak[2];
@@ -5644,13 +5644,13 @@ static void e_has_attr(Checker *c, uint32_t i)
         TypeId ft = ntag(c, k[0]) == N_TYPE_NAME ? type_of_typename(c, k[0])
                                                 : c->ty[k[0]];
         if (!is_err(c, ft) && type_ckind(TT, type_canon(TT, ft)) != TY_FUNC)
-            cwarn(c, cdecl_line_start_loc(c, c->nodes[i].tok), "attributes",
+            cwarn(c, cdecl_line_start_loc(c, c->nodes[i].tok), DW_ATTRIBUTES,
                   "'%s' attribute only applies to function types", an);
         else if (!is_err(c, ft) && type_ckind(TT, type_canon(TT, ft)) == TY_FUNC) {
             TypeId rt = type_base(TT, type_canon(TT, ft));
             char was[96];
             if (type_ckind(TT, type_canon(TT, rt)) != TY_PTR)
-                cwarn(c, cdecl_line_start_loc(c, c->nodes[i].tok), "attributes", "'%s' attribute "
+                cwarn(c, cdecl_line_start_loc(c, c->nodes[i].tok), DW_ATTRIBUTES, "'%s' attribute "
                       "ignored on a function returning %s", an, type_q(TT, rt));
             else
                 for (j = 0; j < n; j++)
@@ -5811,7 +5811,7 @@ void bin_value(Checker *c, uint32_t i, uint32_t a, uint32_t b,
         if (ovf || prev)
             c->ef[i] |= EF_OVERFLOW;
         if (ovf && !prev && !inhibited(c, i, false))
-            cwarn(c, loc, "overflow", "integer overflow in expression of type "
+            cwarn(c, loc, DW_OVERFLOW, "integer overflow in expression of type "
                   "%s results in '%s'", type_q(TT, t), vstr(c, t, c->cv[i]));
         return;
     }
@@ -5901,7 +5901,7 @@ static void e_comma(Checker *c, uint32_t i, uint32_t a, uint32_t b)
             s = strip_paren(c, ck[1]);
         voidcast = ntag(c, s) == N_CAST && is_void(c, c->ty[s]);
         if (!voidcast && !inhibited(c, i, false))
-            cwarn(c, cnode_loc(c, i), "unused-value", "left-hand operand of "
+            cwarn(c, cnode_loc(c, i), DW_UNUSED_VALUE, "left-hand operand of "
                   "comma expression has no effect");
     }
     else if (!inhibited(c, i, false))
@@ -6095,10 +6095,10 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             tkind(c, tb) != TY_VECTOR && has_ival(c, b) &&
             !inhibited(c, i, false)) {
             if (ival_neg(c, tb, c->cv[b]))
-                cwarn(c, loc, "shift-count-negative", "%s shift count is "
+                cwarn(c, loc, DW_SHIFT_COUNT_NEGATIVE, "%s shift count is "
                       "negative", dir);
             else if (c->cv[b] >= int_bits(c, vec_elem(c, ta)))
-                cwarn(c, loc, "shift-count-overflow", "%s shift count >= "
+                cwarn(c, loc, DW_SHIFT_COUNT_OVERFLOW, "%s shift count >= "
                       "width of vector element", dir);
         }
         return;
@@ -6114,12 +6114,12 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         if (ival_neg(c, tb, c->cv[b])) {
             int_const = false;
             if (!inhibited(c, i, false))
-                cwarn(c, loc, "shift-count-negative", "%s shift count is "
+                cwarn(c, loc, DW_SHIFT_COUNT_NEGATIVE, "%s shift count is "
                       "negative", dir);
         } else if (c->cv[b] >= prec) {
             int_const = false;
             if (!inhibited(c, i, false))
-                cwarn(c, loc, "shift-count-overflow", "%s shift count >= width "
+                cwarn(c, loc, DW_SHIFT_COUNT_OVERFLOW, "%s shift count >= width "
                       "of type", dir);
         } else {
             cnt_ok = true;
@@ -6129,7 +6129,7 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         ival_neg(c, ta, c->cv[a])) {
         int_const = false;
         if (!inhibited(c, i, false))
-            cwarn(c, loc, "shift-negative-value", "left shift of negative "
+            cwarn(c, loc, DW_SHIFT_NEGATIVE_VALUE, "left shift of negative "
                   "value");
     }
     if (!(cnt_ok && has_ival(c, a) && prec <= 64)) {
@@ -6155,10 +6155,10 @@ static void e_shift(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         if (sign)
             int_const = false;
         if (mp > prec + 1 || (mp == prec + 1 && neg) ||
-            (sign && diag_option_level(c->diag, "shift-overflow=", 1) >= 2)) {
+            (sign && diag_option_level(c->diag, DW_SHIFT_OVERFLOW_V, 1) >= 2)) {
             int_const = false;
             if (!inhibited(c, i, false))
-                cwarn(c, loc, "shift-overflow=", "result of '%s' requires %u "
+                cwarn(c, loc, DW_SHIFT_OVERFLOW_V, "result of '%s' requires %u "
                       "bits to represent, but %s only has %u bits", estr(c, i),
                       mp, type_q(TT, ta), prec);
         }
@@ -6200,7 +6200,7 @@ static void xor_pow(Checker *c, uint32_t i, uint32_t a, uint32_t b)
     } else {
         return;
     }
-    d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "xor-used-as-pow",
+    d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), DW_XOR_USED_AS_POW,
                 "result of '%llu^%llu' is %llu; did you mean %s?", l, r, l ^ r,
                 sug);
     /* gcc: the base and the operator (a touching pair merges); no hint for
@@ -6430,7 +6430,7 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         zero_div = true;
         c->ef[i] |= EF_ZDIV;
         if (!inhibited(c, i, false))
-            cwarn(c, loc, "div-by-zero", "division by zero");
+            cwarn(c, loc, DW_DIV_BY_ZERO, "division by zero");
     }
     if (is_complex(c, rt)) {
         long double ar, ai, br, bi, rr, ri;
@@ -6563,7 +6563,7 @@ static void e_cond(Checker *c, uint32_t i)
              tc = strip_paren(c, q[1]))
             ;
         if (is_boolish(c, tc) && !node_err(c, tc))
-            cwarn(c, cl, "parentheses", "the omitted middle operand in '?:' "
+            cwarn(c, cl, DW_PARENTHESES, "the omitted middle operand in '?:' "
                   "will always be 'true', suggest explicit middle operand");
         /* gcc's parser reports both before it reads the third operand */
         if (at < n0 && c->diag->all.len > n0) {
@@ -6598,15 +6598,15 @@ static void e_cond(Checker *c, uint32_t i)
     /* operands with side effects are compared later, with the ifs */
     if (mid != NO_NODE && c->func_node != NO_NODE &&
         !((c->ef[mid] | c->ef[els]) & EF_SIDE) &&
-        diag_enabled(c->diag, "duplicated-branches") &&
+        diag_enabled(c->diag, DW_DUPLICATED_BRANCHES) &&
         cstmt_cond_identical(c, i, true))
-        cwarn(c, cl, "duplicated-branches", "this condition has identical "
+        cwarn(c, cl, DW_DUPLICATED_BRANCHES, "this condition has identical "
               "branches");
     if (cexpr_cxx_compat(c, i)) {
         TypeId o1 = orig_type(c, ch), o2 = orig_type(c, els);
         if (tkind(c, o1) == TY_ENUM && tkind(c, o2) == TY_ENUM &&
             mainv(c, o1) != mainv(c, o2))
-            cwarn(c, cl, "c++-compat", "different enum types in conditional "
+            cwarn(c, cl, DW_CPP_COMPAT, "different enum types in conditional "
                   "is invalid in C++: %s vs %s", type_q(TT, o1),
                   type_q(TT, o2));
     }
@@ -6625,11 +6625,11 @@ static void e_cond(Checker *c, uint32_t i)
         if (is_int(c, rt) && !is_signed(c, rt) &&
             is_int(c, promoted(c, ch)) && is_int(c, promoted(c, els)) &&
             is_signed(c, promoted(c, ch)) != is_signed(c, promoted(c, els)) &&
-            diag_enabled(c->diag, "sign-compare") && !inhibited(c, i, false)) {
+            diag_enabled(c->diag, DW_SIGN_COMPARE) && !inhibited(c, i, false)) {
             uint32_t sa = is_signed(c, promoted(c, ch)) ? ch : els;
             uint32_t oa = sa == ch ? els : ch;
             if (!nonneg(c, sa))
-                cwarn(c, ctok_loc(c, first_tok(c, sa)), "sign-compare",
+                cwarn(c, ctok_loc(c, first_tok(c, sa)), DW_SIGN_COMPARE,
                       "operand of '?:' changes signedness from %s to %s due "
                       "to unsignedness of other operand",
                       type_q(TT, rvt(c, sa)), type_q(TT, rvt(c, oa)));
@@ -6658,7 +6658,7 @@ static void e_cond(Checker *c, uint32_t i)
             TypeId vo = is_void(c, p1) && !(tquals(c, p1) & TQ_ATOMIC) ? p1 : p2,
                    ot = vo == p1 ? p2 : p1;
             if (is_array(c, ot) && (gq(c, ot) & ~TYPE_QUALS(vo)))
-                cwarn(c, cl, "discarded-array-qualifiers", "pointer to array "
+                cwarn(c, cl, DW_DISCARDED_ARRAY_QUALIFIERS, "pointer to array "
                       "loses qualifier in conditional expression");
             if (is_func(c, p1) || is_func(c, p2))
                 ped(c, i, cl, "ISO C forbids conditional expr between 'void *' "
@@ -6667,12 +6667,12 @@ static void e_cond(Checker *c, uint32_t i)
                                                    ~(unsigned)TQ_ATOMIC));
         } else {
             if (n1 && n2)
-                cpedwarn(c, cl, "incompatible-pointer-types", "pointer type "
+                cpedwarn(c, cl, DW_INCOMPATIBLE_POINTER_TYPES, "pointer type "
                          "mismatch between %s and %s of '%s' and '%s' in "
                          "conditional expression", type_q(TT, t1),
                          type_q(TT, t2), n1, n2);
             else
-                cpedwarn(c, cl, "", "pointer type mismatch in conditional "
+                cpedwarn(c, cl, DW_NONE, "pointer type mismatch in conditional "
                                     "expression");
             rt = type_ptr(TT, type_qual(TYPE_B(VOID), q));
         }
@@ -6682,12 +6682,12 @@ static void e_cond(Checker *c, uint32_t i)
         rt = t1;
     } else if (is_ptr(c, t1) && is_int(c, t2)) {
         if (!is_npc(c, els))
-            cpedwarn(c, cl, "", "pointer/integer type mismatch in conditional "
+            cpedwarn(c, cl, DW_NONE, "pointer/integer type mismatch in conditional "
                                 "expression");
         rt = t1;
     } else if (is_int(c, t1) && is_ptr(c, t2)) {
         if (!is_npc(c, ch))
-            cpedwarn(c, cl, "", "pointer/integer type mismatch in conditional "
+            cpedwarn(c, cl, DW_NONE, "pointer/integer type mismatch in conditional "
                                 "expression");
         rt = t2;
     } else {
@@ -6854,7 +6854,7 @@ static void fold_flush(Checker *c, uint32_t i)
         t = c->ty[k];
         if (ntag(c, k) == N_UNARY) {
             uint32_t a = first_child(c, k);
-            cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "
+            cwarn(c, cnode_loc(c, k), DW_OVERFLOW, "integer overflow in "
                   "expression '%s' of type %s results in '%s'", estr(c, a),
                   type_q(TT, t), vstr(c, t, c->cv[k]));
         } else if (ntag(c, k) == N_BINARY) {
@@ -6872,7 +6872,7 @@ static void fold_flush(Checker *c, uint32_t i)
                 (ntag(c, y) == N_NUMBER || ntag(c, y) == N_BINARY) &&
                 (ntag(c, x) == N_BINARY || ntag(c, y) == N_BINARY) &&
                 (op = ttext(c, c->nodes[k].tok, &ol)) != NULL) {
-                cwarn(c, after_loc(c, k), "overflow", "integer overflow in "
+                cwarn(c, after_loc(c, k), DW_OVERFLOW, "integer overflow in "
                       "expression '%s %.*s %s' of type %s results in '%s'",
                       ntag(c, x) == N_NUMBER ? estr(c, x)
                                              : vstr(c, c->ty[x], c->cv[x]),
@@ -6882,11 +6882,11 @@ static void fold_flush(Checker *c, uint32_t i)
                       type_q(TT, t), vstr(c, t, c->cv[k]));
                 continue;
             }
-            cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "
+            cwarn(c, cnode_loc(c, k), DW_OVERFLOW, "integer overflow in "
                   "expression '%s' of type %s results in '%s'", estr(c, k),
                   type_q(TT, t), vstr(c, t, c->cv[k]));
         } else {
-            cwarn(c, cnode_loc(c, k), "overflow", "integer overflow in "
+            cwarn(c, cnode_loc(c, k), DW_OVERFLOW, "integer overflow in "
                   "expression of type %s results in '%s'", type_q(TT, t),
                   vstr(c, t, c->cv[k]));
         }

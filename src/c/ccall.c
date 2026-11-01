@@ -271,8 +271,8 @@ void cexpr_builtin_nonfn(Checker *c, const CSym *s)
     const BTab *bt = bt_for_decl(c, s);
     if (bt && !strcmp(strchr(bt->sig, '|') + 1, "?"))
         return;
-    if (bt && diag_enabled(c->diag, "builtin-declaration-mismatch"))
-        cwarn(c, s->loc, "builtin-declaration-mismatch", "built-in function "
+    if (bt && diag_enabled(c->diag, DW_BUILTIN_DECLARATION_MISMATCH))
+        cwarn(c, s->loc, DW_BUILTIN_DECLARATION_MISMATCH, "built-in function "
               "'%s' declared as non-function", cident(c, s->name));
 }
 
@@ -289,7 +289,7 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
     bool quiet;
     DiagOrd o0;
     if (!bt || !strcmp(strchr(bt->sig, '|') + 1, "?") || (s->flags & CSF_IMPLICIT) ||
-        !diag_enabled(c->diag, "builtin-declaration-mismatch"))
+        !diag_enabled(c->diag, DW_BUILTIN_DECLARATION_MISMATCH))
         return;
     m = bt_match(c, bt, s->ty);
     quiet = c->quiet;
@@ -312,7 +312,7 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
     }
     if (m.conflict) {
         bt_sig_print(&sb, bt->sig);
-        d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+        d = cwarn_d(c, DL_WARNING, s->loc, DW_BUILTIN_DECLARATION_MISMATCH,
                     "conflicting types for built-in function '%s'; expected "
                     "'%s'", dn, sb_cstr(&sb));
     } else if (m.soft && extra_on(c)) {
@@ -320,7 +320,7 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
         p = strchr(bt->sig, '|');
         if (m.soft == 1) {
             sb_putn(&sb, bt->sig, (size_t)(p - bt->sig));
-            d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+            d = cwarn_d(c, DL_WARNING, s->loc, DW_BUILTIN_DECLARATION_MISMATCH,
                         "mismatch in return type of built-in function '%s'; "
                         "expected '%s'", dn, sb_cstr(&sb));
         } else {
@@ -333,7 +333,7 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
                 type_print(TT, &sb, unqual(c, c->bt_fileptr[k - 1]));
             else
                 sb_putn(&sb, p, q ? (size_t)(q - p) : strlen(p));
-            d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+            d = cwarn_d(c, DL_WARNING, s->loc, DW_BUILTIN_DECLARATION_MISMATCH,
                         "mismatch in argument %d type of built-in function "
                         "'%s'; expected '%s'", m.soft - 1, dn,
                         sb_cstr(&sb));
@@ -341,7 +341,7 @@ void cexpr_builtin_decl(Checker *c, const CSym *s)
     } else if ((type_ent(TT, m.dft)->flags & TF_NOPROTO) && extra_on(c) &&
                type_ent(TT, m.dft)->kind == TY_FUNC && type_ent(TT, m.bft)->n) {
         bt_sig_print(&sb, bt->sig);
-        d = cwarn_d(c, DL_WARNING, s->loc, "builtin-declaration-mismatch",
+        d = cwarn_d(c, DL_WARNING, s->loc, DW_BUILTIN_DECLARATION_MISMATCH,
                     "declaration of built-in function '%s' without a "
                     "prototype; expected '%s'", dn, sb_cstr(&sb));
     }
@@ -369,7 +369,7 @@ void cexpr_builtin_noproto_fmt(Checker *c, const CSym *s, SrcLoc loc)
         return;
     for (i = 0; i < sizeof vf / sizeof *vf; i++)
         if (!strcmp(dn, vf[i])) {
-            cwarn(c, loc, "attributes", "'format' attribute cannot be applied "
+            cwarn(c, loc, DW_ATTRIBUTES, "'format' attribute cannot be applied "
                   "to a function that does not take variable arguments");
             return;
         }
@@ -387,7 +387,7 @@ static void nonnull_arg(Checker *c, uint32_t a, uint32_t parm, bool ptr, SrcLoc 
         (c->ck[a] == K_ADDR && !c->cb[a] && c->cv[a] == 0 && is_ptr(c, c->ty[a])) ||
         (ptr && has_ival(c, a) && c->cv[a] == 0 &&
          !(ntag(c, a) == N_BINARY && npunct(c, a) == P_COMMA))) {
-        cwarn(c, loc, "nonnull", "argument %u null where non-null expected",
+        cwarn(c, loc, DW_NONNULL, "argument %u null where non-null expected",
               parm);
         return;
     }
@@ -529,7 +529,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
              * matched against the built-in's own parameters */
             if (j >= bn) {
                 Diagnostic *d = cwarn_d(c, DL_WARNING, loc,
-                                        "builtin-declaration-mismatch", "too "
+                                        DW_BUILTIN_DECLARATION_MISMATCH, "too "
                                         "many arguments to built-in function "
                                         "'%s' expecting %u", fname, bn);
                 if (d && fref != SYM_NONE &&
@@ -542,7 +542,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
                 ci.context = CONV_ARG;
                 ci.fname = fname;
                 ci.parmnum = (int)j + 1;
-                ci.warnopt = "builtin-declaration-mismatch";
+                ci.warnopt = DW_BUILTIN_DECLARATION_MISMATCH;
                 if (fref != SYM_NONE && !(csym(c, fref)->flags & CSF_IMPLICIT))
                     ci.note_loc = csym(c, fref)->loc;
                 (void)cexpr_assign_check(c, a, bpt[j], &ci);
@@ -555,7 +555,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
     {
         builtin_few = true;
         Diagnostic *d = cwarn_d(c, DL_WARNING, loc,
-                                "builtin-declaration-mismatch", "too few "
+                                DW_BUILTIN_DECLARATION_MISMATCH, "too few "
                                 "arguments to built-in function '%s' expecting "
                                 "%u", fname, bn);
         if (d && fref != SYM_NONE && !(csym(c, fref)->flags & CSF_IMPLICIT))
@@ -651,10 +651,10 @@ void cexpr_cleanup_call(Checker *c, uint32_t fsym, TypeId vty, SrcLoc dloc,
         if (is_void(c, tl) || type_compatible(TT, mvt(c, tl),
                 mvt(c, type_canon(TT, type_base(TT, ca)))))
             return;
-        d = cwarn_d(c, DL_WARNING, il, "incompatible-pointer-types", "passing "
+        d = cwarn_d(c, DL_WARNING, il, DW_INCOMPATIBLE_POINTER_TYPES, "passing "
                     "argument 1 of '%s' from incompatible pointer type", fname);
     } else if (gcc_integer(c, cp))
-        d = cwarn_d(c, DL_WARNING, il, "int-conversion", "passing argument 1 "
+        d = cwarn_d(c, DL_WARNING, il, DW_INT_CONVERSION, "passing argument 1 "
                     "of '%s' makes integer from pointer without a cast", fname);
     else
         return;
@@ -777,10 +777,10 @@ static bool atomic_args_ok(Checker *c, uint32_t i, const uint32_t *a,
             }
             q = tquals(c, e);
             if ((outputs & (1u << x)) && (q & TQ_CONST))
-                cwarn(c, loc, "incompatible-pointer-types", "argument %u of "
+                cwarn(c, loc, DW_INCOMPATIBLE_POINTER_TYPES, "argument %u of "
                       "'%s' discards 'const' qualifier", x + 1, name);
             if (x > 0 && (q & TQ_VOLATILE))
-                cwarn(c, loc, "incompatible-pointer-types", "argument %u of "
+                cwarn(c, loc, DW_INCOMPATIBLE_POINTER_TYPES, "argument %u of "
                       "'%s' discards 'volatile' qualifier", x + 1, name);
         }
         for (x = nparam - nmodel; x < nparam; x++) {
@@ -790,7 +790,7 @@ static bool atomic_args_ok(Checker *c, uint32_t i, const uint32_t *a,
                 return false;
             }
             if (c->ck[a[x]] == K_ICE && (c->cv[a[x]] & 0xffff) >= 6)
-                cwarn(c, loc, "invalid-memory-model", "invalid memory model "
+                cwarn(c, loc, DW_INVALID_MEMORY_MODEL, "invalid memory model "
                       "argument %u of '%s'", x + 1, name);
         }
     }
@@ -824,7 +824,7 @@ static bool builtin_args_ok(Checker *c, uint32_t i, uint32_t fn,
             TypeId t = rvt(c, a[1]);
             if (is_int(c, t) && !(c->ef[a[1]] & EF_NPC)) {
                 Diagnostic *d = cwarn_d(c, DL_WARNING, arg_loc(c, a[1]),
-                                        "int-conversion", "passing argument 2 "
+                                        DW_INT_CONVERSION, "passing argument 2 "
                                         "of '%s' makes pointer from integer "
                                         "without a cast", name);
                 cnote(c, d, arg_loc(c, a[1]), "expected 'const volatile void "
@@ -1358,7 +1358,7 @@ static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
     int fam;
     bool integ, flt, cpx;
     if (a == NO_NODE || fn == NO_NODE || ntag(c, fn) != N_IDENT ||
-        !diag_enabled(c->diag, "absolute-value") || node_err(c, a) ||
+        !diag_enabled(c->diag, DW_ABSOLUTE_VALUE) || node_err(c, a) ||
         inhibited(c, i, false))
         return;
     if (c->ck[fn] == K_ADDR && c->cb[fn] && !(c->cb[fn] & CB_NODE)) {
@@ -1394,25 +1394,25 @@ static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
     if (!integ && !flt && !cpx)
         return;
     if (fam == 0 && !integ) {
-        cwarn(c, call_loc(c, k[0]), "absolute-value", "using integer absolute "
+        cwarn(c, call_loc(c, k[0]), DW_ABSOLUTE_VALUE, "using integer absolute "
               "value function '%s' when argument is of %s type %s", nm,
               flt ? "floating-point" : "complex", type_q(TT, at));
         return;
     }
     if (fam == 1 && !flt) {
-        cwarn(c, call_loc(c, k[0]), "absolute-value", "using floating-point "
+        cwarn(c, call_loc(c, k[0]), DW_ABSOLUTE_VALUE, "using floating-point "
               "absolute value function '%s' when argument is of %s type %s",
               nm, integ ? "integer" : "complex", type_q(TT, at));
         return;
     }
     if (fam == 2 && !cpx) {
-        cwarn(c, call_loc(c, k[0]), "absolute-value", "using complex absolute "
+        cwarn(c, call_loc(c, k[0]), DW_ABSOLUTE_VALUE, "using complex absolute "
               "value function '%s' when argument is of %s type %s", nm,
               integ ? "integer" : "floating-point", type_q(TT, at));
         return;
     }
     if (fam == 0 && integ && !type_is_signed(TT, at) && tkind(c, at) != TY_BOOL)
-        cwarn(c, call_loc(c, k[0]), "absolute-value", "taking the absolute "
+        cwarn(c, call_loc(c, k[0]), DW_ABSOLUTE_VALUE, "taking the absolute "
               "value of unsigned type %s has no effect", type_q(TT, at));
     bft = type_canon(TT, bt_func_type(c, bt));
     if (!type_ent(TT, bft)->n)
@@ -1426,7 +1426,7 @@ static void warn_for_abs(Checker *c, uint32_t i, const uint32_t *k, uint32_t n)
         bool ok1, ok2;
         uint64_t sa = type_size(TT, at, &ok1), sf = type_size(TT, ft, &ok2);
         if (ok1 && ok2 && sf < sa)
-            cwarn(c, call_loc(c, k[0]), "absolute-value", "absolute value "
+            cwarn(c, call_loc(c, k[0]), DW_ABSOLUTE_VALUE, "absolute value "
                   "function '%s' given an argument of type %s but has "
                   "parameter of type %s which may cause truncation of value",
                   nm, type_q(TT, at), type_q(TT, ft));
@@ -1608,7 +1608,7 @@ static void e_builtin_complex(Checker *c, uint32_t i, SrcLoc bl)
 {
     uint32_t av[8], an = nkids(c, i, av, 8);
     TypeId t0, t1;
-    cc90(c, bl, NULL, "ISO C90 does not support complex types");
+    cc90(c, bl, DW_NONE, "ISO C90 does not support complex types");
     if (an != 3) {
         cerror(c, bl, "wrong number of arguments to '__builtin_complex'");
         set_err(c, i);
@@ -1994,16 +1994,16 @@ void e_call(Checker *c, uint32_t i)
                 ntag(c, op) == N_IDENT && is_func(c, c->ty[op]) &&
                 !type_compatible(TT, mvt(c, c->ty[op]),
                                  mvt(c, pointee(c, t)))) {
-                cwarn(c, cl, "", "function called through a non-compatible "
+                cwarn(c, cl, DW_NONE, "function called through a non-compatible "
                       "type");
                 if (qv)
-                    cpedwarn(c, cl, "", "function with qualified void return "
+                    cpedwarn(c, cl, DW_NONE, "function with qualified void return "
                              "type called");
             }
         }
         if (is_void(c, ret)) {
             if (qv)
-                cpedwarn(c, cl, "", "function with qualified void return type "
+                cpedwarn(c, cl, DW_NONE, "function with qualified void return type "
                          "called");
         } else if (!complete(c, ret)) {
             incomplete_error(c, cl, NO_NODE, ret);
@@ -2056,7 +2056,7 @@ void e_index(Checker *c, uint32_t i)
             uint64_t vb = type_ent(TT, type_canon(TT, c->ty[a]))->n;
             if (ok && es && (ival_neg(c, rvt(c, x), c->cv[x]) ||
                              c->cv[x] >= vb / es))
-                cwarn(c, loc, "array-bounds=", "index value is out of bound");
+                cwarn(c, loc, DW_ARRAY_BOUNDS_V, "index value is out of bound");
         }
         return;
     }
@@ -2088,7 +2088,7 @@ void e_index(Checker *c, uint32_t i)
         return;
     }
     if (!swapped && mainv(c, rvt(c, x)) == TYPE_B(CHAR) && !is_intcst(c, x))
-        cwarn(c, loc, "char-subscripts",
+        cwarn(c, loc, DW_CHAR_SUBSCRIPTS,
               "array subscript has type 'char'");
     if (is_array(c, c->ty[a])) {
         uint32_t v = strip_paren(c, a);
@@ -2099,7 +2099,7 @@ void e_index(Checker *c, uint32_t i)
             (c->ef[v] & EF_REGISTER))
             ped(c, i, loc, "ISO C forbids subscripting 'register' array");
         if (!(c->ef[a] & EF_LVALUE))
-            cc90(c, loc, NULL, "ISO C90 forbids subscripting non-lvalue "
+            cc90(c, loc, DW_NONE, "ISO C90 forbids subscripting non-lvalue "
                  "array");
         et = elem_of(c, c->ty[a]);
     } else {
@@ -2109,7 +2109,7 @@ void e_index(Checker *c, uint32_t i)
         }
         et = pointee(c, pt);
         if (is_void(c, et) && !inhibited(c, i, false))
-            cwarn(c, loc, "", "dereferencing 'void *' pointer");
+            cwarn(c, loc, DW_NONE, "dereferencing 'void *' pointer");
         if (has_ival(c, x) && c->cv[x] == 0)    /* p[0] is *p */
             alias_deref(c, a, true, loc);
     }
@@ -2140,7 +2140,7 @@ static bool member_datum(Checker *c, uint32_t i, uint32_t d, TypeId *rec)
         }
         *rec = pointee(c, t);
         if (is_void(c, *rec) && !inhibited(c, i, false))
-            cwarn(c, loc, "", "dereferencing 'void *' pointer");
+            cwarn(c, loc, DW_NONE, "dereferencing 'void *' pointer");
         alias_deref(c, d, false, loc);
         return true;
     }
@@ -2216,7 +2216,7 @@ void e_member(Checker *c, uint32_t i)
     if ((tquals(c, rec) & TQ_ATOMIC) && !inhibited(c, i, false)) {
         char dn[256];
         snprintf(dn, sizeof dn, "%s%s", arrow ? "*" : "", estr(c, d));
-        cwarn(c, loc, "", "accessing a member '%s' of an atomic %s '%s'",
+        cwarn(c, loc, DW_NONE, "accessing a member '%s' of an atomic %s '%s'",
               cident(c, name),
               type_ckind(TT, rec) == TY_UNION ? "union" : "structure", dn);
     }

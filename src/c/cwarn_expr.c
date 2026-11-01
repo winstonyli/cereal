@@ -235,7 +235,7 @@ static void logical_op_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int 
     IvSet ia, ib, ca, cb, r;
     i128 mna, mxa, mnb, mxb;
     bool okb;
-    if (!diag_enabled(c->diag, "logical-op") || inhibited(c, i, false) ||
+    if (!diag_enabled(c->diag, DW_LOGICAL_OP) || inhibited(c, i, false) ||
         lg_macro(c, sa) || lg_macro(c, sb))
         return;
     if (is_intcst(c, sb) && is_int(c, rvt(c, sb)) && truth(c, sa, true) < 0 &&
@@ -248,7 +248,7 @@ static void logical_op_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int 
                       (ta == N_UNARY && pa == P_BANG);
         cst_parts(c, sb, &neg, &mag);
         if (!truthy && (neg || mag > 1)) {
-            cwarn(c, loc, "logical-op", "logical '%s' applied to non-boolean "
+            cwarn(c, loc, DW_LOGICAL_OP, "logical '%s' applied to non-boolean "
                   "constant", orop ? "or" : "and");
             return;
         }
@@ -260,7 +260,7 @@ static void logical_op_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int 
     (void)okb;
     /* the left operand is already a truth value, the right one is not */
     if (lg_eligible(c, sb) && lg_same(c, &fa, &fb)) {
-        cwarn(c, loc, "logical-op", "logical '%s' of equal expressions",
+        cwarn(c, loc, DW_LOGICAL_OP, "logical '%s' of equal expressions",
               orop ? "or" : "and");
         return;
     }
@@ -275,12 +275,12 @@ static void logical_op_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int 
     if (orop) {
         iv_and(&r, &ca, &cb);
         if (r.n == 0)
-            cwarn(c, loc, "logical-op", "logical 'or' of collectively "
+            cwarn(c, loc, DW_LOGICAL_OP, "logical 'or' of collectively "
                   "exhaustive tests is always true");
     } else {
         iv_and(&r, &ia, &ib);
         if (r.n == 0)
-            cwarn(c, loc, "logical-op", "logical 'and' of mutually exclusive "
+            cwarn(c, loc, DW_LOGICAL_OP, "logical 'and' of mutually exclusive "
                   "tests is always false");
     }
 }
@@ -337,7 +337,7 @@ bool is_npc(Checker *c, uint32_t n)
 
 bool extra_on(Checker *c)
 {
-    return diag_enabled(c->diag, "sign-compare");
+    return diag_enabled(c->diag, DW_SIGN_COMPARE);
 }
 
 /* Is the node a zero character constant (for -Wpointer-compare)? */
@@ -586,7 +586,7 @@ static void sign_compare(Checker *c, SrcLoc loc, uint32_t a, uint32_t b,
         if (c->cv[uop] <= smax)
             return;
     }
-    cwarn(c, loc, "sign-compare", "comparison of integer expressions of "
+    cwarn(c, loc, DW_SIGN_COMPARE, "comparison of integer expressions of "
           "different signedness: %s and %s", cmp_tstr(c, a), cmp_tstr(c, b));
 }
 
@@ -696,7 +696,7 @@ static bool bitnot_cmp(Checker *c, SrcLoc loc, uint32_t a, uint32_t b)
             uint64_t v = c->cv[y] & m;
             if ((v & ones) == ones)
                 return false;
-            cwarn(c, loc, "sign-compare", c->cv[y] == 0 ?
+            cwarn(c, loc, DW_SIGN_COMPARE, c->cv[y] == 0 ?
                   "promoted bitwise complement of an unsigned value is always "
                   "nonzero" : "comparison of promoted bitwise complement of an "
                   "unsigned value with constant");
@@ -708,7 +708,7 @@ static bool bitnot_cmp(Checker *c, SrcLoc loc, uint32_t a, uint32_t b)
             if (!is_int(c, t) || is_signed(c, t) || tkind(c, t) == TY_BOOL ||
                 (prec ? prec : int_bits(c, t)) >= w)
                 return false;
-            cwarn(c, loc, "sign-compare", "comparison of promoted bitwise "
+            cwarn(c, loc, DW_SIGN_COMPARE, "comparison of promoted bitwise "
                   "complement of an unsigned value with unsigned");
             return true;
         }
@@ -749,7 +749,7 @@ static bool type_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
     if (!rts && c->cv[y] == 0 && (code == P_GE || code == P_LT) &&
         !(y == p0 && (prx ? prx : int_bits(c, tx)) < int_bits(c, rt))) {
         if (warn && tkind(c, tx) != TY_ENUM)
-            cwarn(c, loc, "type-limits", code == P_GE
+            cwarn(c, loc, DW_TYPE_LIMITS, code == P_GE
                   ? "comparison of unsigned expression in '>= 0' is always true"
                   : "comparison of unsigned expression in '< 0' is always false");
         return true;
@@ -810,7 +810,7 @@ static bool type_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
                         "data type";
     }
     if (warn)
-        cwarn(c, loc, "type-limits", "%s", why);
+        cwarn(c, loc, DW_TYPE_LIMITS, "%s", why);
     return true;
 }
 
@@ -840,7 +840,7 @@ static bool bool_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op,
     }
     if (r[0] != r[1])
         return false;
-    cwarn(c, loc, "bool-compare", "comparison of constant '%s' with boolean "
+    cwarn(c, loc, DW_BOOL_COMPARE, "comparison of constant '%s' with boolean "
           "expression is always %s", vstr(c, rvt(c, k), c->cv[k]),
           r[0] ? "true" : "false");
     return true;
@@ -1015,7 +1015,7 @@ void check_restrict(Checker *c, const uint32_t *kv, uint32_t nk,
         first = restrict_base(c, a);
         l = ntag(c, first) != N_IDENT || is_array(c, c->ty[first])
                 ? expr_loc(c, a) : line_start_loc(c, loc);
-        cwarn(c, l, "restrict", "passing argument %u to 'restrict'-"
+        cwarn(c, l, DW_RESTRICT, "passing argument %u to 'restrict'-"
               "qualified parameter aliases with argument%s %s", i + 1,
               cnt > 1 ? "s" : "", list);
     }
@@ -1059,7 +1059,7 @@ void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 uint64_t res = norm_val(npunct(c, bit) == P_AMP ? cv & bv : cv | bv,
                                         bits, is_signed(c, bt));
                 if (res != cv && bits <= 64)
-                    cwarn(c, loc, "tautological-compare", op == P_EQEQ
+                    cwarn(c, loc, DW_TAUTOLOGICAL_COMPARE, op == P_EQEQ
                           ? "bitwise comparison always evaluates to false"
                           : "bitwise comparison always evaluates to true");
             }
@@ -1084,7 +1084,7 @@ void tauto_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     }
     if (!opeq(c, sa, sb))
         return;
-    cwarn(c, loc, "tautological-compare", "self-comparison always evaluates "
+    cwarn(c, loc, DW_TAUTOLOGICAL_COMPARE, "self-comparison always evaluates "
           "to %s", rel_holds(op, 0) ? "true" : "false");
 }
 
@@ -1254,7 +1254,7 @@ void lognot_warn(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         (is_intcst(c, b) && c->cv[b] == 0 && (op == P_EQEQ || op == P_NE)) ||
         boolish_bits(c, b))
         return;
-    d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "logical-not-parentheses",
+    d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), DW_LOGICAL_NOT_PARENTHESES,
                 "logical not is only applied to the left hand side of "
                 "comparison");
     if (is_intcst(c, a))        /* folded to a constant: no location, no note */
@@ -1275,7 +1275,7 @@ void array_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     if (!punct_is_cmp(op) || ntag(c, a) != N_IDENT || ntag(c, b) != N_IDENT ||
         !is_array(c, c->ty[a]) || !is_array(c, c->ty[b]))
         return;
-    d = cwarn_d(c, DL_WARNING, loc, "array-compare", "comparison between two "
+    d = cwarn_d(c, DL_WARNING, loc, DW_ARRAY_COMPARE, "comparison between two "
                 "arrays");
     cnote(c, d, loc, "use '&%s[0] %s &%s[0]' to compare the addresses",
           cident(c, cnode_ident(c, a)), cmp_str(op),
@@ -1595,7 +1595,7 @@ static bool ptr_plus_warn(Checker *c, SrcLoc loc, uint32_t x, int code)
             sb_printf(&sb, " + %lld", (long long)k);
         sb_free(&v);
     }
-    cwarn(c, loc, "address", "the comparison will always evaluate as '%s' for "
+    cwarn(c, loc, DW_ADDRESS, "the comparison will always evaluate as '%s' for "
           "the pointer operand in '%s' must not be NULL",
           code == P_EQEQ ? "false" : "true", sb_cstr(&sb));
     sb_free(&sb);
@@ -1604,7 +1604,7 @@ static bool ptr_plus_warn(Checker *c, SrcLoc loc, uint32_t x, int code)
 
 static void null_addr_msg(Checker *c, SrcLoc loc, const AddrInfo *ai, int code)
 {
-    Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "address", "the comparison will "
+    Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_ADDRESS, "the comparison will "
                             "always evaluate as '%s' for the address of '%s' "
                             "will never be NULL",
                             code == P_EQEQ ? "false" : "true", ai->name);
@@ -1667,7 +1667,7 @@ static void int_bool_warn(Checker *c, uint32_t n)
 {
     uint32_t s = n, k[3], cnt;
     TypeId t;
-    if (no_int_bool || !diag_enabled(c->diag, "int-in-bool-context") ||
+    if (no_int_bool || !diag_enabled(c->diag, DW_INT_IN_BOOL_CONTEXT) ||
         node_err(c, n))
         return;
     for (;;) {      /* operations that keep zero-ness */
@@ -1695,11 +1695,11 @@ static void int_bool_warn(Checker *c, uint32_t n)
     t = rvt(c, s);
     if (ntag(c, s) == N_BINARY && npunct(c, s) == P_STAR && cnt == 2) {
         if (is_arith(c, t))
-            cwarn(c, cnode_loc(c, s), "int-in-bool-context", "'*' in boolean "
+            cwarn(c, cnode_loc(c, s), DW_INT_IN_BOOL_CONTEXT, "'*' in boolean "
                   "context, suggest '&&' instead");
     } else if (ntag(c, s) == N_BINARY && npunct(c, s) == P_SHL && cnt == 2) {
         if (is_int(c, t) && is_signed(c, type_int_promote(TT, rvt(c, k[0]))))
-            cwarn(c, cnode_loc(c, s), "int-in-bool-context", "'<<' in boolean "
+            cwarn(c, cnode_loc(c, s), DW_INT_IN_BOOL_CONTEXT, "'<<' in boolean "
                   "context, did you mean '<'?");
     } else if (ntag(c, s) == N_COND && cnt == 3 && is_int(c, t)) {
         bool c1 = is_intcst(c, k[1]), c2 = is_intcst(c, k[2]);
@@ -1709,11 +1709,11 @@ static void int_bool_warn(Checker *c, uint32_t n)
         if (!nb1 && !nb2)
             return;
         if (c1 && c2 && v1 != 0 && v2 != 0)
-            cwarn(c, colon_loc(c, s, k[1], k[2]), "int-in-bool-context",
+            cwarn(c, colon_loc(c, s, k[1], k[2]), DW_INT_IN_BOOL_CONTEXT,
                   "'?:' using integer constants in boolean context, the "
                   "expression will always evaluate to 'true'");
         else
-            cwarn(c, colon_loc(c, s, k[1], k[2]), "int-in-bool-context",
+            cwarn(c, colon_loc(c, s, k[1], k[2]), DW_INT_IN_BOOL_CONTEXT,
                   "'?:' using integer constants in boolean context");
     }
 }
@@ -1728,13 +1728,13 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
         (is_flt(c, rvt(c, n)) || is_complex(c, rvt(c, n)))) {
         int rep = is_complex(c, rvt(c, n)) ? 2 : 1;     /* both parts */
         while (rep--)
-            cwarn(c, loc, "float-equal", "comparing floating-point with "
+            cwarn(c, loc, DW_FLOAT_EQUAL, "comparing floating-point with "
                   "'==' or '!=' is unsafe");
     }
-    if (diag_enabled(c->diag, "sign-compare") && !node_err(c, n) &&
+    if (diag_enabled(c->diag, DW_SIGN_COMPARE) && !node_err(c, n) &&
         !inhibited(c, n, false) && ntag(c, s) == N_UNARY &&
         bitnot_operand(c, s, &bw, &bp)) {
-        cwarn(c, loc, "sign-compare", "promoted bitwise complement of an "
+        cwarn(c, loc, DW_SIGN_COMPARE, "promoted bitwise complement of an "
               "unsigned value is always nonzero");
         return;
     }
@@ -1769,7 +1769,7 @@ void cexpr_truth_warn(Checker *c, uint32_t n, SrcLoc loc)
             csym(c, ai.ref)->flags |= CSF_ADDR_WARNED;
         else if (loc == ctok_loc(c, c->nodes[s].tok))
             loc = ctok_loc(c, c->nodes[s].tok - 1);   /* the && of &&label */
-        cwarn(c, loc, "address", "the address of '%s' will always evaluate as "
+        cwarn(c, loc, DW_ADDRESS, "the address of '%s' will always evaluate as "
               "'true'", ai.name);
         return;
     }
@@ -1872,13 +1872,13 @@ void memset_args(Checker *c, const uint32_t *kv, uint32_t nk, const char *name)
     for (j = 1; j < 4; j++)
         if (node_err(c, kv[j]))
             return;
-    if (diag_enabled(c->diag, "memset-transposed-args") &&
+    if (diag_enabled(c->diag, DW_MEMSET_TRANSPOSED_ARGS) &&
         literal_zero(c, kv[3]) && !literal_zero(c, kv[2]) &&
         is_intcst(c, kv[3]))
-        cwarn(c, first_loc(c, kv[0]), "memset-transposed-args", "'memset' used "
+        cwarn(c, first_loc(c, kv[0]), DW_MEMSET_TRANSPOSED_ARGS, "'memset' used "
               "with constant zero length parameter; this could be due to "
               "transposed parameters");
-    if (!diag_enabled(c->diag, "memset-elt-size") || !is_intcst(c, kv[3]))
+    if (!diag_enabled(c->diag, DW_MEMSET_ELT_SIZE) || !is_intcst(c, kv[3]))
         return;
     a = strip_paren(c, kv[1]);
     while (cast_operand(c, a) != NO_NODE)
@@ -1893,7 +1893,7 @@ void memset_args(Checker *c, const uint32_t *kv, uint32_t nk, const char *name)
     sz = type_size(TT, at, &ok);
     esz = type_size(TT, et, &ok2);
     if (ok && ok2 && esz > 1 && sz / esz == (uint64_t)c->cv[kv[3]])
-        cwarn(c, first_loc(c, kv[0]), "memset-elt-size", "'memset' used with "
+        cwarn(c, first_loc(c, kv[0]), DW_MEMSET_ELT_SIZE, "'memset' used with "
               "length equal to number of elements without multiplication by "
               "element size");
 }
@@ -1908,7 +1908,7 @@ void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
     TypeId ty;
     bool is_expr, chk = false, legit = false;
     SrcLoc loc;
-    if (!diag_enabled(c->diag, "sizeof-pointer-memaccess"))
+    if (!diag_enabled(c->diag, DW_SIZEOF_POINTER_MEMACCESS))
         return;
     if (!strncmp(nm, "__builtin___", 12)) {
         nm += 12;
@@ -1954,7 +1954,7 @@ void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
               cdecl_aset_has(c, csym(c, sref)->aset, "nonstring", NULL)) &&
             memacc_same(c, kv[1 + m->src], a) &&
             !memacc_same(c, kv[1 + m->dst], kv[1 + m->src]))
-            cwarn(c, loc, "sizeof-pointer-memaccess", "argument to 'sizeof' "
+            cwarn(c, loc, DW_SIZEOF_POINTER_MEMACCESS, "argument to 'sizeof' "
                   "in '%s' call is the same expression as the source; did you "
                   "mean to use the size of the destination?", name);
         return;
@@ -2012,7 +2012,7 @@ void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
                 how = "provide an explicit length";
             else
                 how = "dereference it";
-            cwarn(c, loc, "sizeof-pointer-memaccess", "argument to 'sizeof' "
+            cwarn(c, loc, DW_SIZEOF_POINTER_MEMACCESS, "argument to 'sizeof' "
                   "in '%s' call is the same expression as the %s; did you "
                   "mean to %s?", name, what, how);
             return;
@@ -2023,7 +2023,7 @@ void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
             char b0[256], b1[256];
             snprintf(b0, sizeof b0, "%s", type_q(TT, at));
             snprintf(b1, sizeof b1, "%s", type_q(TT, unqual(c, pointee(c, at))));
-            cwarn(c, loc, "sizeof-pointer-memaccess", "argument to 'sizeof' "
+            cwarn(c, loc, DW_SIZEOF_POINTER_MEMACCESS, "argument to 'sizeof' "
                   "in '%s' call is the same pointer type %s as the %s; "
                   "expected %s or an explicit length", name, b0, what, b1);
             return;
@@ -2067,14 +2067,14 @@ void sizeof_div(Checker *c, uint32_t i, uint32_t a, uint32_t b)
         TypeId et = elem_of(c, t0);
         bool ok0 = false, ok1 = false;
         char n0[256], n1[256];
-        if (strip_paren(c, b) != b || !diag_enabled(c->diag, "sizeof-array-div") ||
+        if (strip_paren(c, b) != b || !diag_enabled(c->diag, DW_SIZEOF_ARRAY_DIV) ||
             tkind(c, et) == TY_CHAR || tkind(c, et) == TY_SCHAR ||
             tkind(c, et) == TY_UCHAR || tkind(c, et) == TY_ARRAY ||
             type_size(TT, et, &ok0) == type_size(TT, t1, &ok1) || !ok0 || !ok1)
             return;
         snprintf(n0, sizeof n0, "%s", type_q(TT, unqual(c, et)));
         snprintf(n1, sizeof n1, "%s", type_q(TT, t1));
-        d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "sizeof-array-div",
+        d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), DW_SIZEOF_ARRAY_DIV,
                     "expression does not compute the number of elements in "
                     "this array; element type is %s, not %s", n0, n1);
         cnote(c, d, cnode_loc(c, i), "add parentheses around the second "
@@ -2099,7 +2099,7 @@ void sizeof_div(Checker *c, uint32_t i, uint32_t a, uint32_t b)
         return;
     type_print(TT, &s0, t0);
     type_print(TT, &s1, t1);
-    d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), "sizeof-pointer-div",
+    d = cwarn_d(c, DL_WARNING, cnode_loc(c, i), DW_SIZEOF_POINTER_DIV,
                 "division 'sizeof (%s) / sizeof (%s)' does not compute the "
                 "number of array elements", sb_cstr(&s0), sb_cstr(&s1));
     if (d0 != NO_NODE) {
@@ -2126,7 +2126,7 @@ static bool compare_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b,
         TypeId ca = is_complex(c, ta) ? cplx_comp(c, ta) : ta;
         TypeId cb = is_complex(c, tb) ? cplx_comp(c, tb) : tb;
         if (is_int(c, ca) && is_int(c, cb) && !inhibited(c, i, false) &&
-            diag_enabled(c->diag, "sign-compare"))
+            diag_enabled(c->diag, DW_SIGN_COMPARE))
             sign_compare(c, loc, a, b, op, common_type(c, ta, tb));
         return bfold;
     }
@@ -2147,11 +2147,11 @@ static bool compare_limits(Checker *c, uint32_t i, uint32_t a, uint32_t b,
                 rt = tb;
         }
     }
-    if (!inhibited(c, i, false) && diag_enabled(c->diag, "sign-compare") &&
+    if (!inhibited(c, i, false) && diag_enabled(c->diag, DW_SIGN_COMPARE) &&
         bitnot_cmp(c, loc, a, b))
         return bfold;
     folded = type_limits(c, i, a, b, op, rt, loc);
-    if (!folded && !inhibited(c, i, false) && diag_enabled(c->diag, "sign-compare"))
+    if (!folded && !inhibited(c, i, false) && diag_enabled(c->diag, DW_SIGN_COMPARE))
         sign_compare(c, loc, a, b, op, rt);
     return folded || bfold;
 }
@@ -2170,7 +2170,7 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         tkind(c, tb) != TY_VECTOR && dec_mix(c, i, ta, tb))
         return;
     if (is_arith(c, ta) && is_arith(c, tb) && tkind(c, ta) != TY_VECTOR &&
-        tkind(c, tb) != TY_VECTOR && diag_enabled(c->diag, "double-promotion")) {
+        tkind(c, tb) != TY_VECTOR && diag_enabled(c->diag, DW_DOUBLE_PROMOTION)) {
         TypeId rt = common_type(c, ta, tb);
         double_promo(c, i, loc, ta, rt, "to match other operand of binary "
                      "expression");
@@ -2201,7 +2201,7 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
             }
             if (is_int(c, e1) && is_signed(c, e1) != is_signed(c, e2) &&
                 !inhibited(c, i, false))
-                cwarn(c, loc, "sign-compare", "comparison between types %s "
+                cwarn(c, loc, DW_SIGN_COMPARE, "comparison between types %s "
                       "and %s", type_q(TT, rvt(c, a)), type_q(TT, rvt(c, b)));
         } else {
             bool lv = tkind(c, ta) == TY_VECTOR;
@@ -2279,7 +2279,7 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
     }
     if (eq && ((pa && char_zero(c, b)) || (pb && char_zero(c, a)))) {
         uint32_t p = pa ? a : b;
-        Diagnostic *d = cwarn_d(c, DL_WARNING, loc, "pointer-compare",
+        Diagnostic *d = cwarn_d(c, DL_WARNING, loc, DW_POINTER_COMPARE,
                                 "comparison between pointer and zero "
                                 "character constant");
         cnote(c, d, first_loc(c, p), "did you mean to dereference the pointer?");
@@ -2298,7 +2298,7 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                         ped(c, i, loc, "ISO C forbids comparison of 'void *' "
                                        "with function pointer");
                 } else {
-                    cpedwarn(c, loc, "", "comparison of distinct pointer types "
+                    cpedwarn(c, loc, DW_NONE, "comparison of distinct pointer types "
                              "lacks a cast");
                 }
             }
@@ -2311,10 +2311,10 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                 ped(c, i, loc, "ISO C forbids ordered comparisons of pointers "
                                "to functions");
             else if (extra_on(c) && (is_npc(c, a) || is_npc(c, b)))
-                cwarn(c, loc, "extra", "ordered comparison of pointer with null "
+                cwarn(c, loc, DW_EXTRA, "ordered comparison of pointer with null "
                                   "pointer");
         } else {
-            cpedwarn(c, loc, "", "comparison of distinct pointer types lacks a "
+            cpedwarn(c, loc, DW_NONE, "comparison of distinct pointer types lacks a "
                                 "cast");
         }
     } else if (pa || pb) {
@@ -2325,29 +2325,29 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
                     ped(c, i, loc, "ordered comparison of pointer with integer "
                                    "zero");
                 else if (extra_on(c))
-                    cwarn(c, loc, "extra", "ordered comparison of pointer with "
+                    cwarn(c, loc, DW_EXTRA, "ordered comparison of pointer with "
                                       "integer zero");
             }
         } else {
-            cpedwarn(c, loc, "", "comparison between pointer and integer");
+            cpedwarn(c, loc, DW_NONE, "comparison between pointer and integer");
         }
     } else if (tkind(c, orig_type(c, a)) == TY_ENUM &&
                tkind(c, orig_type(c, b)) == TY_ENUM &&
                mainv(c, orig_type(c, a)) != mainv(c, orig_type(c, b))) {
-        cwarn(c, loc, "enum-compare", "comparison between %s and %s",
+        cwarn(c, loc, DW_ENUM_COMPARE, "comparison between %s and %s",
               type_q(TT, unqual(c, orig_type(c, a))),
               type_q(TT, unqual(c, orig_type(c, b))));
     }
     if (eq && !inhibited(c, i, false) &&
         (is_flt(c, rvt(c, a)) || is_complex(c, rvt(c, a)) ||
          is_flt(c, rvt(c, b)) || is_complex(c, rvt(c, b))))
-        cwarn(c, loc, "float-equal", "comparing floating-point with '==' or "
+        cwarn(c, loc, DW_FLOAT_EQUAL, "comparing floating-point with '==' or "
               "'!=' is unsafe");
     if (!inhibited(c, i, false) &&
         (eq ? (((c->ef[sa] & EF_STRING) && !null_valued(c, b)) ||
                ((c->ef[sb] & EF_STRING) && !null_valued(c, a)))
             : (((c->ef[sa] | c->ef[sb]) & EF_STRING) != 0)))
-        cwarn(c, loc, "address", "comparison with string literal results in "
+        cwarn(c, loc, DW_ADDRESS, "comparison with string literal results in "
                                  "unspecified behavior");
     /* values */
     if (pa || pb) {

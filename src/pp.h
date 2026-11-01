@@ -476,7 +476,7 @@ size_t pp_macro_chain(void *ctx, SrcLoc spelled, SrcLoc exp,
 void pp_macro_names(void *ctx, void (*cb)(void *, const char *, size_t),
                     void *arg);
 Diagnostic *pp_error_at(PP *pp, const Tok *t, const char *fmt, ...);
-Diagnostic *pp_warn_at(PP *pp, const Tok *t, const char *id,
+Diagnostic *pp_warn_at(PP *pp, const Tok *t, DiagOpt id,
                        const char *fmt, ...);
 const char *macro_kind_str(const Macro *m);
 char *macro_signature(Arena *a, const Macro *m);

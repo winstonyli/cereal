@@ -878,7 +878,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
     StrBuf ns = {0}, os = {0}, bs = {0}, bo = {0};
     Diagnostic *d;
     unsigned olv = count_vla(o, false), nlv = count_vla(n, false);
-    int lvl = diag_option_level(c->diag, "array-parameter=", 2);
+    int lvl = diag_option_level(c->diag, DW_ARRAY_PARAMETER_V, 2);
     if (o->unk || n->unk)
         goto out;
     if (type_ckind(TT, o->ty) != type_ckind(TT, n->ty))
@@ -900,8 +900,8 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
                 sb_printf(&lst, "%u", i + 1);
             }
         if (cnt) {
-            d = cwarn_d(c, DL_WARNING, n->loc, vla ? "vla-parameter" :
-                        "array-parameter=", "mismatch in bound%s %s of "
+            d = cwarn_d(c, DL_WARNING, n->loc, vla ? DW_VLA_PARAMETER :
+                        DW_ARRAY_PARAMETER_V, "mismatch in bound%s %s of "
                         "argument %u declared as %s", plural(cnt),
                         sb_cstr(&lst), no, pstr(c, &ns, n));
             if (d)
@@ -915,7 +915,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         /* declared as an array first, now as a pointer */
         if (o->d[0].k == D_NONE) {
             if (vlaany(o)) {
-                d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
+                d = cwarn_d(c, DL_WARNING, n->loc, DW_VLA_PARAMETER, "argument "
                             "%u of type %s declared as an ordinary array",
                             no, pstr(c, &ns, n));
                 if (d)
@@ -924,8 +924,8 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
             }
             goto out;
         }
-        d = cwarn_d(c, DL_WARNING, n->loc, vla0(o) ? "vla-parameter" :
-                    "array-parameter=", "argument %u of type %s declared as "
+        d = cwarn_d(c, DL_WARNING, n->loc, vla0(o) ? DW_VLA_PARAMETER :
+                    DW_ARRAY_PARAMETER_V, "argument %u of type %s declared as "
                     "a pointer", no, pstr(c, &ns, n));
         if (d)
             cnote(c, d, o->loc, "previously declared as %s %s",
@@ -936,14 +936,14 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
     if (!o->arr) {
         /* declared as a pointer first, now as an array */
         if (vlaany(n)) {
-            d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
+            d = cwarn_d(c, DL_WARNING, n->loc, DW_VLA_PARAMETER, "argument "
                         "%u of type %s declared as a variable length array",
                         no, pstr(c, &ns, n));
             if (d)
                 cnote(c, d, o->loc, "previously declared as a pointer %s",
                       pstr(c, &os, o));
         } else if (n->d[0].k != D_NONE && (lvl >= 2 || n->stat)) {
-            d = cwarn_d(c, DL_WARNING, n->loc, "array-parameter=", "argument "
+            d = cwarn_d(c, DL_WARNING, n->loc, DW_ARRAY_PARAMETER_V, "argument "
                         "%u of type %s with mismatched bound", no,
                         pstr(c, &ns, n));
             if (d)
@@ -953,7 +953,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         goto out;
     }
     if (vlaany(o) != vlaany(n)) {
-        d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument %u of "
+        d = cwarn_d(c, DL_WARNING, n->loc, DW_VLA_PARAMETER, "argument %u of "
                     "type %s declared as %s", no, pstr(c, &ns, n),
                     vlaany(n) ? "a variable length array" : "an ordinary array");
         if (d)
@@ -965,7 +965,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
     if (vlaany(n)) {
         unsigned ost = count_vla(o, true), nst = count_vla(n, true), i, j = 0;
         if (!(ost && nst) && olv != nlv) {
-            d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument %u "
+            d = cwarn_d(c, DL_WARNING, n->loc, DW_VLA_PARAMETER, "argument %u "
                         "of type %s declared with %u variable bound%s", no,
                         pstr(c, &ns, n), nlv, plural(nlv));
             if (d)
@@ -975,7 +975,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         }
         if (!ost != !nst) {
             if (nst > ost) {
-                d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
+                d = cwarn_d(c, DL_WARNING, n->loc, DW_VLA_PARAMETER, "argument "
                             "%u of type %s declared with %u unspecified "
                             "variable bound%s", no, pstr(c, &ns, n), nst,
                             plural(nst));
@@ -984,7 +984,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
                           "unspecified variable bound%s", pstr(c, &os, o), ost,
                           plural(ost));
             } else {
-                d = cwarn_d(c, DL_WARNING, o->loc, "vla-parameter", "argument "
+                d = cwarn_d(c, DL_WARNING, o->loc, DW_VLA_PARAMETER, "argument "
                             "%u of type %s declared with %u unspecified "
                             "variable bound%s", no, pstr(c, &os, o), ost,
                             plural(ost));
@@ -1006,7 +1006,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
                 break;
             ob = &o->d[j++];
             if (nb->k == D_EXPR && ob->k == D_EXPR && !dim_same(ob, nb)) {
-                d = cwarn_d(c, DL_WARNING, n->loc, "vla-parameter", "argument "
+                d = cwarn_d(c, DL_WARNING, n->loc, DW_VLA_PARAMETER, "argument "
                             "%u of type %s declared with mismatched bound "
                             "%s", no, pstr(c, &ns, n), bstr(&bs, nb));
                 if (d)
@@ -1017,7 +1017,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         if (n->d[0].k < D_STAR || o->d[0].k < D_STAR) {
             if (!dim_same(&o->d[0], &n->d[0]) && (lvl >= 2 || n->stat ||
                                                    o->stat)) {
-                d = cwarn_d(c, DL_WARNING, n->loc, "array-parameter=",
+                d = cwarn_d(c, DL_WARNING, n->loc, DW_ARRAY_PARAMETER_V,
                             "argument %u of type %s with mismatched bound",
                             no, pstr(c, &ns, n));
                 if (d)
@@ -1028,7 +1028,7 @@ static void cmp_param(Checker *c, const PParm *o, const PParm *n, unsigned no)
         goto out;
     }
     if (!dim_same(&o->d[0], &n->d[0]) && (lvl >= 2 || n->stat || o->stat)) {
-        d = cwarn_d(c, DL_WARNING, n->loc, "array-parameter=", "argument %u "
+        d = cwarn_d(c, DL_WARNING, n->loc, DW_ARRAY_PARAMETER_V, "argument %u "
                     "of type %s with mismatched bound", no, pstr(c, &ns, n));
         if (d)
             cnote(c, d, o->loc, "previously declared as %s",
