@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 Stress test (2026-10-31, by hand against the source): round 1 checked the three precedence orders, the swap/negate identities, `cmp_str` against `punct_spelling`, the `is_relop` copy in `tast_vec.c` and the Pratt start values; it added the `PR_LOR` start values and the `is_relop` entry. Remaining: the full `case P_LE:` site list is taken at plan time.
@@ -16,8 +16,8 @@ The properties of a punctuator (is it a comparison, its mirror and negation, the
 
 - Arithmetic of the integer operators (`cexpr.c`, `eval.c` `P_PLUS` ...): AR3.
 - Lowering and symbolic switches that map an operator to something else: `cgx86.c:605` (condition codes), `eval.c:1877` and `:1891` (`SX_*` ops), `pcexpr.c:676` (BDD of a linear constraint). They stay switches; they may use `punct_swap`/`punct_negate` where they have a private copy.
+- `cmp_str` (`cwarn_expr.c`) stays: it is passed non-comparison operators, which `punct_spelling` indexing would not cover the same way.
 - The two parsers stay two (C `parse.c`, presence-condition `pcexpr.c`); only their precedence numbers come from the table.
-- `cmp_str` (`cwarn_expr.c:424`) is spelling, and `punct_spelling` already holds it: replace it by `punct_spelling[op]` if the strings are the same.
 
 ## Design
 
@@ -36,7 +36,7 @@ typedef struct {
 extern const PunctInfo punct_info[P_COUNT];
 ```
 
-(`uint8_t` holds `Punct` only while `P_COUNT` < 256; a `_Static_assert` says so.) The initialiser uses designated entries (`[P_LE] = {PR_REL, PF_CMP, P_GE, P_GT, P_NONE}`); an operator with no property has no entry. `token.h` declares static inlines over it: `punct_prec`, `punct_is_cmp`, `punct_is_assign`, `punct_is_logical`, `punct_swap`, `punct_negate`, `punct_assign_base`. They tolerate any `int` below `P_COUNT` and return the neutral value for others (the callers hold `int op`).
+(`uint8_t` holds `Punct` only while `P_COUNT` < 256; a `_Static_assert` says so.) The initialiser uses designated entries (`[P_LE] = {PR_REL, PF_CMP, P_GE, P_GT, P_NONE}`); an operator with no property has no entry. `token.h` declares static inlines over it: `punct_prec`, `punct_is_cmp`, `punct_is_assign`, `punct_is_logical`, `punct_swap`, `punct_negate`, `punct_assign_base` (the operator itself when it is not a compound assignment; `base` 0 in the table means that), plus `punct_is_bool`. They tolerate any `int` below `P_COUNT` and return the neutral value for others (the callers hold `int op`).
 
 The precedence scale moves from `cexpr_int.h` to `token.h`: `PR_COMMA ... PR_PRIMARY` (the enum names stay). `PR_COMMA` is 0, which is also "not a binary operator" for the two Pratt parsers; the comma is never handled by them (the C parser's comma is a separate production) and `cprint.c` only asks about nodes that are binary. `parse.c`'s 4..13 and `pcexpr.c`'s 1..10 only compare against each other and against `min`: they become `punct_prec` against `PR_LOR`-based minimums, and the operators between `PR_LOR` and `PR_MUL` have the same order in all three tables (checked 2026-10-31 against `parse.c:2349`, `pcexpr.c:184`, `cprint.c:21`). The two start values (`parse.c:2829` `binary(p, 4)`, `pcexpr.c:222` `px_binary(p, 1)`) become `PR_LOR`. `cprint.c` also treats an unlisted binary operator as `PR_MUL`; the table lists `* / %` explicitly, so the default goes.
 

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # AR2 implementation plan: operator-property table and `rel_holds`
