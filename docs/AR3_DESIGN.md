@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # AR3: one integer-op kernel and one canonicalizer
