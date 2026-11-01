@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # AR8: a unary integer kernel and a float binary-op kernel
@@ -82,7 +82,7 @@ Each stage is its own commit with its own gate. The hand-written negate/compleme
 
 ## Open questions
 
-- Are decimal float literals (`cexpr.c:1298`) affected by the same double rounding? Test with a decimal literal one `long double` ulp above a double midpoint, folded and at runtime, before the plan; if so, a third stage (parse at the type's precision) or a parked item.
+None left. Decimal float literals are not affected: a decimal literal one `long double` ulp above a double midpoint compares as gcc's runtime does (`d5` in `tests/check/fold_double_round.c`, 2026-11-01).
 
 ## Done when
 
@@ -91,3 +91,7 @@ Each stage is its own commit with its own gate. The hand-written negate/compleme
 ## Review
 
 Round 1 (2026-10-31, by grep against the source): `fits` has one caller, so AR8 deletes it (AR3's note that it stays held only until now); `pcexpr.c:1333` is a literal read, not in scope; the kernel must round the operands to the type, which also changes mixed integer/double folds; `_Float16`/`_Float128` keep today's behavior. Round 2: the mixed integer/double fold was confirmed against gcc's runtime; no other claim changed. A third pass found nothing further.
+
+## Outcome
+
+Done 2026-11-01 (7232580 T1, 5c84eab T2): `ia_unop` in `src/intarith.h` replaced the five unary copies and `eval.c:fits`; `src/fparith.h` (`fl_binop`, `FpTy`) replaced `fbin`'s two switches and `cexpr`'s `long double` fold, and `fround` now shares `cexpr`'s `fp_ty` mapping. New: `selftest fparith`, `tests/eval/trap_neg_min.c` and `trap_neg_min64.c`, the unary lines in `tests/{eval,pp,pc}/int_ops.*`, `tests/check/fold_double_round.*`. Behavior changes: `eval` traps on negating `INT64_MIN`; `cexpr` rounds `double` folds once and converts a mixed integer operand to the type first. Gates ar8-t1 and ar8-t2 green (run 2345/0, san 2344/0, findings 0, globals 36, verify and the parity counts unchanged); callgrind 3 895 165 023 and 3 895 740 097 against 3 893 519 502 before (+0.04%).

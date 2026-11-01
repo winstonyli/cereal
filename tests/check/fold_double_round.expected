@@ -10,3 +10,6 @@ fold_double_round.c:5:1: warning: variably modified 'd3' at file scope
 fold_double_round.c:6:1: warning: variably modified 'd4' at file scope
     6 | int d4[(1.0f + 0x1.000002p-24f == 0x1.000002p0f) ? 1 : -1];
       | ^
+fold_double_round.c:8:1: warning: variably modified 'd5' at file scope
+    8 | int d5[(1.00000000000000011102230246251565404236316680908203125000001 == 1.0) ? -1 : 1];
+      | ^

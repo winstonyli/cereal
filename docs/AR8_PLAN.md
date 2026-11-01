@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # AR8 implementation plan: unary integer kernel and float binary-op kernel
