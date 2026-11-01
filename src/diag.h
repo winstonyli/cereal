@@ -199,6 +199,18 @@ void diag_init(DiagEngine *d, Arena *a, SrcMgr *sm);
 void diag_init_worker(DiagEngine *d, Arena *a, SrcMgr *sm, const DiagEngine *tu);
 void diag_free(DiagEngine *d);
 
+typedef enum DiagOpt {
+    DW_NONE = 0,            /* a hard error, or anything without an option: id "" */
+#define DIAG_OPT(id, ...) DW_##id,
+#include "diag_opts.def"
+#undef DIAG_OPT
+    DW_COUNT
+} DiagOpt;
+
+/* The option called name (text from a flag, a pragma, a stored diagnostic); DW_NONE if none. */
+DiagOpt diag_opt_find(const char *name);
+const char *diag_opt_name(DiagOpt o);   /* "" for DW_NONE */
+
 bool diag_enabled(DiagEngine *d, const char *id);
 /* Which options d reports (a byte per registry entry, malloc'd), and the
  * question for one id against such a map (hard errors, ids outside the

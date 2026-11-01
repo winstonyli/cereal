@@ -13,205 +13,13 @@
 
 /* Every configurable diagnostic.  Hard errors use id "" and are not listed. */
 static const DiagOption options[] = {
-    /* preprocessor core */
-    {"pp-warning-directive", "pp", DL_WARNING, true, 0, "#warning directive"},
-    {"c99-c11-compat", "c", DL_WARNING, true, 0, "C11 features in C99 mode (pedantic pedwarns)"},
-    {"c11-c2x-compat", "c", DL_WARNING, true, 0, "C2X features in C11 and earlier modes (pedantic pedwarns)"},
-    {"deprecated", "pp", DL_WARNING, true, 0, "GCC assertions (#assert, #unassert, #pred(answer) in #if)"},
-    {"undef", "cond", DL_WARNING, false, 0, "undefined identifier evaluates to 0 in #if"},
-    {"macro-redefined", "pp", DL_WARNING, true, 0, "non-identical macro redefinition (C99 6.10.3p2)"},
-    {"builtin-macro-redefined", "pp", DL_WARNING, true, 0, "redefining or undefining a predefined macro"},
-    {"unknown-pragmas", "pp", DL_WARNING, false, DO_ALL | DO_EXTRA, "unrecognized #pragma"},
-    {"invalid-pp-token", "pp", DL_WARNING, true, 0, "unterminated character or string literal"},
-    {"suggest-attribute=format", "c", DL_WARNING, false, 0, "a function calling a v*printf/v*scanf-like function with its own format might take the format attribute (-Wmissing-format-attribute)"},
-    {"larger-than=", "c", DL_WARNING, true, 0, "object larger than N bytes (N: a size, kB/MB.. units)"},
-    {"bidi-chars=", "pp", DL_WARNING, true, 0, "bidirectional control characters in comments, literals and identifiers"},
-    {"normalized=", "pp", DL_WARNING, true, 0, "identifier not in Unicode NFC (or NFKC)"},
-    {"directive-in-macro-args", "pp", DL_WARNING, true, 0, "directive inside macro arguments (C99 6.10.3p11 UB)"},
-    {"trigraphs", "pp", DL_WARNING, true, DO_ALL, "trigraphs: ignored (GNU modes) or, when asked for, converted"},
-    {"endif-labels", "pp", DL_WARNING, true, 0, "extra tokens after #else or #endif"},
-    {"extra-tokens", "pp", DL_WARNING, true, 0, "extra tokens at end of directive"},
-    {"sign-promo-in-if", "pp", DL_WARNING, false, DO_ALL, "#if operand that changes sign when promoted (untagged in gcc)"},
-    {"variadic-macros", "pp", DL_WARNING, true, 0, "named variadic macros under -pedantic"},
-    {"include-next-in-primary", "pp", DL_WARNING, true, 0, "#include_next in primary source file"},
-    {"expansion-to-defined", "cond", DL_WARNING, true, 0, "macro expansion produced 'defined' in #if (UB)"},
-    {"integer-overflow-in-if", "cond", DL_WARNING, true, 0, "signed overflow in #if expression"},
-    {"pedantic", "pedantic", DL_WARNING, false, 0, "GNU extensions and non-portable constructs"},
-    {"stdc-pragma", "pp", DL_WARNING, true, 0, "malformed STDC pragma"},
-
-    /* hygiene */
-    {"macro-unparenthesized-param", "hygiene", DL_WARNING, true, 0, "parameter used as an operand without parentheses"},
-    {"macro-unparenthesized-body", "hygiene", DL_WARNING, true, 0, "expression-like body without enclosing parentheses"},
-    {"macro-multi-statement", "hygiene", DL_WARNING, true, 0, "statement-like body not wrapped in do { } while (0)"},
-    {"macro-dangling-else", "hygiene", DL_WARNING, true, 0, "body is an if-statement without else (dangling else hazard)"},
-    {"macro-trailing-semicolon", "hygiene", DL_WARNING, true, 0, "body ends with ';'"},
-    {"macro-multi-eval", "hygiene", DL_WARNING, true, 0, "argument with side effects evaluated more than once"},
-    {"macro-multi-eval-call", "hygiene", DL_WARNING, false, DO_ALL | DO_EXTRA, "argument containing a call evaluated more than once"},
-    {"macro-discarded-side-effect", "hygiene", DL_WARNING, true, 0, "argument with side effects never evaluated"},
-    {"macro-reserved-name", "hygiene", DL_WARNING, true, 0, "macro name is a reserved identifier or keyword"},
-    {"macro-unused-param", "hygiene", DL_REMARK, false, 0, "parameter never used in the body"},
-    {"macro-unbalanced", "hygiene", DL_REMARK, false, 0, "unbalanced delimiters in the body"},
-    {"macro-self-reference", "hygiene", DL_REMARK, false, 0, "macro refers to itself (not re-expanded)"},
-    {"macro-recursion", "hygiene", DL_REMARK, false, 0, "macros refer to each other in a cycle (not re-expanded)"},
-
-    /* conditional compilation */
-    {"cond-dead-branch", "cond", DL_WARNING, true, 0, "branch can never be taken in any configuration"},
-    {"cond-redundant", "cond", DL_WARNING, true, 0, "condition is always true given enclosing conditions"},
-    {"cond-constant", "cond", DL_REMARK, false, 0, "#if condition is a constant (e.g. #if 0)"},
-    {"cond-typo", "cond", DL_WARNING, true, 0, "tested macro is never defined but a similar name is"},
-    {"cond-never-defined", "cond", DL_REMARK, false, 0, "tested macro is never defined anywhere"},
-    {"endif-label", "cond", DL_WARNING, true, 0, "#endif/#else comment does not match the opening condition"},
-
-    /* include / dependency */
-    {"header-guard", "include", DL_WARNING, true, 0, "include guard #ifndef and #define disagree"},
-    {"missing-header-guard", "include", DL_WARNING, true, 0, "header has no include guard or #pragma once"},
-    {"guard-collision", "include", DL_WARNING, true, 0, "two headers use the same include guard macro"},
-    {"duplicate-include", "include", DL_WARNING, true, 0, "same header included twice from one file"},
-    {"include-cycle", "include", DL_REMARK, false, 0, "include cycle"},
-    {"unused-include", "include", DL_WARNING, true, 0, "macro-only header provides nothing used"},
-    {"unused-macros", "include", DL_WARNING, true, 0, "macro defined in the main file is never used"},
-
-    /* C: gcc 13 names and defaults under -std=c99 */
-    {"implicit-int", "c", DL_WARNING, true, DO_IMPLICIT, "declaration without a type specifier defaults to int"},
-    {"implicit-function-declaration", "c", DL_WARNING, true, DO_IMPLICIT, "call of an undeclared function"},
-    {"multichar", "c", DL_WARNING, true, 0, "multi-character character constant"},
-    {"overflow", "c", DL_WARNING, true, 0, "constant expression overflows or conversion changes a constant"},
-    {"div-by-zero", "c", DL_WARNING, true, 0, "integer division by zero in a constant"},
-    {"int-conversion", "c", DL_WARNING, true, 0, "implicit conversion between integer and pointer"},
-    {"incompatible-pointer-types", "c", DL_WARNING, true, 0, "conversion between incompatible pointer types"},
-    {"discarded-qualifiers", "c", DL_WARNING, true, 0, "conversion discards qualifiers from pointer target type"},
-    {"discarded-array-qualifiers", "c", DL_WARNING, true, 0, "conversion discards qualifiers of array elements"},
-    {"scalar-storage-order", "c", DL_WARNING, true, 0, "reverse scalar storage order mismatch"},
-    {"int-to-pointer-cast", "c", DL_WARNING, true, 0, "cast to pointer from integer of different size"},
-    {"pointer-to-int-cast", "c", DL_WARNING, true, 0, "cast from pointer to integer of different size"},
-    {"builtin-declaration-mismatch", "c", DL_WARNING, true, 0, "declaration of a builtin function with the wrong type"},
-    {"return-local-addr", "c", DL_WARNING, true, 0, "function returns the address of a local variable"},
-    {"shift-count-negative", "c", DL_WARNING, true, 0, "shift count is negative"},
-    {"shift-count-overflow", "c", DL_WARNING, true, 0, "shift count >= width of type"},
-    {"strict-aliasing=", "c", DL_WARNING, false, DO_ALL, "dereferencing a pointer that breaks type-based aliasing (level 2: casts, 3: dereferences)"},
-    {"shift-overflow=", "c", DL_WARNING, true, 0, "left shift overflows (level 1: signed, 2: also into the sign bit)"},
-    {"pointer-compare", "c", DL_WARNING, true, 0, "comparison of a pointer with a zero character constant"},
-    {"switch-bool", "c", DL_WARNING, true, 0, "switch on a boolean expression"},
-    {"switch-outside-range", "c", DL_WARNING, true, 0, "case value outside the range of the controlling type"},
-    {"override-init-side-effects", "c", DL_WARNING, true, 0, "initialized field with side effects overwritten"},
-    {"designated-init", "c", DL_WARNING, true, 0, "positional initializer for a designated_init struct"},
-    {"attributes", "c", DL_WARNING, true, 0, "unknown or misplaced attribute"},
-    {"ignored-attributes", "c", DL_WARNING, true, 0, "attribute ignored"},
-    {"deprecated-declarations", "c", DL_WARNING, true, 0, "use of a deprecated declaration"},
-    {"address-of-packed-member", "c", DL_WARNING, true, 0, "address of a packed member may be unaligned"},
-    {"packed-bitfield-compat", "c", DL_WARNING, true, 0, "packed bit-field layout changed in GCC 4.4"},
-    {"if-not-aligned", "c", DL_WARNING, true, 0, "warn_if_not_aligned type is under-aligned"},
-    {"unused-result", "c", DL_WARNING, true, 0, "result of a warn_unused_result function ignored"},
-    {"nonnull", "c", DL_WARNING, true, 0, "null passed to a nonnull parameter"},
-    {"varargs", "c", DL_WARNING, true, 0, "questionable use of va_start"},
-    {"sizeof-array-argument", "c", DL_WARNING, true, 0, "sizeof on an array parameter"},
-    {"xor-used-as-pow", "c", DL_WARNING, true, 0, "2 ^ N or 10 ^ N probably meant as a power"},
-    {"return-type", "c", DL_WARNING, false, DO_ALL, "return with(out) a value, or falling off a non-void function"},
-    {"main", "c", DL_WARNING, false, DO_ALL | DO_PEDANTIC, "suspicious declaration of main"},
-    {"pointer-sign", "c", DL_WARNING, false, DO_ALL | DO_PEDANTIC, "pointer targets differ in signedness"},
-    {"parentheses", "c", DL_WARNING, false, DO_ALL, "parentheses suggested"},
-    {"dangling-else", "c", DL_WARNING, false, DO_ALL, "ambiguous else"},
-    {"switch", "c", DL_WARNING, false, DO_ALL, "enumeration value not handled in switch, or case not in enum"},
-    {"char-subscripts", "c", DL_WARNING, false, DO_ALL, "array subscript has type char"},
-    {"missing-braces", "c", DL_WARNING, false, DO_ALL, "missing braces around an initializer"},
-    {"sequence-point", "c", DL_WARNING, false, DO_ALL, "operation on an object may be undefined"},
-    {"duplicate-decl-specifier", "c", DL_WARNING, false, DO_ALL, "duplicate type qualifier"},
-    {"enum-compare", "c", DL_WARNING, false, DO_ALL, "comparison between different enumeration types"},
-    {"enum-int-mismatch", "c", DL_WARNING, false, DO_ALL, "redeclaration mixes an enumerated type and an integer type"},
-    {"address", "c", DL_WARNING, false, DO_ALL, "suspicious use of an address (always true, string comparison)"},
-    {"bool-compare", "c", DL_WARNING, false, DO_ALL, "boolean compared with a non-boolean constant"},
-    {"bool-operation", "c", DL_WARNING, false, DO_ALL, "suspicious operation on a boolean"},
-    {"logical-not-parentheses", "c", DL_WARNING, false, DO_ALL, "logical not on the left of a comparison"},
-    {"tautological-compare", "c", DL_WARNING, false, DO_ALL, "comparison always evaluates to true or false"},
-    {"misleading-indentation", "c", DL_WARNING, false, DO_ALL, "indentation does not reflect the block structure"},
-    {"duplicated-branches", "c", DL_WARNING, false, 0, "if or ?: with identical branches"},
-    {"duplicated-cond", "c", DL_WARNING, false, 0, "repeated condition in an if / else-if chain"},
-    {"logical-op", "c", DL_WARNING, false, 0, "suspicious uses of logical operators (equal or exclusive tests, non-boolean constant)"},
-    {"multistatement-macros", "c", DL_WARNING, false, DO_ALL, "macro expands to multiple statements guarded by one clause"},
-    {"memset-transposed-args", "c", DL_WARNING, false, DO_ALL, "memset with a constant zero length"},
-    {"memset-elt-size", "c", DL_WARNING, false, DO_ALL, "memset length equal to the number of elements"},
-    {"unsuffixed-float-constants", "c", DL_WARNING, false, 0, "floating constant without a suffix"},
-    {"date-time", "c", DL_WARNING, false, 0, "use of __DATE__, __TIME__ or __TIMESTAMP__"},
-    {"int-in-bool-context", "c", DL_WARNING, false, DO_ALL, "suspicious integer expression in a boolean context"},
-    {"array-compare", "c", DL_WARNING, false, DO_ALL, "comparison of two arrays"},
-    {"array-parameter=", "c", DL_WARNING, false, DO_ALL, "array parameter redeclared with a different bound"},
-    {"array-bounds=", "c", DL_WARNING, false, DO_ALL, "constant array index out of bounds"},
-    {"c90-c99-compat", "c", DL_WARNING, false, 0, "C99 features that C90 lacks"},
-    {"double-promotion", "c", DL_WARNING, false, 0, "implicit conversion of float to double or long double"},
-    {"stringop-overread", "c", DL_WARNING, true, 0, "string function reading past the end of its argument"},
-    {"vla-parameter", "c", DL_WARNING, false, DO_ALL, "VLA parameter redeclared with a different bound"},
-    {"sizeof-pointer-div", "c", DL_WARNING, false, DO_ALL, "sizeof (pointer) / sizeof (element)"},
-    {"sizeof-pointer-memaccess", "c", DL_WARNING, false, DO_ALL, "sizeof of a pointer as the size of a memory access"},
-    {"sizeof-array-div", "c", DL_WARNING, false, DO_ALL, "sizeof (array) / sizeof (wrong type)"},
-    {"nonnull-compare", "c", DL_WARNING, false, DO_ALL, "nonnull parameter compared with null"},
-    {"restrict", "c", DL_WARNING, false, DO_ALL, "overlapping arguments to restrict parameters"},
-    {"zero-length-bounds", "c", DL_WARNING, false, DO_ALL, "access of a zero-length array member"},
-    {"packed-not-aligned", "c", DL_WARNING, false, DO_ALL, "packed struct member under-aligned"},
-    {"volatile-register-var", "c", DL_WARNING, false, DO_ALL, "register variable declared volatile"},
-    {"unused-variable", "c", DL_WARNING, false, DO_UNUSED, "unused local or static variable"},
-    {"unused-function", "c", DL_WARNING, false, DO_UNUSED, "static function declared but not defined or used"},
-    {"unused-label", "c", DL_WARNING, false, DO_UNUSED, "label defined but not used"},
-    {"unused-value", "c", DL_WARNING, false, DO_UNUSED, "statement with no effect, value computed not used"},
-    {"unused-but-set-variable", "c", DL_WARNING, false, DO_UNUSED, "variable set but not used"},
-    {"unused-local-typedefs", "c", DL_WARNING, false, DO_UNUSED, "locally defined typedef not used"},
-    {"unused-parameter", "c", DL_WARNING, false, DO_UNUSED_EXTRA, "unused function parameter"},
-    {"unused-but-set-parameter", "c", DL_WARNING, false, DO_UNUSED_EXTRA, "parameter set but not used"},
-    {"ignored-qualifiers", "c", DL_WARNING, false, DO_EXTRA, "type qualifiers ignored (e.g. on a return type)"},
-    {"old-style-declaration", "c", DL_WARNING, false, DO_EXTRA, "storage class not at the beginning of a declaration"},
-    {"write-strings", "c", DL_WARNING, false, 0, "string literals have type const char[]"},
-    {"traditional", "c", DL_WARNING, false, 0, "constructs with different meaning in traditional C"},
-    {"traditional-conversion", "c", DL_WARNING, false, 0, "conversion of an argument that a prototype changes"},
-    {"missing-field-initializers", "c", DL_WARNING, false, DO_EXTRA, "struct initializer leaves fields uninitialized"},
-    {"missing-parameter-type", "c", DL_WARNING, false, DO_EXTRA, "K&R parameter without a type"},
-    {"override-init", "c", DL_WARNING, false, DO_EXTRA, "initialized field overwritten"},
-    {"empty-body", "c", DL_WARNING, false, DO_EXTRA, "empty body of an if, else or do while"},
-    {"sign-compare", "c", DL_WARNING, false, DO_EXTRA, "comparison between signed and unsigned"},
-    {"type-limits", "c", DL_WARNING, false, DO_EXTRA, "comparison always true or false due to the range of a type"},
-    {"shift-negative-value", "c", DL_WARNING, false, DO_EXTRA, "left shift of a negative value"},
-    {"enum-conversion", "c", DL_WARNING, false, DO_EXTRA, "implicit conversion between enumerated types"},
-    {"cast-function-type", "c", DL_WARNING, false, DO_EXTRA, "cast between incompatible function types"},
-    {"pointer-arith", "c", DL_WARNING, false, DO_PEDANTIC, "sizeof (void), arithmetic on void * or function pointers"},
-    {"overlength-strings", "c", DL_WARNING, false, DO_PEDANTIC, "string longer than the C99 minimum (4095)"},
-    {"old-style-definition", "c", DL_WARNING, false, 0, "K&R function definition"},
-    {"missing-prototypes", "c", DL_WARNING, false, 0, "global function defined without a prototype"},
-    {"missing-declarations", "c", DL_WARNING, false, 0, "global function defined without a previous declaration"},
-    {"strict-prototypes", "c", DL_WARNING, false, 0, "function declared without parameter types"},
-    {"shadow", "c", DL_WARNING, false, 0, "declaration shadows another"},
-    {"shadow=local", "c", DL_WARNING, false, 0, "declaration shadows a parameter or local"},
-    {"shadow=compatible-local", "c", DL_WARNING, false, 0, "declaration shadows a parameter or local of a compatible type"},
-    {"redundant-decls", "c", DL_WARNING, false, 0, "redundant redeclaration in the same scope"},
-    {"nested-externs", "c", DL_WARNING, false, 0, "extern declaration inside a function"},
-    {"pragmas", "pp", DL_WARNING, true, 0, "malformed or misused pragma"},
-    {"c++-compat", "c", DL_WARNING, false, 0, "constructs with different meaning or validity in C++"},
-    {"prio-ctor-dtor", "c", DL_WARNING, true, 0, "constructor/destructor priority reserved for the implementation"},
-    {"absolute-value", "c", DL_WARNING, false, DO_EXTRA, "abs/fabs/cabs called with an argument of the wrong kind"},
-    {"bad-function-cast", "c", DL_WARNING, false, 0, "cast of a call to a non-matching type"},
-    {"cast-qual", "c", DL_WARNING, false, 0, "cast removes a qualifier from the target type"},
-    {"cast-align=", "c", DL_WARNING, false, 0, "cast increases the required alignment (strict only: a no-op where unaligned access works)"},
-    {"conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change a value"},
-    {"sign-conversion", "c", DL_WARNING, false, 0, "implicit conversion that may change the sign"},
-    {"arith-conversion", "c", DL_WARNING, false, 0, "conversion of an arithmetic result may change its value"},
-    {"format=", "c", DL_WARNING, true, 0, "printf-style conversion that does not match its argument"},
-    {"format-extra-args", "c", DL_WARNING, true, 0, "more arguments than the format uses"},
-    {"format-zero-length", "c", DL_WARNING, true, 0, "empty format string"},
-    {"format-contains-nul", "c", DL_WARNING, true, 0, "format string with an embedded NUL"},
-    {"format-security", "c", DL_WARNING, true, 0, "format string that is not a literal and has no arguments"},
-    {"format-nonliteral", "c", DL_WARNING, false, 0, "format string that is not a literal"},
-    {"format-signedness", "c", DL_WARNING, false, 0, "format conversions that differ in signedness"},
-    {"float-conversion", "c", DL_WARNING, false, 0, "implicit conversion that reduces floating precision"},
-    {"float-equal", "c", DL_WARNING, false, 0, "floating-point values compared for equality"},
-    {"jump-misses-init", "c", DL_WARNING, false, 0, "goto or switch jumps over a variable initialization"},
-    {"switch-default", "c", DL_WARNING, false, 0, "switch without a default case"},
-    {"switch-enum", "c", DL_WARNING, false, 0, "enumeration value not handled in switch (even with default)"},
-    {"declaration-after-statement", "c", DL_WARNING, false, 0, "declaration after a statement in a block"},
-    {"vla", "c", DL_WARNING, false, 0, "variable length array"},
-    {"long-long", "c", DL_WARNING, false, 0, "long long type"},
-    {"unused-const-variable", "c", DL_WARNING, false, 0, "unused static const variable"},
-    {"packed", "c", DL_WARNING, false, 0, "packed attribute has no effect or hurts alignment"},
-    {"padded", "c", DL_WARNING, false, 0, "padding added to a struct"},
+#define DIAG_OPT(id, ...) {__VA_ARGS__},
+#include "diag_opts.def"
+#undef DIAG_OPT
 };
 
 #define NOPTIONS (sizeof options / sizeof options[0])
+_Static_assert(sizeof options / sizeof options[0] == DW_COUNT - 1, "diag_opts.def and options[] disagree");
 
 /* Umbrella flags (gcc's EnabledBy): -1 unset, 0 off, 1 on. */
 enum { U_ALL, U_EXTRA, U_UNUSED, U_IMPLICIT, NUMBRELLA };
@@ -361,7 +169,19 @@ static long find_index(const char *name)
     return find_index_scan(name);
 }
 
-/* Every option name finds the same option by bisection as by the scan. */
+DiagOpt diag_opt_find(const char *name)
+{
+    long i = find_index(name);
+    return i < 0 ? DW_NONE : (DiagOpt)(i + 1);
+}
+
+const char *diag_opt_name(DiagOpt o)
+{
+    return o == DW_NONE ? "" : options[o - 1].name;
+}
+
+/* Every option name finds the same option by bisection as by the scan, and
+ * is the enum value of its row. */
 int diag_selftest(void)
 {
     size_t i;
@@ -371,6 +191,16 @@ int diag_selftest(void)
             fprintf(stderr, "diag selftest: %s\n", options[i].name);
             bad++;
         }
+    for (i = 0; i < NOPTIONS; i++)
+        if (diag_opt_find(options[i].name) != (DiagOpt)(i + 1) ||
+            strcmp(diag_opt_name((DiagOpt)(i + 1)), options[i].name)) {
+            fprintf(stderr, "diag selftest: enum of %s\n", options[i].name);
+            bad++;
+        }
+    if (diag_opt_find("no-such-option") != DW_NONE || diag_opt_name(DW_NONE)[0]) {
+        fprintf(stderr, "diag selftest: DW_NONE\n");
+        bad++;
+    }
     return bad != 0;
 }
 
