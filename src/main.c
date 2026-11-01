@@ -1129,7 +1129,6 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet,
             diag_print_json(&tu.diag, stdout);
             if (tokens) {
                 TokDump d;
-                double t0 = now_sec();
                 memset(&d, 0, sizeof d);
                 d.full = tokens == 1;
                 if (toks.ncells && tokens != 2) {
@@ -1141,13 +1140,6 @@ static int mode_replay(Options *o, bool all, bool cells, bool quiet,
                 }
                 printf("tokens %llu %016llx\n", (unsigned long long)d.n,
                        (unsigned long long)d.hash);
-                if (getenv("CEREAL_TOK_STATS"))
-                    fprintf(stderr, "tokens: %zu cells, %s %.3fs\n",
-                            toks.ncells,
-                            toks.ncells ? (tokens != 2 ? "regenerated"
-                                                       : "from records")
-                                        : "sequential",
-                            now_sec() - t0);
             } else if (queries) {
                 MacroGraph g;
                 mgraph_build(&g, &tu.pp);

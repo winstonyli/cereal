@@ -270,11 +270,6 @@ bool frontend_run(TU *tu, const char *path, const FrontendOpts *fo)
         if (!fo->link)
             checker_free(chk);     /* the link run frees it after the sweep (evlink_end) */
     }
-    if (getenv("CEREAL_PARSE_STATS"))
-        fprintf(stderr, "parse: %llu units, %llu tokens, %llu errors\n",
-                (unsigned long long)p.units,
-                (unsigned long long)(p.base + p.unit_end),
-                (unsigned long long)p.errors);
     parser_free(&p);
     if (cs.open)
         tokcur_close(&cs.cur, true);

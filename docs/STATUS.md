@@ -88,6 +88,24 @@ the sanitizer build and a callgrind count in parallel; see its header for the
 expected numbers. `symcov.sh`, `fixits.sh`, `fixgate.sh` and the benches are not
 part of it.
 
+## Environment switches
+Read with `getenv` in `src/` (checked 2026-10-31); the linked doc owns the detail.
+
+| Name | Effect | Doc |
+|---|---|---|
+| `CEREAL_JOBS` | worker pool size of `bench/tools/par.py` (default 12); `gate.sh` sets 4 for `verify.sh` | `bench/tools/par.py` header |
+| `CEREAL_PAR_STATS` | `1`: the parallel runner's phase times on stderr; `2`: also per item | [PARALLEL.md](PARALLEL.md) |
+| `CEREAL_CELL_STATS` | `index --replay --transcript`: cell memory figures on stderr | [PARALLEL.md](PARALLEL.md) |
+| `CEREAL_CARRY_STATS` | carry-over check: index sizes and carry time on stderr | [B3_DESIGN.md](B3_DESIGN.md) |
+| `CEREAL_LSP_STATS` | the language server logs per-request timings | [LSP.md](LSP.md) |
+| `CEREAL_LSP_CHECK_MAX` | bytes; overrides the server's check size limit (4 MiB) | [LSP.md](LSP.md) |
+| `CEREAL_INDEX_<KEY>` | the project index setting `<KEY>` (e.g. `ENABLE`, `THREADS`) | [LSP.md](LSP.md) |
+| `CEREAL_FAULT` | `site[:N]`: fail at the Nth pass of a named fault site (tests) | [LSP.md](LSP.md) |
+| `CEREAL_FAULT_CHILD` | the value passed to an index child as its `CEREAL_FAULT` (tests) | [B5_DESIGN.md](B5_DESIGN.md) |
+| `CEREAL_FIX_HOOK` | shell command run before `fix` writes, to simulate an editor save (tests) | [C_DESIGN.md](C_DESIGN.md) |
+| `CEREAL_LAZY_REPLAY` | reruns each evaluated call from its log and compares the printed line (tests) | [LAZY_BLOBS_SOLVER_PLAN.md](LAZY_BLOBS_SOLVER_PLAN.md) |
+| `CEREAL_PCDUMP` | words `size oracle skipped why check enable cover time`: the preprocessor-condition analysis hook | [S1_PLAN.md](S1_PLAN.md) |
+
 ## Open differences (gcc.dg 2, c-c++-common 1)
 Needs gcc's optimizer or middle end (out of reach for a front end):
 pr56355-1 (-Wstrict-overflow=4 at -O2: the warning comes from fold-const's
