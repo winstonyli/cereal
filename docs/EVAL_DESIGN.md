@@ -16,7 +16,7 @@ arithmetic and memory rules:
 
 | where | works on | covers | notes |
 |---|---|---|---|
-| `src/c/cexpr.c` (`e_*`, `int_op`, `conv_const`, `fold_*`) | the checker's per-node arrays `ck/cv/ef` | integer and float expressions, addresses; 64-bit; gcc's ICE/fold distinctions and deferred overflow warnings | the diagnostics depend on it; no aggregates |
+| `src/c/cexpr.c` (`e_*`, `conv_const`, `fold_*`; integer ops in `src/intarith.h`) | the checker's per-node arrays `ck/cv/ef` | integer and float expressions, addresses; 64-bit; gcc's ICE/fold distinctions and deferred overflow warnings | the diagnostics depend on it; no aggregates |
 | `src/c/cgdata.c` `ev`/`elem` | TAST `TO_DATA` trees | static initializers: ints, floats, addresses plus offsets | deleted at E5 (2026-10-21); `ev_object` replaces it (it had no division or comparison, no `long double`, no compound literals) |
 | `tests/tast_data.py` | TAST `data` nodes | an oracle: evaluates them in Python and compares bytes and relocations with gcc's object file | 433 lines; independent of `cgdata.c`, so it stays a check unless the C evaluator is compared with gcc's objects directly (decide at E5) |
 | `tests/cfg_exec.py` | `--dump-cfg` text | integer functions with one cell per object and byte offset | deleted at E2 (2026-10-21); the evaluator and `tests/eval_sweep.sh` replace it |

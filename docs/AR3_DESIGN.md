@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # AR3: one integer-op kernel and one canonicalizer
@@ -42,7 +42,7 @@ uint64_t ia_binop(int op, IaTy t, uint64_t a, uint64_t b, unsigned *flags);
 - `+ - *`: the wrapped result, canonical. `IA_OVF` for signed `t` when the exact result does not fit `t` (computed with `__builtin_*_overflow` on `int64_t`, then a fit test at `bits`; `eval.c` already uses the builtins).
 - `/ %`: `b == 0` gives value 0 and `IA_ZDIV`. Signed minimum by -1 gives the wrapped quotient (the minimum) or remainder 0, and `IA_OVF` (for both operators: C11 6.5.5p6 makes the quotient's non-representability undefined for `%` too).
 - `& | ^`: canonical.
-- `<< >>`: the count is `b` as unsigned (a negative count is huge). Count >= `bits`: `IA_SHIFT_RANGE`; value 0, or all ones for `>>` of a negative signed `a`. Otherwise `<<` gives the canonical `a << b`; `>>` is arithmetic for signed, logical for unsigned. For signed `t` and `<<`: `IA_SHIFT_NEG` when `a < 0`, `IA_SHIFT_LOSSY` when shifting the result back does not give `a` (libcpp's `num_lshift` rule). `IA_OVF` is never set by a shift, so a caller that wants "overflow" from a shift opts in by testing `IA_SHIFT_LOSSY`.
+- `<< >>`: the count is `b` as unsigned (a negative count is huge). Count >= `bits`: `IA_SHIFT_RANGE`; value 0, or all ones for `>>` of a negative signed `a`. Otherwise `<<` gives the canonical `a << b`; `>>` is arithmetic for signed, logical for unsigned. For signed `t` and `<<`: `IA_SHIFT_NEG` when `a < 0`, `IA_SHIFT_LOSSY` when shifting the result back does not give `a` (libcpp's `num_lshift` rule); a count at or above the width also sets `IA_SHIFT_LOSSY` for a nonzero signed `a` (the value is lost). `IA_OVF` is never set by a shift, so a caller that wants "overflow" from a shift opts in by testing `IA_SHIFT_LOSSY`.
 
 `ia_canon` is `v != 0` for `boolean`; unchanged for `bits >= 64`; otherwise masked, then sign-extended when `sg`. `cexpr_trunc` and `ev_canon` stay as two thin adapters that read `(bits, sg, boolean)` from the Checker's type table and from `Ti` respectively; their bodies are `ia_canon`. `eval.c:fits` becomes `ia_canon(t, x) == x`. (They are adapters over two different type tables, not compatibility shims; the Checker one also passes non-integer and pointer types through unchanged.)
 
@@ -54,7 +54,7 @@ For the two preprocessors, which share libcpp's rule that a negative shift count
 |---|---|---|---|---|---|
 | `cexpr` (`int_op`) | `*ovf` | `*zdiv` | ignored | ignored | ignored |
 | `eval` | `TRAP` "signed integer overflow" unless `o.wrap` | `TRAP` | `TRAP` | `TRAP` unless `o.wrap` | ignored |
-| `ppexpr` | `overflow()` | `fail()` when evaluated | `overflow()` for a nonzero signed left operand of `<<` | ignored | `overflow()` |
+| `ppexpr` | `overflow()` | `fail()` when evaluated | ignored | ignored | `overflow()` (also for a nonzero signed operand shifted out of range) |
 | `pcexpr` | ignored | return `false` | ignored | ignored | ignored |
 
 ## Differences the kernel would erase
@@ -87,6 +87,10 @@ Each stage is its own commit with its own gate. `int_op`, `int_arith`, the `mul/
 ## Done when
 
 `grep -n "case P_SLASH" src` finds only the kernel, the float code and the non-value switches; the kernel, its selftest and the characterization files are the one home for these facts; `status: done` here and the AR3 item in the cleanup plan records the outcome.
+
+## Outcome
+
+Done 2026-10-31 (05144d8, ed513a8, dda2827): deleted `int_op`, the arithmetic bodies of `ppexpr`'s `mul`/`add`/`shift` and `fold`'s integer cases; `int_arith` is now a flag-to-trap mapping; `ev_canon` and `cexpr_trunc` are adapters over `ia_canon`. Behavior changes: `INT_MIN % -1` traps in `eval`; `pcexpr` shifts follow libcpp (negative count, out-of-range right shift of a negative value).
 
 ## Review
 
