@@ -38,6 +38,15 @@ for v in r:
         extra[k] += n
         efiles[k].add(fn)
 print('files', nfile, 'identical diagnostics', exact, 'differ', nfile - exact)
+both = [v for v in r if v.get('grc') and v.get('crc')]
+
+
+def errs(h):
+    return [e for e in L(h) if e[2] != 'warning']
+
+
+print('both-reject files', len(both), 'identical error headers',
+      sum(errs(v['g']) == errs(v['c']) for v in both))
 print('missing total', sum(missing.values()), 'distinct', len(missing))
 print('extra total', sum(extra.values()), 'distinct', len(extra))
 print('-- top missing (by files)')

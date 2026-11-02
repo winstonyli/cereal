@@ -103,7 +103,7 @@ layouts, gcc rules ported, walk design).
    pack stack beyond its digest.
 
 ## Workflow notes
-- Harness: bench/tools/{par,hd,san,mut}.py (parity, headers, sanitizers,
+- Harness: bench/tools/{par,diagstat,san,mut}.py (parity, headers, sanitizers,
   mutants); gcc sources used as the port reference (c-decl.cc, c-typeck.cc,
   c-parser.cc) were in the session scratchpad and are not in the repo: run
   `bench/tools/fetch_gcc_refs.sh [DIR]` (downloads gcc-13.3.0 c-decl.cc,
