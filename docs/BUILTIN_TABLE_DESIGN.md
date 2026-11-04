@@ -92,9 +92,10 @@ the new script. The header comment of `cbuiltin_tab.h` names the column owners.
   of `__builtin___snprintf_chk(0,1,0,8,"x")` printed no warning for the old table's position 5
   (probe arguments may have been wrong); the probe is compared with the old table before it
   replaces it, and every difference is explained or the old entry corrected.
-- *fmt*: a probe per `...`/`va_list` row is not obviously available; the plan decides between a
-  `-Wformat` probe (a bad conversion at each candidate position) and seeding from the old
-  tables with a check. This is the one column whose provenance is open.
+- *fmt* (decided a1, 2026-11-04): a `-Wformat` probe, a bad conversion at each candidate
+  position of each `...` or `va_list` row. Unproven, so the plan starts with a spike of the
+  probe on the 12 printf and 6 scanf rows; if it cannot reproduce the old tables the plan
+  returns to the user before seeding anything.
 
 **Rows missing today (measured).** The 12 `__*_chk` names of `builtin_nonnull` get rows
 (`gnu = 2`, as `__builtin___strcpy_chk` spellings). `dprintf` and `vdprintf` of
@@ -130,7 +131,8 @@ deleted and recorded.
 - **Nonnull provenance (decided 2026-11-04, x1).** A gcc probe is written; seeding once as a
   hand-owned column is rejected (the pattern AR1 removes).
 - **`std_names`.** Dropped from AR1 as a different domain; not yet confirmed by the user.
-- **Fmt provenance (open, for the plan).** See Generation.
+- **Fmt provenance (decided a1, 2026-11-04).** A gcc `-Wformat` probe; seeding rejected for
+  the same reason as nonnull. See Generation.
 
 ## Not decided here
 
