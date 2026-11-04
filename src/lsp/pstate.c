@@ -582,11 +582,11 @@ void pstate_set_config(PState *ps, LspConfig *cfg,
         vec_push(&cands, c);
     }
     if (cands.len > 1)
-        qsort(cands.data, cands.len, sizeof *cands.data, cand_cmp);
+        sort_n(cands.data, cands.len, sizeof *cands.data, cand_cmp);
     for (i = 0; i < ps->tus.len; i++)
         vec_push(&old, ps->tus.data[i]);
     if (old.len > 1)
-        qsort(old.data, old.len, sizeof *old.data, tup_cmp);
+        sort_n(old.data, old.len, sizeof *old.data, tup_cmp);
     {
         VEC(bool) used = {0};
         size_t k;
@@ -628,7 +628,7 @@ void pstate_set_config(PState *ps, LspConfig *cfg,
         vec_free(&used);
     }
     if (keep.len > 1)
-        qsort(keep.data, keep.len, sizeof *keep.data, tu_entry_cmp);
+        sort_n(keep.data, keep.len, sizeof *keep.data, tu_entry_cmp);
     vec_free(&ps->tus);
     ps->tus = keep;
     vec_free(&old);
@@ -757,7 +757,7 @@ void pstate_allocate(PState *ps, bool force, size_t *added, size_t *dropped)
     }
     budget = ps->vmax ? (size_t)(ps->vratio * (double)reals.len) : 0;
     if (reals.len > 1)
-        qsort(reals.data, reals.len, sizeof *reals.data, real_main_cmp);
+        sort_n(reals.data, reals.len, sizeof *reals.data, real_main_cmp);
     for (i = 0; i < reals.len && want.len < budget; i++) {
         uint32_t k;
         vc_load(ps, reals.data[i]);
@@ -772,7 +772,7 @@ void pstate_allocate(PState *ps, bool force, size_t *added, size_t *dropped)
         }
     }
     if (want.len > 1)
-        qsort(want.data, want.len, sizeof *want.data, want_cmp);
+        sort_n(want.data, want.len, sizeof *want.data, want_cmp);
     for (i = 0; i < ps->tus.len; i++) {     /* keep the real units and the wanted ones */
         PTu *t = ps->tus.data[i];
         Want key, *hit = NULL;
@@ -810,7 +810,7 @@ void pstate_allocate(PState *ps, bool force, size_t *added, size_t *dropped)
     ps->tus = keep;
     if (*added || *dropped) {
         if (ps->tus.len > 1)
-            qsort(ps->tus.data, ps->tus.len, sizeof *ps->tus.data, tu_entry_cmp);
+            sort_n(ps->tus.data, ps->tus.len, sizeof *ps->tus.data, tu_entry_cmp);
         settle(ps, now);
         for (i = 0; i < ps->tus.len; i++)
             if (ps->tus.data[i]->overlay)

@@ -449,7 +449,7 @@ static void merge_diags(Par *P, const Slice *sl, int nslices)
         }
     }
     if (refs.len > 1)
-        qsort(refs.data, refs.len, sizeof *refs.data, diagref_cmp);
+        sort_n(refs.data, refs.len, sizeof *refs.data, diagref_cmp);
     tu->diag.all.len = 0;
     for (i = 0; i < refs.len; i++) {
         Diagnostic *d = refs.data[i].d;

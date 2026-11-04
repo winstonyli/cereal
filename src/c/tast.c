@@ -1269,7 +1269,7 @@ static bool init_elems(El *e, uint32_t init, TypeId oty, bool is_static, SrcLoc 
         vec_push(&live, r);
     }
     if (is_static)
-        qsort(live.data, live.len, sizeof *live.data, tir_cmp);
+        sort_n(live.data, live.len, sizeof *live.data, tir_cmp);
     for (m = 0; m < live.len; m++) {
         const TIRec *r = live.data[m];
         TypeId ty = unqual(c, r->ty);

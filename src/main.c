@@ -711,7 +711,7 @@ int compdb_plan(Options *o, TuFn fn, const char *dbpath, const StrVec *own,
         keys[nkeys].fp = plan[i].fp;
         keys[nkeys++].idx = i;
     }
-    qsort(keys, nkeys, sizeof *keys, dupkey_cmp);
+    sort_n(keys, nkeys, sizeof *keys, dupkey_cmp);
     for (k = 1; k < nkeys; k++)
         if (!strcmp(keys[k].file, keys[k - 1].file) &&
             keys[k].fp == keys[k - 1].fp) {
@@ -948,7 +948,7 @@ static void transcript(TU *tu, Index *ix, const MacroGraph *g)
             vec_push(&files, f);
     }
     if (files.len > 1)
-        qsort(files.data, files.len, sizeof *files.data, file_name_cmp);
+        sort_n(files.data, files.len, sizeof *files.data, file_name_cmp);
     for (k = 0; k < files.len; k++) {
         SrcFile *f = files.data[k];
         IdxRef *refs;

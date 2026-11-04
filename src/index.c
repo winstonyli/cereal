@@ -322,7 +322,7 @@ static void ix_prepare(void *wctx, uint32_t from, uint32_t to)
     }
     /* worker-local expansion ids order like the final ones */
     if (w->prep_refs.len)
-        qsort(w->prep_refs.data, w->prep_refs.len, sizeof(IdxRef), ref_cmp);
+        sort_n(w->prep_refs.data, w->prep_refs.len, sizeof(IdxRef), ref_cmp);
     for (i = 0; i < n; i++)
         if (kept[i])
             w->exps.data[i] = NULL; /* owned by the main index now */
@@ -348,7 +348,7 @@ static void merge_refs(Index *ix)
     if (ix->refs.len) {
         own = xmalloc(sizeof(IdxRef) * ix->refs.len);
         memcpy(own, ix->refs.data, sizeof(IdxRef) * ix->refs.len);
-        qsort(own, ix->refs.len, sizeof(IdxRef), ref_cmp);
+        sort_n(own, ix->refs.len, sizeof(IdxRef), ref_cmp);
     }
     cur[0] = own;
     end[0] = own ? own + ix->refs.len : NULL;
@@ -636,7 +636,7 @@ static void blob_tables(IxBlob *b, Arena *a)
     uint64_t *keys;
     VEC(CEdge) ed = {0};
     if (b->nrefs > 1)
-        qsort(b->refs, b->nrefs, sizeof *b->refs, cref_cmp);
+        sort_n(b->refs, b->nrefs, sizeof *b->refs, cref_cmp);
     b->by_name = NEW_ARRAY(a, uint32_t, b->nrefs + 1);
     keys = xmalloc(sizeof(uint64_t) * (b->nrefs + 1));
     for (i = 0; i < b->nrefs; i++) {
@@ -645,7 +645,7 @@ static void blob_tables(IxBlob *b, Arena *a)
             b->max_len = b->refs[i].len;
     }
     if (b->nrefs > 1)
-        qsort(keys, b->nrefs, sizeof *keys, u64_cmp);
+        sort_n(keys, b->nrefs, sizeof *keys, u64_cmp);
     for (i = 0; i < b->nrefs; i++)
         b->by_name[i] = (uint32_t)keys[i];
     free(keys);
@@ -1050,7 +1050,7 @@ static void ensure_sorted(Index *ix)
     if (ix->sorted)
         return;
     if (ix->refs.len)
-        qsort(ix->refs.data, ix->refs.len, sizeof(IdxRef), ref_cmp);
+        sort_n(ix->refs.data, ix->refs.len, sizeof(IdxRef), ref_cmp);
     dedupe_refs(ix);
     ix->sorted = true;
 }
@@ -1159,7 +1159,7 @@ static void build_spans(Index *ix)
         n++;
     }
     if (n > 1)
-        qsort(ix->spans, n, sizeof *ix->spans, span_cmp);
+        sort_n(ix->spans, n, sizeof *ix->spans, span_cmp);
     ix->nspans = n;
 }
 
@@ -1318,7 +1318,7 @@ static void named_refs(Index *ix, const Ident *name, RefVec *v)
 static void finish_refs(Index *ix, RefVec *v)
 {
     if (v->len > 1)
-        qsort(v->data, v->len, sizeof(IdxRef),
+        sort_n(v->data, v->len, sizeof(IdxRef),
               ix->cells_mode ? ref_qcmp : ref_cmp);
     v->len = dedupe(v->data, v->len);
 }
@@ -1924,7 +1924,7 @@ static size_t pasted_calls(Index *ix, Pasted **out)
         }
     }
     if (v.len > 1)
-        qsort(v.data, v.len, sizeof *v.data, pasted_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, pasted_cmp);
     *out = v.data;
     return v.len;
 }

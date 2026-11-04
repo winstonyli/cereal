@@ -457,6 +457,12 @@ bool dir_create_all(const char *path, char *err, size_t errn)
     return ok;
 }
 
+void sort_n(void *base, size_t n, size_t size, int (*cmp)(const void *, const void *))
+{
+    if (n > 1)
+        qsort(base, n, size, cmp);
+}
+
 int u32_cmp(const void *pa, const void *pb)
 {
     uint32_t a = *(const uint32_t *)pa, b = *(const uint32_t *)pb;
@@ -511,7 +517,7 @@ size_t sort_unique_u64(uint64_t *v, size_t n)
 {
     size_t i, k = 0;
     if (n > 1)
-        qsort(v, n, sizeof *v, u64_cmp);
+        sort_n(v, n, sizeof *v, u64_cmp);
     for (i = 0; i < n; i++)
         if (!k || v[k - 1] != v[i])
             v[k++] = v[i];

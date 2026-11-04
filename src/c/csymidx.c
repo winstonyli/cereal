@@ -792,7 +792,7 @@ static Range *define_ranges(Checker *c, size_t *n)
         r[k].e = m->end_loc;
         k++;
     }
-    qsort(r, k, sizeof *r, range_cmp);
+    sort_n(r, k, sizeof *r, range_cmp);
     *n = k;
     return r;
 }
@@ -1002,7 +1002,7 @@ static uint32_t *freeze_scopes(Checker *c, CIndex *ix, const char *strings,
         map[k] = (uint32_t)++nk;
     }
     free(dead);
-    qsort(v, nk, sizeof *v, scope_cmp);
+    sort_n(v, nk, sizeof *v, scope_cmp);
     pos = xmalloc((nk + 1) * sizeof *pos);   /* creation order -> 1 + final */
     for (k = 0; k < nk; k++)
         pos[v[k].ord] = (uint32_t)k + 1;
@@ -1104,8 +1104,7 @@ CIndex *csx_finish(Checker *c)
     }
     b->xc.len = 0;
     free(rg);
-    if (b->ev.len)       /* qsort(NULL, 0) is UB (nonnull) */
-        qsort(b->ev.data, b->ev.len, sizeof *b->ev.data, ev_cmp);
+    sort_n(b->ev.data, b->ev.len, sizeof *b->ev.data, ev_cmp);
     /* hover texts of tags and fields (persistent symbols': link_decls) */
     for (i = 0; i < b->recmap.len && i < c->tt.recs.len; i++)
         if (b->recmap.data[i]) {
@@ -1462,7 +1461,7 @@ size_t cindex_visible(const CIndex *ix, const char *path, uint32_t off,
             vec_push(&v, best);
     }
     if (v.len > 1)
-        qsort(v.data, v.len, sizeof *v.data, vis_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, vis_cmp);
     *out = xmalloc((v.len + 1) * sizeof **out);
     for (k = 0; k < v.len; k++)     /* the innermost of each name */
         if (!k || strcmp(v.data[k].name, v.data[k - 1].name))
@@ -1528,7 +1527,7 @@ size_t cindex_select(const CIndex *ix, const uint32_t *decls, size_t nd,
     }
     /* event order is (file, offset) order: one per location */
     if (v.len > 1)
-        qsort(v.data, v.len, sizeof *v.data, u32_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, u32_cmp);
     for (k = 0; k < v.len; k++) {
         const CIdxEvent *e = &ix->ev[v.data[k]];
         if (n) {
@@ -2297,7 +2296,7 @@ static size_t call_rows_out(CallRows *v, CIdxCall **out)
 {
     size_t k, n = v->len;
     if (n > 1)
-        qsort(v->data, n, sizeof *v->data, call_row_cmp);
+        sort_n(v->data, n, sizeof *v->data, call_row_cmp);
     *out = xmalloc((n + 1) * sizeof **out);
     for (k = 0; k < n; k++)
         (*out)[k] = v->data[k].c;
@@ -2370,7 +2369,7 @@ size_t cindex_calls_in(const CIndex *ix, uint32_t ev, CIdxCall **out)
             call_row(&v, e, e->decl, e->decl, cindex_name(ix, e->decl));
     }
     if (v.len > 1)
-        qsort(v.data, v.len, sizeof *v.data, call_row_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, call_row_cmp);
     for (i = 0; i < v.len; i++) {        /* each callee's event, once */
         if (v.data[i].c.other != lastd) {
             lastd = v.data[i].c.other;
@@ -2694,7 +2693,7 @@ static VEv *vev_gather(const CIndex *ix, int fi, bool edited, uint32_t db,
         v[cnt].name = cindex_name(ix, e->decl);
         cnt++;
     }
-    qsort(v, cnt, sizeof *v, vev_qcmp);
+    sort_n(v, cnt, sizeof *v, vev_qcmp);
     *n = cnt;
     return v;
 }

@@ -415,7 +415,7 @@ size_t store_evict(Store *s, double cap_mb)
     if (d)
         closedir(d);
     if (ps.len > 1)
-        qsort(ps.data, ps.len, sizeof *ps.data, proj_cmp);
+        sort_n(ps.data, ps.len, sizeof *ps.data, proj_cmp);
     for (i = 0; i < ps.len; i++) {
         if (total > cap && evict_dir(ps.data[i].dir)) {
             total -= ps.data[i].bytes;

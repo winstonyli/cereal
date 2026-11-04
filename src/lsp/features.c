@@ -1209,7 +1209,7 @@ void lsp_workspace_symbols(const WsUnit *us, size_t n, const char *const *docs,
         ws_drop_decls(&v, from);
     }
     if (v.len)
-        qsort(v.data, v.len, sizeof *v.data, ws_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, ws_cmp);
     memset(&r, 0, sizeof r);
     r.arena = a;
     r.enc = enc;
@@ -1350,7 +1350,7 @@ static void semantic_data(Req *r, SrcLoc b, SrcLoc e, U32Vec *out)
         }
     }
     if (v.len)
-        qsort(v.data, v.len, sizeof *v.data, stok_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, stok_cmp);
     for (i = 0; i < v.len; i++) {
         STok *s = &v.data[i];
         uint32_t l, c, el, ec;
@@ -1968,7 +1968,7 @@ bool lsp_rename(Req *r, JsonWriter *w, const char **err)
     sorted = NEW_ARRAY(r->arena, IdxRef, n + 1);
     if (n)
         memcpy(sorted, refs, sizeof(IdxRef) * n);
-    qsort(sorted, n, sizeof *sorted, ref_file_cmp);
+    sort_n(sorted, n, sizeof *sorted, ref_file_cmp);
     json_begin_object(w);
     json_key(w, "changes");
     json_begin_object(w);
@@ -2359,7 +2359,7 @@ static void c_calls(Req *r, PqFiles *fs, JsonWriter *w, bool incoming, const uin
     if (r->pi && key)
         pq_calls(fs, r->pi, key, incoming, &v);
     if (v.len > 1)
-        qsort(v.data, v.len, sizeof *v.data, pqcall_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, pqcall_cmp);
     json_begin_array(w);
     for (i = 0; i < v.len; i = j) {
         PqSym *s = &v.data[i].other;
@@ -3329,7 +3329,7 @@ void lsp_publish_diagnostics(Snapshot *s, TU *chk, PosEncoding enc,
             put_diag(&w, sm0, f0, enc, &a, &cd);
         }
         if (seen.len)
-            qsort(seen.data, seen.len, sizeof *seen.data, strp_cmp);
+            sort_n(seen.data, seen.len, sizeof *seen.data, strp_cmp);
         if (chk) {
             SrcMgr *sm = &chk->sm;
             SrcFile *f = user_file_named(sm, f0->path);

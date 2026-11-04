@@ -594,7 +594,7 @@ static bool replay_run(PcUnit *u, uint64_t chain, Bdd cur)
     if (!t || !t->runs.len)
         return false;
     if (!u->runs_sorted) {
-        qsort(t->runs.data, t->runs.len, sizeof *t->runs.data, cmp_run);
+        sort_n(t->runs.data, t->runs.len, sizeof *t->runs.data, cmp_run);
         u->runs_sorted = true;
     }
     key.chain = chain;
@@ -790,7 +790,7 @@ bool pc_fold(PcUnit *u, Analysis *a, SrcFile *main)
         memset(&a->pct->taken, 0, sizeof a->pct->taken);
     }
     if (u->taken.len)
-        qsort(u->taken.data, u->taken.len, sizeof *u->taken.data, u64_cmp);
+        sort_n(u->taken.data, u->taken.len, sizeof *u->taken.data, u64_cmp);
     fold_file(u, main, -1, BDD_TRUE, 0);
     return !u->over;
 }
@@ -1478,7 +1478,7 @@ void pc_cover(PcUnit *u, size_t max, PcCover *out)
         }
     }
     merge_items(u, out);
-    qsort(out->items, out->n, sizeof *out->items, item_cmp);
+    sort_n(out->items, out->n, sizeof *out->items, item_cmp);
     for (round = max; round < out->n; round++)
         item_free(&out->items[round]);
     if (out->n > max)

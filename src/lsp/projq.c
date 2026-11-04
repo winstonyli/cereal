@@ -243,7 +243,7 @@ void pq_locs_sort(PqLocs *v)
 {
     size_t i, k = 0;
     if (v->len > 1)
-        qsort(v->data, v->len, sizeof *v->data, loc_qsort);
+        sort_n(v->data, v->len, sizeof *v->data, loc_qsort);
     for (i = 0; i < v->len; i++)
         if (!k || pq_loc_cmp(&v->data[k - 1], &v->data[i]))
             v->data[k++] = v->data[i];
@@ -637,7 +637,7 @@ bool pq_ambiguous(PqFiles *fs, ProjIndex *pi, const CIdxKey *k, PqBlock *blk)
                 vec_push(&mine, ((Mine){h[i].rec->path, h[i].rec->fhash, v->decls[j].off}));
     }
     if (mine.len > 1)
-        qsort(mine.data, mine.len, sizeof *mine.data, mine_cmp);
+        sort_n(mine.data, mine.len, sizeof *mine.data, mine_cmp);
     nr = pi_nrecs(pi);
     for (r = 0; r < nr && !amb && mine.len; r++) {
         const PiRec *rec = pi_rec(pi, r);

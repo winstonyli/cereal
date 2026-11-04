@@ -111,6 +111,8 @@ bool file_openable(const char *path);
  * it), else 0. */
 size_t bom_len(const void *buf, size_t n);
 /* qsort order of u32s and u64s, and sorting u64s with the duplicates removed (returns the new length). */
+/* qsort that tolerates an empty vector: sort_n(NULL, 0, ...) is UB (glibc declares the base nonnull). */
+void sort_n(void *base, size_t n, size_t size, int (*cmp)(const void *, const void *));
 int u32_cmp(const void *a, const void *b);
 int u64_cmp(const void *a, const void *b);
 /* Nanoseconds on clock `id`, and seconds on CLOCK_MONOTONIC. */

@@ -72,9 +72,9 @@ void cell_reads_line(CellReads *r, uint32_t item)
 void cell_reads_sort(CellReads *r)
 {
     if (r->list.len > 1)
-        qsort(r->list.data, r->list.len, sizeof *r->list.data, u64_cmp);
+        sort_n(r->list.data, r->list.len, sizeof *r->list.data, u64_cmp);
     if (r->line_items.len > 1)
-        qsort(r->line_items.data, r->line_items.len,
+        sort_n(r->line_items.data, r->line_items.len,
               sizeof *r->line_items.data, u32_cmp);
 }
 
@@ -490,7 +490,7 @@ void cell_enc_begin(CellEnc *e, CellBuild *b, const CellReads *r, size_t s,
     }
     /* one index per definition (the first read that found it) */
     if (macs.len > 1)
-        qsort(macs.data, macs.len, sizeof *macs.data, mac_cmp);
+        sort_n(macs.data, macs.len, sizeof *macs.data, mac_cmp);
     {
         size_t w = 0, k;
         for (k = 0; k < macs.len; k++) {
@@ -536,7 +536,7 @@ void cell_enc_begin(CellEnc *e, CellBuild *b, const CellReads *r, size_t s,
         vec_push(&spans, sp);
     }
     if (spans.len > 1)
-        qsort(spans.data, spans.len, sizeof *spans.data, span_cmp);
+        sort_n(spans.data, spans.len, sizeof *spans.data, span_cmp);
     e->spans = spans.data;
     e->nspans = spans.len;
     e->macs = macs.data;

@@ -429,7 +429,7 @@ static size_t sort_unique(void *base, size_t n, size_t sz,
     size_t i, k = 0;
     char *p = base;
     if (n > 1)
-        qsort(base, n, sz, cmp);
+        sort_n(base, n, sz, cmp);
     for (i = 0; i < n; i++)
         if (!k || memcmp(p + (k - 1) * sz, p + i * sz, sz))
             memcpy(p + k++ * sz, p + i * sz, sz);
@@ -458,7 +458,7 @@ static void build_record(Build *b, const SrcFile *f, FileAcc *a, uint64_t build_
         vec_push(&ids, ((KeyRef){get_key(b, a->c.data[i].callee), a->c.data[i].callee}));
     }
     if (ids.len > 1)
-        qsort(ids.data, ids.len, sizeof *ids.data, keyref_cmp);
+        sort_n(ids.data, ids.len, sizeof *ids.data, keyref_cmp);
     sec = wr_sec(&w, T_FILE, sizeof(CRecFile));
     {
         CRecFile e = {st_add(&w.st, f->path), f->size, cindex_hash(f->buf, f->size)};
@@ -877,13 +877,13 @@ CRecResult crec_index(Options *o, const char *path, const CRecStatVec *cfg,
         vec_push(&fils, r);
     }
     if (fils.len > 1)
-        qsort(fils.data, fils.len, sizeof *fils.data, filrow_cmp);
+        sort_n(fils.data, fils.len, sizeof *fils.data, filrow_cmp);
     if (sys.len > 1)
-        qsort(sys.data, sys.len, sizeof *sys.data, filrow_cmp);
+        sort_n(sys.data, sys.len, sizeof *sys.data, filrow_cmp);
     build_chunks(sys.data, sys.len, build_id, &chunks);
     nmiss = over ? 0 : ml.v.len;             /* the file that overran is no miss */
     if (nmiss > 1)
-        qsort(ml.v.data, nmiss, sizeof *ml.v.data, miss_cmp);
+        sort_n(ml.v.data, nmiss, sizeof *ml.v.data, miss_cmp);
     memset(&w, 0, sizeof w);
     memset(&t, 0, sizeof t);
     t.flag_hash = flag_hash;
@@ -1202,7 +1202,7 @@ void crec_dump(const CRecSet *s, const char *root, FILE *out)
         }
         nrow = rows.len;
         if (nrow > 1)
-            qsort(rows.data, nrow, sizeof *rows.data, row_cmp);
+            sort_n(rows.data, nrow, sizeof *rows.data, row_cmp);
         for (k = 0; k < nrow; k++)
             fprintf(out, "  file %s size %u hash %016llx %s%s\n", rel(&d, rows.data[k].path),
                     rows.data[k].size, (unsigned long long)rows.data[k].hash,
@@ -1216,7 +1216,7 @@ void crec_dump(const CRecSet *s, const char *root, FILE *out)
                 rel(&d, S(&d, v.miss[i].from_path)));
     memcpy(sorted, s->recs, s->nrecs * sizeof *sorted);
     if (s->nrecs > 1)
-        qsort(sorted, s->nrecs, sizeof *sorted, blob_path_cmp);
+        sort_n(sorted, s->nrecs, sizeof *sorted, blob_path_cmp);
     for (k = 0; k < s->nrecs; k++)
         dump_record(&d, &sorted[k]);
     free(sorted);

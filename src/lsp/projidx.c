@@ -345,7 +345,7 @@ void pi_prune(ProjIndex *pi, const PState *ps)
     VEC(PiTu *) gone = {0};
     for (i = 0; i < n; i++)
         keys[i] = ps->tus.data[i]->tukey;
-    qsort(keys, n, sizeof *keys, u64_cmp);
+    sort_n(keys, n, sizeof *keys, u64_cmp);
     for (i = 0; i < pi->tus.nb; i++) {
         PiNode *x;
         for (x = pi->tus.b[i]; x; x = x->next)
@@ -388,7 +388,7 @@ size_t pi_find(const ProjIndex *pi, const CIdxKey *k, PiHit **out)
             vec_push(&v, ((PiHit){x->rec, x->ki}));
     }
     if (v.len > 1)
-        qsort(v.data, v.len, sizeof *v.data, hit_cmp);
+        sort_n(v.data, v.len, sizeof *v.data, hit_cmp);
     *out = v.data;
     return v.len;
 }

@@ -3932,7 +3932,7 @@ static void read_scan(Checker *c, uint32_t first, uint32_t last,
         }
     }
     if (c->stack.len)
-        qsort(c->stack.data, c->stack.len, sizeof(uint32_t), u32_cmp);
+        sort_n(c->stack.data, c->stack.len, sizeof(uint32_t), u32_cmp);
     for (k = first; k <= last; k++) {
         uint32_t id;
         if (ntag(c, k) != N_IDENT)

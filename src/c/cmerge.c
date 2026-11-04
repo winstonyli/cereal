@@ -605,7 +605,7 @@ static void opt_canon(char *acc)
         }
     }
     if (!lvl)
-        qsort(tok, nt, sizeof *tok, strp_cmp);
+        sort_n(tok, nt, sizeof *tok, strp_cmp);
     {
         char out[512];
         size_t l = 0;

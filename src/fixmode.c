@@ -28,7 +28,7 @@ static void sortn(void *base, size_t n, size_t size,
                   int (*cmp)(const void *, const void *))
 {
     if (n > 1)
-        qsort(base, n, size, cmp);
+        sort_n(base, n, size, cmp);
 }
 
 /* ---- --edits: the builder's input ------------------------------------------ */

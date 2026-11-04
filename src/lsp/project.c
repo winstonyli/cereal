@@ -1341,7 +1341,7 @@ bool project_scope(const char *const *files, size_t nfiles, unsigned timeout_ms,
     for (i = 0; i < nfiles; i++)
         r->files[i] = xstrdup(files[i]);
     r->nfiles = nfiles;
-    qsort(r->files, nfiles, sizeof *r->files, str_cmp);
+    sort_n(r->files, nfiles, sizeof *r->files, str_cmp);
     r->refs = 2;
     e.kind = EV_CALL;
     e.path = NULL;

@@ -582,7 +582,7 @@ size_t pc_preconditions(PcCtx *cx, Bdd f, const PcValuation *v, size_t k,
         }
     }
     if (found.len)
-        qsort(found.data, found.len, sizeof(Ranked), ranked_cmp);
+        sort_n(found.data, found.len, sizeof(Ranked), ranked_cmp);
     for (i = 0; i < found.len; i++) {
         size_t m;
         for (m = 0; m < n && !subsumes(&out[m], &found.data[i].c); m++)
@@ -653,7 +653,7 @@ static size_t pc_diff(PcCtx *cx, Bdd f, const PcValuation *v1, const PcValuation
         for (i = 0; i < n; i++)
             out[i] = pc_owner_name(cx, use->data[i]);
     }
-    qsort(out, n, sizeof *out, strp_cmp);
+    sort_n(out, n, sizeof *out, strp_cmp);
     vec_free(&vs);
     vec_free(&cand);
     vec_free(&hit);

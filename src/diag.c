@@ -161,7 +161,7 @@ static void by_name_init(void)
     size_t i;
     for (i = 0; i < NOPTIONS; i++)
         by_name[i] = (uint16_t)i;
-    qsort(by_name, NOPTIONS, sizeof *by_name, by_name_cmp);
+    sort_n(by_name, NOPTIONS, sizeof *by_name, by_name_cmp);
 }
 
 static long find_index(const char *name)

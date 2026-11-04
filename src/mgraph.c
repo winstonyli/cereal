@@ -246,7 +246,7 @@ Macro ***mgraph_cycles(const MacroGraph *g, uint32_t version, Arena *a,
                         Macro **c = NEW_ARRAY(a, Macro *, m + 1);
                         for (k = 0; k < m; k++)
                             c[k] = g->nodes[stack.data[start + k]].m;
-                        qsort(c, m, sizeof *c, macro_id_cmp);
+                        sort_n(c, m, sizeof *c, macro_id_cmp);
                         vec_push(&comps, c);
                     }
                     for (; stack.len > start; stack.len--)
@@ -256,7 +256,7 @@ Macro ***mgraph_cycles(const MacroGraph *g, uint32_t version, Arena *a,
         }
     }
     if (comps.len > 1)
-        qsort(comps.data, comps.len, sizeof *comps.data, comp_cmp);
+        sort_n(comps.data, comps.len, sizeof *comps.data, comp_cmp);
     out = NEW_ARRAY(a, Macro **, comps.len + 1);
     if (comps.len)
         memcpy(out, comps.data, sizeof(Macro **) * comps.len);

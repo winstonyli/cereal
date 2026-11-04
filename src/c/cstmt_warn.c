@@ -1134,7 +1134,7 @@ void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end)
         }
     }
     /* gcc warns as the parser reaches each condition */
-    qsort(w, nw, sizeof *w, dupcond_cmp);
+    sort_n(w, nw, sizeof *w, dupcond_cmp);
     for (j = 0; j < nw; j++) {
         Diagnostic *dg = cwarn_d(c, DL_WARNING, dupcond_loc(c, w[j].cond),
                                  DW_DUPLICATED_COND, "duplicated 'if' "

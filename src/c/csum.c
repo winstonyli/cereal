@@ -792,9 +792,9 @@ void csum_unit_end(Checker *c)
         add_read(cs, "pack", SUM_STATE, RD_NAME, 0, cs->pack0);
     }
     if (cs->ents.len > 1)
-        qsort(cs->ents.data, cs->ents.len, sizeof *cs->ents.data, cmp_entry);
+        sort_n(cs->ents.data, cs->ents.len, sizeof *cs->ents.data, cmp_entry);
     if (cs->reads.len > 1)
-        qsort(cs->reads.data, cs->reads.len, sizeof *cs->reads.data, cmp_read);
+        sort_n(cs->reads.data, cs->reads.len, sizeof *cs->reads.data, cmp_read);
     d = sig = D_UNIT;
     for (k = 0; k < cs->ents.len; k++) {
         d = H(d, cs->ents.data[k].digest);

@@ -1276,7 +1276,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
 static void llog_sort(LLog *log)
 {
     if (log->len)
-        qsort(log->data, log->len, sizeof *log->data, lz_cmp);
+        sort_n(log->data, log->len, sizeof *log->data, lz_cmp);
 }
 
 /* Put e over the log: the entry with its key takes e's value, else e is added (the log stays sorted). */
@@ -2082,7 +2082,7 @@ static void eval_sweep(Checker *c0)
             v->dict_on = false;
             if (v->dict.len) {
                 size_t d, m = 0;
-                qsort(v->dict.data, v->dict.len, sizeof *v->dict.data, u64_cmp);
+                sort_n(v->dict.data, v->dict.len, sizeof *v->dict.data, u64_cmp);
                 for (d = 0; d < v->dict.len; d++)
                     if (!d || v->dict.data[d] != v->dict.data[d - 1])
                         v->dict.data[m++] = v->dict.data[d];
