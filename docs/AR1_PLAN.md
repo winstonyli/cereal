@@ -117,3 +117,11 @@ status: draft
 - Spec coverage: row shape (T2), lookup semantics (Global Constraints, T4), overflow pattern (T4 step 3), generation and three probes (T1), rows missing (T2 step 3), checks 1-6 (T3, T4 goldens, T1 step 4, T2 step 5, T5), decisions x1/a1 (T1), non-goals untouched.
 - Open call for the user: none; `fmt` encoding and storage order are the plan's.
 - Proportion: plan is shorter than the spec.
+
+## Outcome log
+
+**Task 1 (2026-11-04):** `gen_builtin_attrs.py` runs in about 1 s for the 1062 rows. Against the old tables:
+- pure: 560 of 560 identical.
+- fmt: identical for all 10 printf rows, 6 scanf rows, `strfmon` and `strftime` (18 rows).
+- nonnull: every old entry reproduced; the probe adds 25 names gcc 13 declares nonnull and the old table lacked: `dcgettext`, `dgettext`, `gettext`, `posix_memalign`, `strfmon` (position 3), `strnlen`, and the `nan*`/`nans*` float-format variants (`nand32..128`, `nanf16..64x`, `nansd*`, `nansf*`). Ruling: take gcc's answer (the table exists to match gcc), so cereal gains these warnings; Task 5's gate shows whether any corpus output moves.
+- Not tab rows: the 12 `__*_chk` names and `dprintf`/`vdprintf` (Task 2 adds the `_chk` rows and decides the other two).
