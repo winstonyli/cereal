@@ -278,8 +278,6 @@ static inline int float_prec(Checker *c, TypeKind k)
     }
 }
 
-uint32_t builtin_format_pos(const char *name);
-uint32_t builtin_scanf_pos(const char *name);
 void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk, const
                           CSym *sy, const char *name, SrcLoc loc);
 void check_strlen(Checker *c, const uint32_t *kv, uint32_t nk);
@@ -291,6 +289,9 @@ void addr_rvalue(Checker *c, uint32_t i);
 void alias_deref(Checker *c, uint32_t p, bool use_loc, SrcLoc loc);
 size_t asm_string(Checker *c, uint32_t n, char *out, size_t cap);
 const BTab *bt_find(Checker *c, const char *name, bool any);
+/* The row whose attribute columns (pure, nonnull, fmt) apply to NAME, plain or __builtin_: the
+ * mode does not hide a row, a declaration of the name carries the attributes anywhere. */
+const BTab *bt_attr(Checker *c, const char *name);
 TypeId bt_func_type(Checker *c, const BTab *b);
 SrcLoc call_loc(Checker *c, uint32_t f);
 SrcLoc callee_err_loc(Checker *c, uint32_t f);

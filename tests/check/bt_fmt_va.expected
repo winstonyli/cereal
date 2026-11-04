@@ -1,0 +1,6 @@
+bt_fmt_va.c:8:15: warning: unknown conversion type character 'Q' in format [-Wformat=]
+    8 |     vprintf("%Q\n", ap);
+      |               ^
+bt_fmt_va.c:9:28: warning: unknown conversion type character 'Q' in format [-Wformat=]
+    9 |     vsnprintf(buf, 8, "%d %Q", ap);
+      |                            ^

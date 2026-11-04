@@ -1,0 +1,12 @@
+bt_nonnull_gnu.c:12:12: warning: argument 1 null where non-null expected [-Wnonnull]
+   12 |     sink = index(0, 'a');
+      |            ^
+bt_nonnull_gnu.c:13:12: warning: argument 1 null where non-null expected [-Wnonnull]
+   13 |     sink = strdup(0);
+      |            ^
+bt_nonnull_gnu.c:14:9: warning: argument 1 null where non-null expected [-Wnonnull]
+   14 |     n = strlen(0);
+      |         ^
+bt_nonnull_gnu.c:15:9: warning: argument 1 null where non-null expected [-Wnonnull]
+   15 |     n = __builtin_strlen(0);
+      |         ^

@@ -1,0 +1,3 @@
+bt_pure_user.c:9:5: warning: statement with no effect [-Wunused-value]
+    9 |     __builtin_abs(a);
+      |     ^

@@ -9,24 +9,6 @@
 #include <math.h>
 #include <string.h>
 
-/* The position of the format argument of the printf-like library functions
- * (gcc's built-in attributes); 0: not one. */
-uint32_t builtin_format_pos(const char *name)
-{
-    static const struct { const char *n; uint32_t pos; } t[] = {
-        {"printf", 1}, {"fprintf", 2}, {"sprintf", 2}, {"snprintf", 3},
-        {"dprintf", 2}, {"printf_unlocked", 1}, {"fprintf_unlocked", 2},
-        {"vprintf", 1}, {"vfprintf", 2}, {"vsprintf", 2}, {"vsnprintf", 3},
-        {"vdprintf", 2}};
-    size_t m;
-    if (!strncmp(name, "__builtin_", 10))
-        name += 10;
-    for (m = 0; m < sizeof t / sizeof *t; m++)
-        if (!strcmp(name, t[m].n))
-            return t[m].pos;
-    return 0;
-}
-
 /* ---- -Wformat: the conversions of a printf-style literal against its
  * arguments (gcc's check_format_info for gnu_printf). ---- */
 
@@ -740,26 +722,12 @@ out:
     free(off);
 }
 
-/* The position of the format argument of the scanf-like library functions. */
-uint32_t builtin_scanf_pos(const char *name)
-{
-    if (!strncmp(name, "__builtin_", 10))
-        name += 10;
-    if (!strcmp(name, "scanf"))
-        return 1;
-    if (!strcmp(name, "vscanf"))
-        return 1;
-    return !strcmp(name, "fscanf") || !strcmp(name, "sscanf") ||
-           !strcmp(name, "vfscanf") || !strcmp(name, "vsscanf") ? 2 : 0;
-}
-
 /* A library function taking a va_list: gcc's built-in format attribute has
  * first_arg_num 0. */
-static bool builtin_is_va(const char *name)
+static bool bt_is_va(const BTab *bt)
 {
-    if (!strncmp(name, "__builtin_", 10))
-        name += 10;
-    return name[0] == 'v';
+    const char *e = strrchr(bt->sig, '|');
+    return e && !strcmp(e + 1, "__va_list_tag *");
 }
 
 /* check_function_format's -Wsuggest-attribute=format: a call with a va_list
@@ -1438,11 +1406,12 @@ static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
         first = sy->fmt & 0xfff;
         scan = (sy->fmt >> 24) == 2;
         fmt_termonly = fmt_kind_name(sy->fmt >> 24);
-    } else if ((pos = builtin_format_pos(name))) {
-        first = builtin_is_va(name) ? 0 : pos + 1;
-    } else if ((pos = builtin_scanf_pos(name))) {
-        first = builtin_is_va(name) ? 0 : pos + 1;
-        scan = true;
+    } else if ((pos = bt_fmt_pos(bt_attr(c, name)))) {
+        const BTab *bt = bt_attr(c, name);
+        if (bt_fmt_kind(bt) <= BTF_SCANF) {   /* strfmon, strftime: termonly, no arguments */
+            first = bt_is_va(bt) ? 0 : pos + 1;
+            scan = bt_fmt_kind(bt) == BTF_SCANF;
+        }
     } else if (fmt_termonly) {
         pos = 3;
     }
@@ -1599,8 +1568,11 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     if (!(sy && sy->fmt)) {
         if (!strncmp(name, "__builtin_", 10))
             name += 10;
-        fmt_termonly = !strcmp(name, "strfmon") ? "gnu_strfmon"
-                       : !strcmp(name, "strftime") ? "gnu_strftime" : NULL;
+        const BTab *bt = bt_attr(c, name);
+        if (bt_fmt_pos(bt) && bt_fmt_kind(bt) == BTF_STRFMON)
+            fmt_termonly = "gnu_strfmon";
+        else if (bt_fmt_pos(bt) && bt_fmt_kind(bt) == BTF_STRFTIME)
+            fmt_termonly = "gnu_strftime";
     }
     check_format_literal_(c, kv, nk, sy, name, loc);
     fmt_termonly = NULL;

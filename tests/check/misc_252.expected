@@ -1,3 +1,24 @@
+misc_252.c:2:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    2 |   __builtin___memcpy_chk(0, p, n, n); __builtin___memcpy_chk(p, 0, n, n);
+      |   ^
+misc_252.c:2:39: warning: argument 2 null where non-null expected [-Wnonnull]
+    2 |   __builtin___memcpy_chk(0, p, n, n); __builtin___memcpy_chk(p, 0, n, n);
+      |                                       ^
+misc_252.c:3:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    3 |   __builtin___memmove_chk(0, p, n, n); __builtin___memmove_chk(p, 0, n, n);
+      |   ^
+misc_252.c:3:40: warning: argument 2 null where non-null expected [-Wnonnull]
+    3 |   __builtin___memmove_chk(0, p, n, n); __builtin___memmove_chk(p, 0, n, n);
+      |                                        ^
+misc_252.c:4:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    4 |   __builtin___mempcpy_chk(0, p, n, n); __builtin___mempcpy_chk(p, 0, n, n);
+      |   ^
+misc_252.c:4:40: warning: argument 2 null where non-null expected [-Wnonnull]
+    4 |   __builtin___mempcpy_chk(0, p, n, n); __builtin___mempcpy_chk(p, 0, n, n);
+      |                                        ^
+misc_252.c:5:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    5 |   __builtin___memset_chk(0, 1, n, n);
+      |   ^
 misc_252.c:6:3: warning: argument 1 null where non-null expected [-Wnonnull]
     6 |   __builtin___strcpy_chk(0, p, n); __builtin___strcpy_chk(p, 0, n);
       |   ^
@@ -10,6 +31,18 @@ misc_252.c:7:3: warning: argument 1 null where non-null expected [-Wnonnull]
 misc_252.c:7:36: warning: argument 2 null where non-null expected [-Wnonnull]
     7 |   __builtin___stpcpy_chk(0, p, n); __builtin___stpcpy_chk(p, 0, n);
       |                                    ^
+misc_252.c:8:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    8 |   __builtin___strncpy_chk(0, p, n, n); __builtin___strncpy_chk(p, 0, n, n);
+      |   ^
+misc_252.c:8:40: warning: argument 2 null where non-null expected [-Wnonnull]
+    8 |   __builtin___strncpy_chk(0, p, n, n); __builtin___strncpy_chk(p, 0, n, n);
+      |                                        ^
+misc_252.c:9:3: warning: argument 1 null where non-null expected [-Wnonnull]
+    9 |   __builtin___stpncpy_chk(0, p, n, n); __builtin___stpncpy_chk(p, 0, n, n);
+      |   ^
+misc_252.c:9:40: warning: argument 2 null where non-null expected [-Wnonnull]
+    9 |   __builtin___stpncpy_chk(0, p, n, n); __builtin___stpncpy_chk(p, 0, n, n);
+      |                                        ^
 misc_252.c:10:3: warning: argument 1 null where non-null expected [-Wnonnull]
    10 |   __builtin___strcat_chk(0, p, n); __builtin___strcat_chk(p, 0, n);
       |   ^
@@ -19,12 +52,21 @@ misc_252.c:10:36: warning: argument 2 null where non-null expected [-Wnonnull]
 misc_252.c:11:3: warning: argument 1 null where non-null expected [-Wnonnull]
    11 |   __builtin___strncat_chk(0, p, n, n); __builtin___strncat_chk(p, 0, n, n);
       |   ^
+misc_252.c:11:40: warning: argument 2 null where non-null expected [-Wnonnull]
+   11 |   __builtin___strncat_chk(0, p, n, n); __builtin___strncat_chk(p, 0, n, n);
+      |                                        ^
 misc_252.c:12:3: warning: argument 1 null where non-null expected [-Wnonnull]
+   12 |   __builtin___sprintf_chk(0, 1, n, p); __builtin___sprintf_chk(p, 1, n, 0);
+      |   ^
+misc_252.c:12:3: warning: format not a string literal and no format arguments [-Wformat-security]
    12 |   __builtin___sprintf_chk(0, 1, n, p); __builtin___sprintf_chk(p, 1, n, 0);
       |   ^
 misc_252.c:12:40: warning: argument 4 null where non-null expected [-Wnonnull]
    12 |   __builtin___sprintf_chk(0, 1, n, p); __builtin___sprintf_chk(p, 1, n, 0);
       |                                        ^
+misc_252.c:13:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   13 |   __builtin___snprintf_chk(0, n, 1, n, p); __builtin___snprintf_chk(p, n, 1, n, 0);
+      |   ^
 misc_252.c:13:44: warning: argument 5 null where non-null expected [-Wnonnull]
    13 |   __builtin___snprintf_chk(0, n, 1, n, p); __builtin___snprintf_chk(p, n, 1, n, 0);
       |                                            ^
@@ -34,6 +76,9 @@ misc_252.c:14:3: warning: argument 2 null where non-null expected [-Wnonnull]
 misc_252.c:14:33: warning: argument 1 null where non-null expected [-Wnonnull]
    14 |   __builtin___printf_chk(1, 0); __builtin___fprintf_chk(0, 1, p); __builtin___fprintf_chk(p, 1, 0);
       |                                 ^
+misc_252.c:14:3: warning: format not a string literal and no format arguments [-Wformat-security]
+   14 |   __builtin___printf_chk(1, 0); __builtin___fprintf_chk(0, 1, p); __builtin___fprintf_chk(p, 1, 0);
+      |   ^
 misc_252.c:14:67: warning: argument 3 null where non-null expected [-Wnonnull]
    14 |   __builtin___printf_chk(1, 0); __builtin___fprintf_chk(0, 1, p); __builtin___fprintf_chk(p, 1, 0);
       |                                                                   ^

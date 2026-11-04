@@ -794,6 +794,13 @@ static void header_note(Checker *c, Diagnostic *d, SrcLoc loc,
 
 
 /* any: the __builtin_ spelling, which exists in every mode */
+const BTab *bt_attr(Checker *c, const char *name)
+{
+    static const BTab none;
+    const BTab *bt = bt_find(c, !strncmp(name, "__builtin_", 10) ? name + 10 : name, true);
+    return bt ? bt : &none;
+}
+
 const BTab *bt_find(Checker *c, const char *name, bool any)
 {
     size_t lo = 0, hi = sizeof cbuiltin_tab / sizeof *cbuiltin_tab;

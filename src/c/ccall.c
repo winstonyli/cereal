@@ -10,40 +10,10 @@
 #include <inttypes.h>
 #include <string.h>
 
-/* gcc 13's built-in library functions that carry the nonnull attribute:
- * the argument numbers, one digit each (probed from gcc itself). */
-static uint64_t builtin_nonnull(const char *name)
+/* The nonnull argument positions of the library built-in NAME (bit k - 1: argument k),
+ * 0: none.  The overflow built-ins have no table row. */
+static uint64_t builtin_nonnull(Checker *c, const char *name)
 {
-    static const struct { const char *n, *pos; } t[] = {
-        {"bcmp", "12"}, {"bcopy", "12"}, {"bzero", "1"}, {"fprintf", "12"},
-        {"fputc", "2"}, {"fputs", "12"}, {"fscanf", "2"}, {"fwrite", "14"},
-        {"index", "1"}, {"memchr", "1"}, {"memcmp", "12"}, {"memcpy", "12"},
-        {"memmove", "12"}, {"mempcpy", "12"}, {"memset", "1"}, {"nan", "1"},
-        {"nanf", "1"}, {"nanl", "1"}, {"nans", "1"}, {"nansf", "1"},
-        {"nansl", "1"}, {"printf", "1"}, {"putc", "2"},
-        {"puts_unlocked", "1"}, {"fputc_unlocked", "2"},
-        {"fputs_unlocked", "12"}, {"fwrite_unlocked", "14"},
-        {"printf_unlocked", "1"}, {"fprintf_unlocked", "12"},
-        {"putc_unlocked", "2"},
-        {"puts", "1"}, {"rindex", "1"}, {"scanf", "1"}, {"snprintf", "3"},
-        {"sprintf", "12"}, {"sscanf", "2"}, {"stpcpy", "12"},
-        {"stpncpy", "12"}, {"strcasecmp", "12"}, {"strcat", "12"},
-        {"strchr", "1"}, {"strcmp", "12"}, {"strcpy", "12"},
-        {"strcspn", "12"}, {"strdup", "1"}, {"strftime", "3"},
-        {"strlen", "1"}, {"strncasecmp", "12"}, {"strncat", "12"},
-        {"strncmp", "12"}, {"strncpy", "12"}, {"strndup", "1"},
-        {"strpbrk", "12"}, {"strrchr", "1"}, {"strspn", "12"},
-        {"strstr", "12"}, {"vprintf", "1"}, {"vfprintf", "12"},
-        {"vsprintf", "12"}, {"vsnprintf", "3"}, {"vscanf", "1"},
-        {"vsscanf", "2"}, {"vfscanf", "2"}, {"__strcpy_chk", "12"},
-        {"__stpcpy_chk", "12"}, {"__strcat_chk", "12"}, {"__strncat_chk", "1"},
-        {"__sprintf_chk", "14"}, {"__snprintf_chk", "5"},
-        {"__vsprintf_chk", "14"}, {"__vsnprintf_chk", "5"},
-        {"__printf_chk", "2"}, {"__fprintf_chk", "13"},
-        {"__vprintf_chk", "2"}, {"__vfprintf_chk", "13"}};
-    size_t k;
-    uint64_t m = 0;
-    const char *p;
     if (!strncmp(name, "__builtin_", 10))
         name += 10;
     /* {add,sub,mul}_overflow: the result pointer */
@@ -62,13 +32,7 @@ static uint64_t builtin_nonnull(const char *name)
         if (!strcmp(q, "_overflow"))
             return 4;
     }
-    for (k = 0; k < sizeof t / sizeof *t; k++)
-        if (*name == *t[k].n && !strcmp(name, t[k].n)) {
-            for (p = t[k].pos; *p; p++)
-                m |= (uint64_t)1 << (*p - '1');
-            break;
-        }
-    return m;
+    return bt_attr(c, name)->nonnull;
 }
 
 /* gcc's match_builtin_function_types, as probed from gcc 13.  Compare the
@@ -564,7 +528,7 @@ static bool call_args(Checker *c, uint32_t i, uint32_t fn, TypeId ft)
     if (!too_many && !bad && !builtin_few && fref != SYM_NONE) {
         uint64_t mask = csym(c, fref)->nonnull;
         if (builtin_decl_ok(c, csym(c, fref)))
-            mask |= builtin_nonnull(cident(c, csym(c, fref)->name));
+            mask |= builtin_nonnull(c, cident(c, csym(c, fref)->name));
         /* (types made meanwhile may have moved the parameter arrays) */
         pt = type_params(TT, type_ent(TT, ufty)->kind == TY_FUNC ? ufty : fty);
         if (mask)
@@ -1638,26 +1602,6 @@ static void e_builtin_complex(Checker *c, uint32_t i, SrcLoc bl)
         cplx_set(c, i, c->fv.data[c->cv[av[1]]], c->fv.data[c->cv[av[2]]]);
 }
 
-#include "c/cbuiltin_pure.h"
-
-/* Whether some entry of cbuiltin_pure starts with ch: most calls are to
- * names that do not, and skip the full search.  The table is sorted, so this
- * is a lower bound on the first character; no state is shared between the
- * threads that check units at once (a lazily filled table was a data race). */
-static bool pure_first_char(char ch)
-{
-    size_t lo = 0, hi = sizeof cbuiltin_pure / sizeof *cbuiltin_pure;
-    while (lo < hi) {
-        size_t mid = (lo + hi) / 2;
-        if ((unsigned char)cbuiltin_pure[mid][0] < (unsigned char)ch)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    return lo < sizeof cbuiltin_pure / sizeof *cbuiltin_pure &&
-           cbuiltin_pure[lo][0] == ch;
-}
-
 /* A call gcc builds without TREE_SIDE_EFFECTS: a const or pure function (or a
  * library built-in that is one) whose arguments have none either. */
 static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
@@ -1665,7 +1609,6 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
     uint32_t f = strip_paren(c, callee), av[32], an, j;
     const char *name;
     uint32_t ref;
-    size_t lo = 0, hi = sizeof cbuiltin_pure / sizeof *cbuiltin_pure;
     bool pure = false;
     if (f == NO_NODE || ntag(c, f) != N_IDENT)
         return false;
@@ -1685,26 +1628,11 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
     if (!pure) {
         if (ref == SYM_NONE && strncmp(name, "__builtin_", 10))
             return false;
-        /* the table lists __builtin_ spellings: a plain name only reaches
-         * an entry that is also a library built-in (not a user's `expect`) */
-        if (!ccall_is_builtin(c, name))
-            return false;
-        if (!strncmp(name, "__builtin_", 10))
-            name += 10;
-        if (!pure_first_char(*name))
-            return false;
-        while (lo < hi) {
-            size_t mid = (lo + hi) / 2;
-            int r = strcmp(name, cbuiltin_pure[mid]);
-            if (!r) {
-                pure = true;
-                break;
-            }
-            if (r < 0)
-                hi = mid;
-            else
-                lo = mid + 1;
-        }
+        /* a plain name only reaches a row that is also a library built-in in this mode
+         * (not a user's `expect`); the __builtin_ spelling reaches every row */
+        bool pre = !strncmp(name, "__builtin_", 10);
+        const BTab *bt = bt_find(c, pre ? name + 10 : name, pre);
+        pure = bt && bt->pure;
     }
     return pure;
 }
@@ -1815,16 +1743,13 @@ void e_call(Checker *c, uint32_t i)
             if (an <= 32)
                 sizeof_memaccess(c, av, an, name);
         }
-        if (!strncmp(name, "__builtin_", 10) && builtin_nonnull(name)) {
+        if (!strncmp(name, "__builtin_", 10) && builtin_nonnull(c, name)) {
             uint32_t av[32], an = nkids(c, i, av, 32);
             if (an <= 32)
-                check_nonnull(c, av, an, builtin_nonnull(name), NULL, 0, false,
+                check_nonnull(c, av, an, builtin_nonnull(c, name), NULL, 0, false,
                               true, call_loc(c, k[0]));
         }
-        if (!strncmp(name, "__builtin_", 10) &&
-            (builtin_format_pos(name) || builtin_scanf_pos(name) ||
-             !strcmp(name, "__builtin_strfmon") ||
-             !strcmp(name, "__builtin_strftime"))) {
+        if (!strncmp(name, "__builtin_", 10) && bt_fmt_pos(bt_attr(c, name))) {
             uint32_t av[32], an = nkids(c, i, av, 32);
             if (an <= 32)
                 check_format_literal(c, av, an, NULL, name, call_loc(c, k[0]));
