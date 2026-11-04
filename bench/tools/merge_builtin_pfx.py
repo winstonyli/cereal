@@ -25,7 +25,7 @@ def ok(t):
 
 # type-generic or typed elsewhere (overflow_func_type), or va_list tricks
 SKIP = re.compile(r"overflow|speculation_safe_value_(1|2|4|16)$|^(sysv_)?va_(start|end|copy)$")
-pat = re.compile(r'^    \{"([^"]*)", "[^"]*", \d, "([^"]*)", (\d)\},$')
+pat = re.compile(r'^    \{"([^"]*)", "[^"]*", \d, "([^"]*)", (\d)(?:, \d+)*\},$')
 head, ents, tail = [], [], []
 for l in open(sys.argv[1], encoding="utf-8").read().split("\n"):
     m = pat.match(l)

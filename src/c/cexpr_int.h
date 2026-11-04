@@ -17,7 +17,13 @@ typedef struct BTab {
     unsigned char mismatch;
     const char *sig;
     unsigned char gnu;       /* 1: a built-in only outside -std=c99; 2, 3: only as __builtin_NAME (3: typed) */
+    unsigned char pure;      /* a call has no side effects (const or pure) */
+    unsigned char nonnull;   /* bit mask of 1-based nonnull argument positions */
+    unsigned char fmt;       /* format argument position (bits 0-3), kind (bits 4-5: BTF_*); 0: none */
 } BTab;
+enum { BTF_PRINTF, BTF_SCANF, BTF_STRFMON, BTF_STRFTIME };
+static inline unsigned bt_fmt_pos(const BTab *b) { return b->fmt & 15; }
+static inline unsigned bt_fmt_kind(const BTab *b) { return b->fmt >> 4; }
 
 /* An x86 target built-in (cbuiltin_x86.h): tast.c lowers a call to operations on the lanes of its
  * vector arguments.  kind says how, lane how the lanes of the operands are read (the signature's

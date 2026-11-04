@@ -814,6 +814,14 @@ else
     head -5 "$TMP/bt" | sed 's/^/    /'
 fi
 
+# 15b. builtin table: every row ends in the numeric columns gnu, pure, nonnull, fmt
+if awk '/^    \{"/ && $0 !~ /", [0-9]+, [0-9]+, [0-9]+, [0-9]+\},$/ {print FILENAME ":" NR ": " $0; bad = 1} END {exit bad}'     "$ROOT/src/c/cbuiltin_tab.h" >"$TMP/bt" 2>&1; then
+    ok
+else
+    bad "cbuiltin_tab.h rows without the pure, nonnull, fmt columns"
+    head -5 "$TMP/bt" | sed 's/^/    /'
+fi
+
 # 18. a UTF-8 byte order mark is dropped for small (read) and large (mmap'd,
 # >= 64 KiB) files alike
 for pad in 0 70000; do

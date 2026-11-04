@@ -58,7 +58,8 @@ def probe(calls, flags, pat):
     return hit
 
 
-def main():
+def compute():
+    """name -> (pure, nonnull mask, fmt byte)"""
     rs = rows()
     pure_calls, nn_calls, fmt_calls, kind_calls = [], [], [], []
     for n, sig in rs:
@@ -84,18 +85,37 @@ def main():
     nn = probe(nn_calls, ['-Wnonnull'], r'argument \d+ null where non-null expected')
     bad = probe(fmt_calls, ['-Wformat'], r"unknown conversion type character .Q. in format")
     notscan = probe(kind_calls, ['-Wformat'], r"unknown conversion type character .\[. in format")
+    out = {}
     for n, sig in rs:
         mask = 0
         for (m, k) in nn:
             if m == n:
                 mask |= 1 << (k - 1)
         pos = sorted(k for (m, k) in bad if m == n)
-        f = '0'
+        f = 0
         if pos:
-            kind = ('strftime' if n == 'strftime' else 'strfmon' if n == 'strfmon'
-                    else 'printf' if (n, pos[0]) in notscan else 'scanf')
-            f = '%d:%s' % (pos[0], kind)
-        print(n, int(n in pure), mask, f)
+            kind = (3 if n == 'strftime' else 2 if n == 'strfmon'
+                    else 0 if (n, pos[0]) in notscan else 1)
+            f = pos[0] | kind << 4
+        out[n] = (int(n in pure), mask, f)
+    return out
+
+
+FULL = re.compile(r'^    \{"(\w+)", ("[^"]*"), (\d), ("[^"]*"), (\d)(?:, \d+)*\},$', re.M)
+
+
+def main():
+    attrs = compute()
+    if '--write' in sys.argv:
+        path = 'src/c/cbuiltin_tab.h'
+        src = open(path, encoding='utf-8').read()
+        src = FULL.sub(lambda m: '    {"%s", %s, %s, %s, %s, %d, %d, %d},' % (
+            (m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)) + attrs[m.group(1)]), src)
+        open(path, 'w', encoding='utf-8').write(src)
+        return
+    for n, (p, m, f) in attrs.items():
+        k = ['printf', 'scanf', 'strfmon', 'strftime'][f >> 4]
+        print(n, p, m, '%d:%s' % (f & 15, k) if f else '0')
 
 
 if __name__ == '__main__':

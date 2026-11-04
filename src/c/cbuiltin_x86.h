@@ -14,7 +14,7 @@
 #define IA_V4HI "__vector(8) short int"
 #define IA_V2SI "__vector(8) int"
 #define IA_V1DI "__vector(8) long long int"
-#define IA_ROWF(nm, sig, k, l, f, a) {{nm, "", 0, sig, 4}, k, l, f, a}
+#define IA_ROWF(nm, sig, k, l, f, a) {{nm, "", 0, sig, 4, 0, 0, 0}, k, l, f, a}
 #define IA_ROW(nm, sig, k, l, a) IA_ROWF(nm, sig, k, l, 0, a)
 #define IA_BINF(nm, v, k, l, f, a) IA_ROWF(nm, v "|" v "|" v, k, l, f, a)
 #define IA_BIN(nm, v, k, l, a) IA_BINF(nm, v, k, l, 0, a)

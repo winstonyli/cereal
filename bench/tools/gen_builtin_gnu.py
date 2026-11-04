@@ -2,7 +2,7 @@ import re, subprocess, sys
 cc1 = subprocess.check_output(["gcc-13", "-print-prog-name=cc1"]).decode().strip()
 out = subprocess.check_output(["strings", cc1]).decode().split("\n")
 cands = sorted({l[10:] for l in out if re.fullmatch(r"__builtin_[A-Za-z_][A-Za-z0-9_]*", l)})
-cands = [x for x in cands if not x.startswith("_") ]
+cands = [x for x in cands if not x.startswith("_") or x.endswith("_chk")]
 open("/tmp/gg_decl.c", "w").write("".join("void %s(int,int,int,int,int,int,int,int,int);\n" % x for x in cands))
 def conflicts(std):
     r = subprocess.run(["gcc-13", "-fsyntax-only", "-std=" + std, "/tmp/gg_decl.c"], capture_output=True, text=True)
