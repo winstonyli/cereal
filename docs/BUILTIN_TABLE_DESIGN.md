@@ -86,10 +86,10 @@ Rows missing today (measured): the 12 `__*_chk` names of `builtin_nonnull`, and 
 
 ## Decisions for the user
 
-- **Nonnull provenance.** No probe exists. Options: write the probe (gcc's `-Wnonnull`
-  diagnostic for a null literal in each position, per name; recommended: the column then has a
-  regeneration path like the others) or seed the column from the current table once and mark it
-  hand-owned with a check against gcc run on demand.
+- **Nonnull provenance (decided 2026-11-04, x1).** No probe exists, so one is written: gcc's
+  `-Wnonnull` diagnostic for a null literal in each position, per name, so the column has a
+  regeneration path like the others. Rejected: seeding once as a hand-owned column (the
+  pattern AR1 removes).
 - **`std_names`.** Dropped from AR1 as a different domain. Confirm.
 
 ## Not decided here
