@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # One front-end builtin table, implementation plan (AR1)
@@ -129,3 +129,14 @@ status: draft
 **Task 2 (2026-11-04):** columns `pure`, `nonnull`, `fmt` are in the tab, `BTab` and the x86 `IA_ROWF` rows; `gen_builtin_attrs.py --write` is idempotent; `gen_pure_builtins.py` deleted; `merge_builtin_pfx.py` accepts the extra fields; `tests/run.sh` item 15b added (2352 passed, 0 failed, no new warnings).
 - Ruling: `_chk` rows have `gnu = 1`, not the spec's `gnu = 2`: gcc-13 treats the plain names as built-ins in gnu modes and the `__builtin_` spelling in all, which is what `gnu = 1` means (`index`, `strdup`). `gen_builtin_gnu.py` now also emits `*_chk` names, so 18 rows were added, not 12 (also `__memcpy_chk`, `__memmove_chk`, `__mempcpy_chk`, `__memset_chk`, `__stpncpy_chk`, `__strncpy_chk`). Cost if wrong: the 6 extra names newly get built-in declaration checks in gnu mode; the Task 5 gate shows any corpus effect, and removing the 6 rows is one line each.
 - Step order: the `tests/run.sh` check was added after the struct change, not before (no failing run seen first); it fails on a 5-field row, checked by reading the awk.
+
+**Task 3 (2026-11-04):** replaced by data equality plus goldens plus the corpus gate. Ruling: the old tables are deleted in Task 4, so a runtime A/B in a scratch build adds nothing the Task 1 comparison (pure 560/560, fmt 18/18, nonnull every old entry) and the new goldens (`bt_nonnull_gnu`, `bt_pure_user`, `bt_fmt_user`, `bt_fmt_va`, counts equal to gcc-13) do not already show. Cost if wrong: a behaviour difference outside those inputs shows only in the Task 5 gate (it showed none).
+- Ruling: `dprintf`/`vdprintf` get no row (they were in the old fmt table but are not gcc-13 built-ins). Cost if wrong: two missing format checks; one row each.
+
+**Task 4 (2026-11-04, commit fd9e87a):** `call_pure`, `builtin_nonnull`, the format-position chain and the `fmt_termonly` wrapper read the table columns through `bt_attr`; deleted `cbuiltin_pure.h`, `builtin_format_pos`, `builtin_scanf_pos`, `builtin_is_va`, `pure_first_char`. `misc_252.expected` gained 45 lines: the `_chk` rows now warn on a null argument as gcc-13 does (checked: same lines as `gcc-13 -fsyntax-only`).
+
+**Task 5 (2026-11-04, commit 43728d9; gate run `2026-11-04-ar1-t5d`):** run 2356/0, san 2355/0 with findings 0, globals all allowed, verify 637/638, 289/289, 3908/3910 (unchanged), callgrind 3,806,673,364 against 3,819,270,053 (-0.33%). Size: 31 files, +1717/-1841 from `ccbc295`, mostly the generated tab and the deleted pure list.
+- Found by the gate: the first Task 4 build read 4,535,296,768 (+18.7%). `bt_attr` went through `bt_find`'s fallback to `ia32_find` (a linear `strcmp` scan of the x86 rows) for every call to a non-table name. Fixed once: `bt_attr(name)` bisects the generic table only (the x86 rows carry no attributes); `bt_find` shares `bt_bisect`.
+- Found by the gate: `~/cereal-san` held objects built with mixed flags (link error), and after a clean rebuild 25 UBSan traps at `csymidx.c` `csx_finish`: `qsort(NULL, 0)` on a file with no index events. Pre-existing (the file is untouched since before AR1; the `ccbc295` binary prints the same runtime error, but its older `san.sh` did not log UBSan reports). Ruling: guard that one call (`if (b->ev.len)`); about 25 other `qsort` sites are unguarded and parked below. Cost if wrong: none for AR1.
+- Ruling: Task 1's 25 gcc-declared nonnull names the old table lacked are kept; the gate moved no corpus output.
+- Parked: a user-declared gnu-only name under `-std=c99` (`PARKED.md`); the `BI_ROWS` fold (s2).

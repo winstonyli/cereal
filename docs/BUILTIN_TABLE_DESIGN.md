@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # One front-end builtin table (CLEANUP_PLAN AR1, option s1)

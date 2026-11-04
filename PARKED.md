@@ -272,3 +272,9 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | What | Why parked | Status |
 |---|---|---|
 | cereal applies the built-in's `nonnull`/`pure`/`fmt` attributes to a user-declared plain name that is gnu-only (`gnu = 1`, e.g. `index`) even under `-std=c99`; gcc does not (`index(0, 'a')` warns in cereal, not in gcc). | The attribute columns are read by `bt_attr` ignoring the gnu filter, as the old side tables did, so AR1 kept behaviour identical. Trigger: a corpus file that declares such a name under `-std=c99` and diffs against gcc. Evidence: `src/c/cexpr.c` `bt_attr`, `tests/check/bt_nonnull_gnu.c` (checked 2026-11-04). | parked |
+
+## Unguarded `qsort(NULL, 0)` sites (2026-11-04)
+
+| What | Why parked | Status |
+|---|---|---|
+| About 25 `qsort(v.data, v.len, ...)` calls over vectors that may be empty (`grep -rn "qsort(" src`); only `csymidx.c` `csx_finish` was guarded, because only it traps in the suite. | glibc declares the base nonnull, so UBSan traps on `qsort(NULL, 0)`. A shared `vec_sort` helper would fix all sites at once but touches ~25 call sites. Trigger: a san finding at another `qsort`. Evidence: `src/c/csymidx.c:1107` (checked 2026-11-04). | parked |
