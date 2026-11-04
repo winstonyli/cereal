@@ -50,6 +50,12 @@ def probe(calls, flags, pat):
     whose line drew a warning matching pat."""
     body = ''.join('void f%d(void){ %s; }\n' % (i, c) for i, (_, c) in enumerate(calls))
     err = gcc(HEAD + body, flags)
+    # an error in the shared header lines (or an unreadable run) would read as "no hits"
+    for m in re.finditer(r'probe\.c:(\d+):\d+: (?:fatal )?error: (.*)', err):
+        if int(m.group(1)) <= NHEAD:
+            sys.exit('gen_builtin_attrs: probe header does not compile: ' + m.group(2))
+    if not err and calls:
+        sys.exit('gen_builtin_attrs: gcc-13 printed nothing for %d probes' % len(calls))
     hit = set()
     for m in re.finditer(r'probe\.c:(\d+):\d+: warning: ' + pat, err):
         i = int(m.group(1)) - NHEAD - 1
@@ -85,6 +91,9 @@ def compute():
     nn = probe(nn_calls, ['-Wnonnull'], r'argument \d+ null where non-null expected')
     bad = probe(fmt_calls, ['-Wformat'], r"unknown conversion type character .Q. in format")
     notscan = probe(kind_calls, ['-Wformat'], r"unknown conversion type character .\[. in format")
+    for what, got, floor in (('pure', pure, 400), ('nonnull', nn, 100), ('fmt', bad, 15)):
+        if len(got) < floor:
+            sys.exit('gen_builtin_attrs: only %d %s hits (expected at least %d)' % (len(got), what, floor))
     out = {}
     for n, sig in rs:
         mask = 0

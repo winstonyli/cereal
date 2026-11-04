@@ -63,7 +63,7 @@ when no row is found, and the old table then applies to a plain user-declared `i
 `strdup`, `nans`, ... under `-std=c99`, where `bt_find(any=false)` returns NULL (29 of the 63
 nonnull names that are tab rows have `gnu != 0`, unaudited count). So the attribute columns
 are read through a lookup that ignores the gnu filter (`bt_find(c, name, true)` after stripping
-a `__builtin_` prefix); the rows of the `_chk` names are `gnu = 2`, so this also keeps a plain
+a `__builtin_` prefix); the rows of the `_chk` names are `gnu = 1` (ruling in docs/AR1_PLAN.md, Task 2), so this also keeps a plain
 `__strcpy_chk` as warned as before. `call_pure` keeps `ccall_is_builtin` (a plain name must be a
 library built-in in this mode) and then reads the `pure` column: unchanged filtering, since the
 old table was already guarded that way. The spelling flag is derived from the name, as
@@ -98,7 +98,7 @@ the new script. The header comment of `cbuiltin_tab.h` names the column owners.
   returns to the user before seeding anything.
 
 **Rows missing today (measured).** The 12 `__*_chk` names of `builtin_nonnull` get rows
-(`gnu = 2`, as `__builtin___strcpy_chk` spellings). `dprintf` and `vdprintf` of
+(`gnu = 1`, as `__builtin___strcpy_chk` spellings). `dprintf` and `vdprintf` of
 `builtin_format_pos`: gcc 13 has no `__builtin_dprintf` (an implicit-declaration error, reviewer),
 so the old entries apply only to plain user-declared names, and whether they matter is decided by
 the equality check below and, if a corpus or test case exercises them, by a row; else they are

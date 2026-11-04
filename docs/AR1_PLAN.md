@@ -140,3 +140,8 @@ status: done
 - Found by the gate: `~/cereal-san` held objects built with mixed flags (link error), and after a clean rebuild 25 UBSan traps at `csymidx.c` `csx_finish`: `qsort(NULL, 0)` on a file with no index events. Pre-existing (the file is untouched since before AR1; the `ccbc295` binary prints the same runtime error, but its older `san.sh` did not log UBSan reports). Ruling: guard that one call (`if (b->ev.len)`); about 25 other `qsort` sites are unguarded and parked below. Cost if wrong: none for AR1.
 - Ruling: Task 1's 25 gcc-declared nonnull names the old table lacked are kept; the gate moved no corpus output.
 - Parked: a user-declared gnu-only name under `-std=c99` (`PARKED.md`); the `BI_ROWS` fold (s2).
+
+**Final review (Sonnet, whole branch, 2026-11-04):** one Important, fixed; the rest deferred.
+- Fixed: `gen_builtin_attrs.py` could zero every column silently when a probe's shared header failed to compile (`--write` would then rewrite all rows with 0). It now exits on a header error, on empty gcc output, and below the hit floors (pure 400, nonnull 100, fmt 15). RED: a bogus `#include` in `HEAD` exits with the error; GREEN: `--write` leaves the tab byte-identical.
+- Deferred minors: (1) attributes apply to a user-declared plain name regardless of `-std` (parked, `PARKED.md`; `bt_nonnull_gnu` runs under `-std=gnu99` where the spec asked `-std=c99`, and covers only old names); (2) three hand-kept row-struct copies have no `_Static_assert(sizeof ...)`; (3) `builtin_nonnull` keeps an unused `Checker *c`; (4) `check_format_literal_` looks up `bt_attr` twice; (5) the plan's steps stay unticked.
+- Fixed in docs: the spec's two `gnu = 2` lines for `_chk` rows now say `gnu = 1`.
