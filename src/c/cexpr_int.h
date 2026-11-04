@@ -291,7 +291,7 @@ size_t asm_string(Checker *c, uint32_t n, char *out, size_t cap);
 const BTab *bt_find(Checker *c, const char *name, bool any);
 /* The row whose attribute columns (pure, nonnull, fmt) apply to NAME, plain or __builtin_: the
  * mode does not hide a row, a declaration of the name carries the attributes anywhere. */
-const BTab *bt_attr(Checker *c, const char *name);
+const BTab *bt_attr(const char *name);
 TypeId bt_func_type(Checker *c, const BTab *b);
 SrcLoc call_loc(Checker *c, uint32_t f);
 SrcLoc callee_err_loc(Checker *c, uint32_t f);

@@ -793,29 +793,39 @@ static void header_note(Checker *c, Diagnostic *d, SrcLoc loc,
 #include "cbuiltin_x86.h"
 
 
-/* any: the __builtin_ spelling, which exists in every mode */
-const BTab *bt_attr(Checker *c, const char *name)
-{
-    static const BTab none;
-    const BTab *bt = bt_find(c, !strncmp(name, "__builtin_", 10) ? name + 10 : name, true);
-    return bt ? bt : &none;
-}
-
-const BTab *bt_find(Checker *c, const char *name, bool any)
+static const BTab *bt_bisect(const char *name)
 {
     size_t lo = 0, hi = sizeof cbuiltin_tab / sizeof *cbuiltin_tab;
     while (lo < hi) {
         size_t mid = (lo + hi) / 2;
         int r = strcmp(name, cbuiltin_tab[mid].name);
         if (!r)
-            return (cbuiltin_tab[mid].gnu == 1 && !c->opt.gnu && !any) ||
-                           (cbuiltin_tab[mid].gnu >= 2 && !any)
-                       ? NULL : (const BTab *)&cbuiltin_tab[mid];
+            return (const BTab *)&cbuiltin_tab[mid];
         if (r < 0)
             hi = mid;
         else
             lo = mid + 1;
     }
+    return NULL;
+}
+
+/* The pure/nonnull/fmt columns of NAME or __builtin_NAME, zeros for any other name.  Only
+ * the generic table has them (the target's rows carry none), so the target's linear search
+ * is skipped: this runs on every call. */
+const BTab *bt_attr(const char *name)
+{
+    static const BTab none;
+    const BTab *bt;
+    bt = bt_bisect(!strncmp(name, "__builtin_", 10) ? name + 10 : name);
+    return bt ? bt : &none;
+}
+
+/* any: the __builtin_ spelling, which exists in every mode */
+const BTab *bt_find(Checker *c, const char *name, bool any)
+{
+    const BTab *bt = bt_bisect(name);
+    if (bt)
+        return (bt->gnu == 1 && !c->opt.gnu && !any) || (bt->gnu >= 2 && !any) ? NULL : bt;
     if (any) {              /* the target's: only as __builtin_NAME */
         const IaBt *r = ia32_find(name);
         if (r)

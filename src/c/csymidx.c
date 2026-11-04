@@ -1104,7 +1104,8 @@ CIndex *csx_finish(Checker *c)
     }
     b->xc.len = 0;
     free(rg);
-    qsort(b->ev.data, b->ev.len, sizeof *b->ev.data, ev_cmp);
+    if (b->ev.len)       /* qsort(NULL, 0) is UB (nonnull) */
+        qsort(b->ev.data, b->ev.len, sizeof *b->ev.data, ev_cmp);
     /* hover texts of tags and fields (persistent symbols': link_decls) */
     for (i = 0; i < b->recmap.len && i < c->tt.recs.len; i++)
         if (b->recmap.data[i]) {

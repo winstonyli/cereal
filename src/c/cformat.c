@@ -1406,8 +1406,8 @@ static void check_format_literal_(Checker *c, const uint32_t *kv, uint32_t nk,
         first = sy->fmt & 0xfff;
         scan = (sy->fmt >> 24) == 2;
         fmt_termonly = fmt_kind_name(sy->fmt >> 24);
-    } else if ((pos = bt_fmt_pos(bt_attr(c, name)))) {
-        const BTab *bt = bt_attr(c, name);
+    } else if ((pos = bt_fmt_pos(bt_attr(name)))) {
+        const BTab *bt = bt_attr(name);
         if (bt_fmt_kind(bt) <= BTF_SCANF) {   /* strfmon, strftime: termonly, no arguments */
             first = bt_is_va(bt) ? 0 : pos + 1;
             scan = bt_fmt_kind(bt) == BTF_SCANF;
@@ -1568,7 +1568,7 @@ void check_format_literal(Checker *c, const uint32_t *kv, uint32_t nk,
     if (!(sy && sy->fmt)) {
         if (!strncmp(name, "__builtin_", 10))
             name += 10;
-        const BTab *bt = bt_attr(c, name);
+        const BTab *bt = bt_attr(name);
         if (bt_fmt_pos(bt) && bt_fmt_kind(bt) == BTF_STRFMON)
             fmt_termonly = "gnu_strfmon";
         else if (bt_fmt_pos(bt) && bt_fmt_kind(bt) == BTF_STRFTIME)

@@ -32,7 +32,7 @@ static uint64_t builtin_nonnull(Checker *c, const char *name)
         if (!strcmp(q, "_overflow"))
             return 4;
     }
-    return bt_attr(c, name)->nonnull;
+    return bt_attr(name)->nonnull;
 }
 
 /* gcc's match_builtin_function_types, as probed from gcc 13.  Compare the
@@ -1749,7 +1749,7 @@ void e_call(Checker *c, uint32_t i)
                 check_nonnull(c, av, an, builtin_nonnull(c, name), NULL, 0, false,
                               true, call_loc(c, k[0]));
         }
-        if (!strncmp(name, "__builtin_", 10) && bt_fmt_pos(bt_attr(c, name))) {
+        if (!strncmp(name, "__builtin_", 10) && bt_fmt_pos(bt_attr(name))) {
             uint32_t av[32], an = nkids(c, i, av, 32);
             if (an <= 32)
                 check_format_literal(c, av, an, NULL, name, call_loc(c, k[0]));
