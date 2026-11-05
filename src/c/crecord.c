@@ -856,32 +856,6 @@ static bool val_lt(Checker *c, uint64_t a, TypeId ta, uint64_t b, TypeId tb)
 static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
                              uint32_t ref)
 {
-    static const char *const ignored[] = {
-        "alias", "always_inline", "artificial", "assume", "cleanup", "cold",
-        "common", "const", "constructor", "destructor", "error",
-        "externally_visible", "fallthrough", "fentry_name", "fentry_section",
-        "flatten", "gcc_struct", "gnu_inline", "hot", "ifunc", "mode",
-        "ms_struct", "no_address_safety_analysis", "no_icf",
-        "no_profile_instrument_function", "no_sanitize",
-        "no_sanitize_address", "no_sanitize_coverage", "no_sanitize_thread",
-        "no_sanitize_undefined", "no_stack_protector", "noclone", "nocommon",
-        "nodirect_extern_access", "noinline", "noipa", "nonstring",
-        "noreturn", "nothrow", "optimize", "packed", "pure", "retain",
-        "returns_twice", "scalar_storage_order", "signed_bool_precision",
-        "simd", "stack_protect", "target", "target_clones",
-        "transaction_callable", "transaction_may_cancel_outer",
-        "transaction_pure", "transaction_safe", "transaction_safe_dynamic",
-        "transaction_unsafe", "transaction_wrap", "transparent_union", "used",
-        "vector_mask", "visibility", "volatile", "warn_unused", "warning",
-        "weak", "weakref"};
-    static const char *const fnonly[] = {
-        "access", "alloc_align", "alloc_size", "assume_aligned",
-        "callee_pop_aggregate_return", "cdecl", "fastcall", "fd_arg",
-        "fd_arg_read", "fd_arg_write", "force_align_arg_pointer", "format",
-        "format_arg", "indirect_return", "interrupt", "ms_abi",
-        "no_caller_saved_registers", "nocf_check", "nonnull", "regparm",
-        "returns_nonnull", "sentinel", "sseregparm", "stdcall", "sysv_abi",
-        "thiscall", "warn_unused_result"};
     Kids k;
     uint32_t j;
     kids_get(c, i, &k);
@@ -893,7 +867,7 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
         kids_get(c, k.p[j], &it);
         for (q = 0; q < it.n; q++) {
             char an[48];
-            size_t f;
+            const AttrDesc *ad;
             if (ntag(c, it.p[q]) != N_ATTR_ITEM)
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
@@ -922,19 +896,12 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
                        cident(c, name));
                 continue;
             }
-            for (f = 0; f < sizeof fnonly / sizeof *fnonly; f++)
-                if (!strcmp(an, fnonly[f])) {
-                    cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute only applies "
-                          "to function types", an);
-                    break;
-                }
-            if (f < sizeof fnonly / sizeof *fnonly)
-                continue;
-            for (f = 0; f < sizeof ignored / sizeof *ignored; f++)
-                if (!strcmp(an, ignored[f])) {
-                    cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute ignored", an);
-                    break;
-                }
+            ad = attr_lookup(an);
+            if (ad && (ad->flags & AF_FN_ONLY))
+                cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute only applies "
+                      "to function types", an);
+            else if (ad && (ad->ctx & AC_E))
+                cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute ignored", an);
         }
         kids_free(&it);
     }

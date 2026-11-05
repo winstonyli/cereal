@@ -1610,39 +1610,6 @@ static __thread SrcLoc alloc_loc;
 /* Declaration contexts for attrs_ctx_check. */
 __thread const char *ctx_vname;   /* the object attrs_ctx_check is looking at */
 
-/* Attributes whose handler returns "ignored" on a declaration that is not a
- * function, by context (typedef, file-scope variable, automatic local, static
- * local, parameter, field).  The ones with an Attrs flag (noinline, used,
- * weak, packed, alias, weakref, error, warning, cleanup) are in
- * attrs_misapplied. */
-static const struct { const char *name; unsigned ctx; } attr_ign_tab[] = {
-    {"always_inline", AC_ALL}, {"artificial", AC_ALL}, {"assume", AC_ALL},
-    {"cold", AC_ALL}, {"common", AC_T|AC_P|AC_F}, {"const", AC_ALL},
-    {"constructor", AC_ALL}, {"destructor", AC_ALL},
-    {"externally_visible", AC_T|AC_P|AC_F}, {"fallthrough", AC_ALL},
-    {"fentry_name", AC_ALL}, {"fentry_section", AC_ALL}, {"flatten", AC_ALL},
-    {"gcc_struct", AC_ALL}, {"gnu_inline", AC_ALL}, {"hot", AC_ALL},
-    {"ifunc", AC_ALL},     {"ms_struct", AC_ALL}, {"no_address_safety_analysis", AC_ALL},
-    {"no_icf", AC_ALL}, {"no_profile_instrument_function", AC_ALL},
-    {"no_sanitize", AC_ALL}, {"no_sanitize_address", AC_ALL},
-    {"no_sanitize_coverage", AC_ALL}, {"no_sanitize_thread", AC_ALL},
-    {"no_sanitize_undefined", AC_ALL}, {"no_stack_protector", AC_ALL},
-    {"noclone", AC_ALL}, {"nocommon", AC_T|AC_P|AC_F},
-    {"nodirect_extern_access", AC_T|AC_P|AC_F}, {"noipa", AC_ALL},
-    {"noreturn", AC_ALL}, {"nothrow", AC_ALL}, {"optimize", AC_ALL},
-    {"pure", AC_ALL}, {"retain", AC_T|AC_L|AC_P|AC_F},
-    {"returns_twice", AC_ALL}, {"scalar_storage_order", AC_ALL},
-    {"signed_bool_precision", AC_ALL}, {"simd", AC_ALL},
-    {"stack_protect", AC_ALL}, {"target", AC_ALL}, {"target_clones", AC_ALL},
-    {"transaction_callable", AC_ALL},
-    {"transaction_may_cancel_outer", AC_ALL}, {"transaction_pure", AC_ALL},
-    {"transaction_safe", AC_ALL}, {"transaction_safe_dynamic", AC_ALL},
-    {"transaction_unsafe", AC_ALL}, {"transaction_wrap", AC_ALL},
-    {"transparent_union", AC_ALL}, {"vector_mask", AC_ALL},
-    {"visibility", AC_T|AC_L|AC_S|AC_P|AC_F}, {"volatile", AC_ALL},
-    {"warn_unused", AC_ALL},
-};
-
 /* gcc locates an attribute-only declaration at the first token of its line. */
 SrcLoc cdecl_line_start_loc(Checker *c, uint32_t tok)
 {
@@ -1662,15 +1629,6 @@ SrcLoc cdecl_line_start_loc(Checker *c, uint32_t tok)
     }
     return tloc(c, tok);
 }
-
-/* Attributes that need a function type. */
-static const char *const attr_fnonly_tab[] = {
-    "access", "alloc_align", "alloc_size", "assume_aligned",
-    "callee_pop_aggregate_return", "cdecl", "fastcall", "fd_arg",
-    "fd_arg_read", "fd_arg_write", "force_align_arg_pointer", "format", "format_arg",
-    "indirect_return", "interrupt", "ms_abi", "no_caller_saved_registers",
-    "nocf_check", "nonnull", "regparm", "returns_nonnull", "sentinel",
-    "sseregparm", "stdcall", "sysv_abi", "thiscall", "warn_unused_result"};
 
 /* The expression a copy attribute names, less &, *, [] and a comma list. */
 static uint32_t copy_target(Checker *c, uint32_t e)
@@ -1716,7 +1674,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
         kids_get(c, k.p[j], &it);
         for (q = 0; q < it.n; q++) {
             char name[48];
-            size_t f;
+            const AttrDesc *ad;
             if (ntag(c, it.p[q]) != N_ATTR_ITEM)
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
@@ -1796,32 +1754,28 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                 continue;
             if (fnty)
                 continue;
-            for (f = 0; f < sizeof attr_fnonly_tab / sizeof *attr_fnonly_tab; f++)
-                if (!strcmp(name, attr_fnonly_tab[f])) {
-                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute only "
-                          "applies to function types", name);
-                    break;
-                }
-            if (f < sizeof attr_fnonly_tab / sizeof *attr_fnonly_tab)
+            ad = attr_lookup(name);
+            if (ad && (ad->flags & AF_FN_ONLY)) {
+                cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute only "
+                      "applies to function types", name);
                 continue;
-            for (f = 0; f < sizeof attr_ign_tab / sizeof *attr_ign_tab; f++)
-                if ((attr_ign_tab[f].ctx & ctx) && !strcmp(name, attr_ign_tab[f].name)) {
-                    if (!strcmp(name, "fallthrough") && !cat_file_scope(c)) {
-                        /* a leading attribute list that is not a statement */
-                        uint32_t d = holder;
-                        while (d != NO_NODE && ntag(c, d) != N_DECL &&
-                               d != c->par[d])
-                            d = c->par[d];
-                        if (d != NO_NODE && ntag(c, d) == N_DECL &&
-                            cfirst(c, d) == cfirst(c, k.p[j]))
-                            cwarn(c, cdecl_line_start_loc(c, c->nodes[k.p[j]].tok),
-                                  DW_ATTRIBUTES, "'fallthrough' attribute "
-                                  "not followed by ';'");
-                    }
-                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
-                          "ignored", name);
-                    break;
+            }
+            if (ad && (ad->ctx & ctx)) {
+                if (!strcmp(name, "fallthrough") && !cat_file_scope(c)) {
+                    /* a leading attribute list that is not a statement */
+                    uint32_t d = holder;
+                    while (d != NO_NODE && ntag(c, d) != N_DECL &&
+                           d != c->par[d])
+                        d = c->par[d];
+                    if (d != NO_NODE && ntag(c, d) == N_DECL &&
+                        cfirst(c, d) == cfirst(c, k.p[j]))
+                        cwarn(c, cdecl_line_start_loc(c, c->nodes[k.p[j]].tok),
+                              DW_ATTRIBUTES, "'fallthrough' attribute "
+                              "not followed by ';'");
                 }
+                cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
+                      "ignored", name);
+            }
         }
         kids_free(&it);
     }
