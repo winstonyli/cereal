@@ -289,4 +289,4 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 
 | What | Why parked | Status |
 |---|---|---|
-| `src/c/cexpr_bi.c:581-590` writes the record set and then `sets[n++] = tmp` into `sets[3]` without a bound after up to two typedef sets; reachable only if unknown-only attribute sets create a set in a deep typedef chain. Found by the spec review; read from the code, not run. | Not verified (no asan run); found during AR4 stage 2 spec work. Trigger: a reproducer under asan, or the stage 2 work touching `cexpr_asets`/`e_has_attr`. | parked; evidence `src/c/cexpr_bi.c:581-590` (read 2026-11-05) |
+| `src/c/cexpr_bi.c:581-590` writes the record set and then `sets[n++] = tmp` into `sets[3]` without a bound after up to two typedef sets; reachable with two attributed typedefs, a record type and any attribute in the type name (not only unknown-only sets). Found by the spec review; read from the code, not run. | Not verified (no asan run); found during AR4 stage 2 spec work. Trigger: a reproducer under asan, or the stage 2 work touching `cexpr_asets`/`e_has_attr`. | parked; evidence `src/c/cexpr_bi.c:581-590` (read 2026-11-05) |
