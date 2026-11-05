@@ -53,8 +53,12 @@ for f in src/c/*.c src/c/*.h; do
             }
         }
         function done() { if (lits >= 3 && allname) print file, cur }
-    ' "$f"
+    ' "$f" || echo "!awk $f"
 done | sort -u >$T.hits
+if grep -q "^!awk" $T.hits; then
+    echo "attr lists: awk failed on: $(grep "^!awk" $T.hits)"
+    exit 2
+fi
 awk '!/^#/ && NF >= 2 { print $1, $2 }' $ALLOW 2>/dev/null | sort -u >$T.allow
 comm -13 $T.allow $T.hits >$T.new
 comm -23 $T.allow $T.hits >$T.stale
