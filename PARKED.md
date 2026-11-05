@@ -284,3 +284,9 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | What | Why parked | Status |
 |---|---|---|
 | Hold `AttrId` bitsets in `AttrState.cur[]`, `CSym.aset`, `Checker.anames` and the `ign[]` filter instead of name strings, which also removes the pure/const duplicates in `AttrState` and the `Attrs` flag versus `aset` name pairs. | By decision (the user's "park r2", 2026-11-04): AR4 stage 1 (descriptor lookup, name strings kept) lands first; ids in `Checker` and `CSym` state reach many more files. Trigger: AR4 stage 1 has landed and a second hand-synced flag/name pair drifts. Evidence: `src/c/cdecl_int.h` (`AttrState`), `src/c/cattr.c` `aset_add`, `attrs_merge`. | parked |
+
+## Make file-local externs static (docs/CLEANUP_PLAN.md FE11; 2026-11-05)
+
+| What | Why parked | Status |
+|---|---|---|
+| 58 functions defined in one object and used only in their own file (`nm` over the 96 gate objects at be32635; names by file in the FE11 item): make them `static` and drop their header lines. | Awaiting the user's answer on whether `lsp.h`/`thread.h` entries are API on purpose; nothing is broken by leaving them. | held for that answer; evidence: the FE11 `nm` survey (2026-10-31), not re-run since |
