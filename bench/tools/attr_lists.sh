@@ -6,7 +6,8 @@
 #     a statement) of three or more string literals that are all attribute names, unless
 #     bench/tools/attr_lists.allow lists it ("FILE ARRAY", FILE without the directory).
 # An allowed entry that no longer matches is reported and fails too, so the list only shrinks.
-# A text check: it does not look at strcmp chains, and misses a list built any other way.
+# A text check: comments are ignored and a brace on the next line is handled; it does not look at strcmp chains, and misses
+# a list split across statements, one mixed with non-attribute strings, a compound literal, or runtime assignments.
 # ATTR_ROOT overrides the tree (the self-check in docs/ATTR_TABLE_PLAN.md Task 6).
 ROOT=${ATTR_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
@@ -26,17 +27,37 @@ for f in src/c/*.c src/c/*.h; do
     awk -v names=$T.names -v file="${f##*/}" '
         BEGIN { while ((getline l < names) > 0) isname[l] = 1 }
         function strip(s) { gsub(/"([^"\\]|\\.)*"/, "\"\"", s); return s }
+        # drop /* */ and // comments (a "//" inside a string literal is kept: even quote count before it)
+        function nocomment(s,   p, pre, q) {
+            while (match(s, /\/\*[^*]*(\*+[^*\/][^*]*)*\*+\//)) s = substr(s, 1, RSTART - 1) " " substr(s, RSTART + RLENGTH)
+            p = index(s, "//")
+            while (p) {
+                pre = substr(s, 1, p - 1); q = gsub(/"/, "\"", pre)
+                if (q % 2 == 0) return substr(s, 1, p - 1)
+                q = index(substr(s, p + 2), "//"); p = q ? p + 2 + q - 1 : 0
+            }
+            return s
+        }
         {
+            line = nocomment($0)
             if (!depth) {
-                if (match($0, /[A-Za-z_][A-Za-z_0-9]*[ \t]*\[[^]]*\][ \t]*=[ \t]*\{/)) {
-                    nm = substr($0, RSTART, RLENGTH); sub(/[ \t]*\[.*/, "", nm)
-                    text = substr($0, RSTART)
+                if (pend != "" && line ~ /^[ \t]*\{/) {
+                    cur = pend; pend = ""; lits = 0; allname = 1
+                    scan(line); depth = 0; cnt(strip(line)); next
+                }
+                pend = ""
+                if (match(line, /[A-Za-z_][A-Za-z_0-9]*[ \t]*\[[^]]*\][ \t]*=[ \t]*\{/)) {
+                    nm = substr(line, RSTART, RLENGTH); sub(/[ \t]*\[.*/, "", nm)
+                    text = substr(line, RSTART)
                     cur = nm; lits = 0; allname = 1
                     scan(text); depth = 0; cnt(strip(text)); next
                 }
+                if (match(line, /[A-Za-z_][A-Za-z_0-9]*[ \t]*\[[^]]*\][ \t]*=[ \t]*$/)) {
+                    nm = substr(line, RSTART, RLENGTH); sub(/[ \t]*\[.*/, "", nm); pend = nm
+                }
                 next
             }
-            scan($0); cnt(strip($0))
+            scan(line); cnt(strip(line))
         }
         function scan(s,   t, w) {
             t = s
