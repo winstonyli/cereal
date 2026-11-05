@@ -105,6 +105,24 @@ static const char *signature(Req *r, Macro *m)
 
 enum { DH_READ = 2, DH_WRITE = 3 }; /* LSP DocumentHighlightKind */
 
+/* Whether the macro index's answer t stands over the C index's: it found
+ * something that is not merely a plain-identifier match (weak). */
+static bool macro_answers(const IdxTarget *t)
+{
+    return t->kind != TGT_NONE && !t->weak;
+}
+
+/* A DocumentHighlight {range, kind} for [b, e). */
+static void highlight(Req *r, JsonWriter *w, SrcLoc b, SrcLoc e, int kind)
+{
+    json_begin_object(w);
+    json_key(w, "range");
+    json_range(w, &r->snap->tu.sm, r->enc, b, e);
+    json_key(w, "kind");
+    json_int(w, kind);
+    json_end_object(w);
+}
+
 /* The C entities named at loc in the request's file, from the check's index,
  * when the macro index's answer t does not stand: nothing, or a name it only
  * knows by its plain identifier (weak).  None if there is no index yet, or
@@ -112,7 +130,7 @@ enum { DH_READ = 2, DH_WRITE = 3 }; /* LSP DocumentHighlightKind */
 static size_t c_decls_at(Req *r, const IdxTarget *t, SrcLoc loc, uint32_t *out,
                          size_t max)
 {
-    if ((t->kind != TGT_NONE && !t->weak) || !r->cidx || loc < r->file->base)
+    if (macro_answers(t) || !r->cidx || loc < r->file->base)
         return 0;
     return cindex_decls_at(r->cidx, r->file->path, loc - r->file->base, out, max);
 }
@@ -193,12 +211,7 @@ static void c_highlights(Req *r, JsonWriter *w, const uint32_t *decls, size_t nd
         if (!f)
             continue;
         b = f->base + e->off;
-        json_begin_object(w);
-        json_key(w, "range");
-        json_range(w, &r->snap->tu.sm, r->enc, b, b + e->len);
-        json_key(w, "kind");
-        json_int(w, (e->flags & CIX_ROLE) == CIX_REF ? DH_READ : DH_WRITE);
-        json_end_object(w);
+        highlight(r, w, b, b + e->len, (e->flags & CIX_ROLE) == CIX_REF ? DH_READ : DH_WRITE);
     }
     free(ev);
 }
@@ -319,12 +332,7 @@ void lsp_document_highlight(Req *r, JsonWriter *w)
             SrcLoc b = refs[i].loc;
             if (!real_loc(&r->snap->tu.sm, b) || !in_file(r->file, b))
                 continue;
-            json_begin_object(w);
-            json_key(w, "range");
-            json_range(w, &r->snap->tu.sm, r->enc, b, b + refs[i].len);
-            json_key(w, "kind");
-            json_int(w, i < ndef ? DH_WRITE : DH_READ);
-            json_end_object(w);
+            highlight(r, w, b, b + refs[i].len, i < ndef ? DH_WRITE : DH_READ);
         }
     }
     json_end_array(w);
@@ -1886,7 +1894,7 @@ bool lsp_prepare_rename(Req *r, JsonWriter *w, const char **err)
     SrcLoc b = t.range.begin, e = t.range.end;
     uint32_t d;
     bool project;
-    if (t.kind == TGT_NONE || t.weak) {
+    if (!macro_answers(&t)) {
         if (r->c_fresh && !cindex_decls_at(r->cidx, r->file->path,
                                            at - r->file->base, &d, 1)) {
             json_null(w); /* no entity here */
@@ -1955,7 +1963,7 @@ bool lsp_rename(Req *r, JsonWriter *w, const char **err)
     size_t n = 0, i;
     SrcFile *cur = NULL;
     SrcLoc last = 0;
-    if (t.kind == TGT_NONE || t.weak)
+    if (!macro_answers(&t))
         return c_rename_edits(r, w, at, name, err);
     if (t.kind == TGT_MACRO || t.kind == TGT_PARAM)
         n = index_references(&r->snap->ix, &t, &refs);
