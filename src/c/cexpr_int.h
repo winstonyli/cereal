@@ -316,7 +316,11 @@ void incomplete_error(Checker *c, SrcLoc loc, uint32_t value, TypeId t);
 bool inhibited(Checker *c, uint32_t i, bool fold);
 bool is_const(Checker *c, uint32_t i);
 bool is_decimal_flt(Checker *c, TypeId t);
-bool is_intcst(Checker *c, uint32_t i);
+/* gcc: an INTEGER_CST once C_MAYBE_CONST_EXPRs are removed. */
+static inline bool is_intcst(Checker *c, uint32_t i)
+{
+    return c->ck[i] == K_ICE || (c->ck[i] == K_FOLD && (c->ef[i] & EF_CST));
+}
 bool ival_neg(Checker *c, TypeId t, uint64_t v);
 TypeId mvt(Checker *c, TypeId t);
 SrcLoc param_loc(Checker *c, uint32_t ref, uint32_t idx, uint32_t at, SrcLoc

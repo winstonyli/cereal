@@ -337,12 +337,6 @@ bool cplx_arith(Checker *c, int op, TypeId tc, long double ar,
     return true;
 }
 
-/* gcc: an INTEGER_CST once C_MAYBE_CONST_EXPRs are removed. */
-bool is_intcst(Checker *c, uint32_t i)
-{
-    return c->ck[i] == K_ICE || (c->ck[i] == K_FOLD && (c->ef[i] & EF_CST));
-}
-
 /* Does the expression read a const object that -O folded to its value?  Such
  * an expression is no integer constant expression, hence no null pointer
  * constant (the tree is postorder: the subtree ends at i). */
