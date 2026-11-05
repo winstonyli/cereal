@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # Attribute descriptor table (CLEANUP_PLAN AR4, stage 1)

@@ -1,0 +1,6 @@
+enum_attr_format.c:3:8: warning: 'format' attribute only applies to function types [-Wattributes]
+    3 | enum { A __attribute__((format(printf, 1, 2))), B __attribute__((nonnull)) };
+      |        ^
+enum_attr_format.c:3:49: warning: 'nonnull' attribute only applies to function types [-Wattributes]
+    3 | enum { A __attribute__((format(printf, 1, 2))), B __attribute__((nonnull)) };
+      |                                                 ^

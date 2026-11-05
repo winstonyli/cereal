@@ -877,7 +877,7 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
     static const char *const fnonly[] = {
         "access", "alloc_align", "alloc_size", "assume_aligned",
         "callee_pop_aggregate_return", "cdecl", "fastcall", "fd_arg",
-        "fd_arg_read", "fd_arg_write", "force_align_arg_pointer",
+        "fd_arg_read", "fd_arg_write", "force_align_arg_pointer", "format",
         "format_arg", "indirect_return", "interrupt", "ms_abi",
         "no_caller_saved_registers", "nocf_check", "nonnull", "regparm",
         "returns_nonnull", "sentinel", "sseregparm", "stdcall", "sysv_abi",
