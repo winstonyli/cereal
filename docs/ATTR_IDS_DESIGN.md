@@ -42,9 +42,9 @@ The set machinery is observable through more than names, so each of these is pin
    still copied by `aset_copy` (since `copy_excluded("")` is false) and de-duplicated against other empties. With ids the
    entry keeps its place with `id = AT_NONE`, `aset_add(AT_NONE, arg)` is legal, and `aset_copy` copies it. Nothing
    skips `AT_NONE` entries.
-3. **`cur` and `ign` push unknown names too.** `attr_excl_generic` pushes every attribute into `cur` up to 24
+3. **`cur` pushes unknown names too; `ign` never holds one.** `attr_excl_generic` pushes every attribute into `cur` up to 24
    (cattr.c:2633); it keeps pushing `AT_UNKNOWN`, so the cap behaves as today (24 unknown, then `pure`, then `const`).
-4. **Chain order.** `aset_copy` walks `anames` oldest first; `aset_opt_args` (cmerge.c:650) and `first_arg` read the
+4. **Chain order.** `aset_copy` walks `anames` oldest first; `aset_opt_args` (cmerge.c:645-654) and `first_arg` read the
    chain newest first. Neither changes.
 5. **Truncation is unobservable.** Seven table names are 24-30 characters (`callee_pop_aggregate_return`,
    `no_address_safety_analysis`, `no_caller_saved_registers`, `no_profile_instrument_function`,
@@ -69,8 +69,8 @@ The set machinery is observable through more than names, so each of these is pin
   `AttrId attr_id_of(const char *normalised)` in `cattr.c` wraps that.
 - Literal call sites become enumerators: the 14 outside `cattr.c` (ccall.c 2, cdecl.c 4, cexpr_alias.c 1, cexpr_bi.c:451,
   cgx86.c 2, cmerge.c 1, crecord.c 1, cstmt.c 1, cwarn_expr.c 1) plus cdecl.c:2650, 2663, 2669 and 3516, and those inside `cattr.c` (`aset_add "access"`
-  cattr.c:2125, the five `ign` push sites 1861, 2212, 2239, 2287 and 2622 (2239 and 2287 hold a source string: `attr_id_of`), `alloc_redecl` (takes an id), the `an2[]`/`cn[]` arrays at ~2257/~2796, `attrs_copy_check`'s `strcmp(an, ...)` tests at 2706-2735, `aset_opt_args` at
-  cmerge.c:651 (the function starts at 650), `acc_replay_ref` cattr.c:2055, the `aligned` loops, `alloc_redecl`, `attr_excl_generic`).
+  cattr.c:2125, the five `ign` push sites 1861, 2212, 2239, 2287 and 2622 (all five push table names, e.g. 2239 is `warn_unused_result`: enumerators, never `AT_UNKNOWN`, which is why `aset_add` needs no filter for it), `alloc_redecl` (takes an id), the `an2[]`/`cn[]` arrays at ~2257/~2796, `attrs_copy_check`'s `strcmp(an, ...)` tests at 2706-2735, `aset_opt_args` at
+  cmerge.c:651 (the function starts at 645), `acc_replay_ref` cattr.c:2055, the `aligned` loops, `alloc_redecl`, `attr_excl_generic`).
 - `attr_excl_generic(c, tok, AttrId an, ...)`; `cur` is `AttrId cur[24]`; `ign` is `AttrId ign[8]`; `cmerge.c:491`
   compares `AT_NOINLINE`. `attr_excl_tab` rows are `{AttrId n; AttrId ex[8]; bool fn_only}` zero-terminated by `AT_NONE`.
 - Strings stay where the *source text* is the input: `attrs_item_named`, `attr_arg_eq` (called with the id's name or kept
@@ -80,7 +80,7 @@ The set machinery is observable through more than names, so each of these is pin
 
 Home: `attrs.h`/`attrs.def` own ids and names; `cattr.c` owns the sets and the exclusion table; no new module.
 Replaces three string stores and the `strcmp(…, "literal")` tests on them (count after the change, not estimated
-here). Deletes `AName.name`, the empty-string tombstone, `cur`/`ign` string arrays, and the `attr_excl_tab` allowlist line.
+here). Deletes `AName.name`, the empty-string spelling of the tombstone (it becomes an `AT_NONE` entry, kept), the `cur`/`ign` string arrays, and the `attr_excl_tab` allowlist line.
 
 ## Verification
 
@@ -90,11 +90,23 @@ here). Deletes `AName.name`, the empty-string tombstone, `cur`/`ign` string arra
   (b) 24 unknown attributes, then `pure`, then `noreturn` (the cap drops the `pure` push, so no conflict is printed today; a
   `pure`+`const` pair would not discriminate, it is decided by `AttrState.pure/cnst`); (c) `int v __attribute__((packed));`
   (the drop leaves a tombstone-only set, to be confirmed in the probe), then `int y __attribute__((copy(v)));`, then `y`
-  in the 3-slot setup of (a): the extra set moves the result from 1 to 0 if tombstones are skipped;
+  in the 3-slot setup of (a): the extra set gives 0 today (`y`'s tombstone-only set, the two typedef sets and the cap fill `sets[3]`) and 1 if tombstones were skipped;
   (d) a function redeclared with differing `alloc_size`, then `__builtin_has_attribute(f, alloc_size(2))` (proves `aset_add` still honours `ign`). Each golden's current output is recorded from the unmodified binary before the change; none is assumed.
 - `tests/run.sh` 2370/0 (or the count then current) at each task commit; one full gate at the end (run/san/verify,
   callgrind recorded: AR4 stage 1 moved −0.10%).
 - `sh bench/tools/attr_lists.sh` prints ok with the allowlist empty.
+
+## Build notes
+
+- A `const char *` passed where an `AttrId` is expected is only an int-conversion warning in C: grep every
+  `aset_*`/`cdecl_aset_*` caller (the lists above are not exhaustive) and build once with `-Werror=int-conversion`.
+- `check_int.h` and `cdecl_int.h` need `#include "c/attrs.h"` if they lack it.
+- Goldens (a) and (c) pin cereal's 3-slot cap, not gcc's behaviour (gcc has no such cap and probably says 1): say so in a
+  comment in each file and cross-reference the "Found" item. In (a) each typedef in the chain carries an attribute
+  (`typedef struct P T1 __attribute__((u1)); typedef T1 T2 __attribute__((u2)); T2 x __attribute__((u3));` with
+  `struct __attribute__((packed)) P`), and the query goes through the expression path (`has_attribute(x, ...)`), not
+  the type-name path that can overflow. Use `extern char chk[cond ? 1 : -1]` as tests/check/has_attribute.c does
+  (`_Static_assert` adds a pedantic warning under c99).
 
 ## Left to the builder
 
