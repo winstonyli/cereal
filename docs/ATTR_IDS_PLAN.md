@@ -48,7 +48,7 @@ Home: `attrs.h`/`attrs.def` own ids and names, `cattr.c` owns the sets, `attr_by
 - [ ] **Step 4: Baseline gate**, detached with a watcher (`rungate.sh` always logs to `~/gate_t5.log`, shared and overwritten: copy it per run); record its run id, counts and callgrind total in this plan's "Baseline" line (edit the line below).
 - [ ] **Step 5: Commit** `AR4 stage 2: goldens for the set machinery's observable behaviour`; set this plan and the spec to `status: active`.
 
-Baseline: _(run id, counts, callgrind: filled in step 4)_
+Baseline: run `2026-11-05-ar4s2-baseline2` (commit 527c358): run 2378/0, san 2377/0 findings 0, verify 637/638, 289/289, 3908/3910, callgrind Collected 3,814,609,402.
 
 ### Task 2: ids and lookups, unused
 
