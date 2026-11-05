@@ -350,6 +350,40 @@ static const char *const known_attrs[] = {
     "zero_call_used_regs",
 };
 
+#define ATTR(n, id, fl, cx, lo, hi) {#n, id, fl, cx, lo, hi},
+static const AttrDesc attr_tab[] = {
+#include "c/attrs.def"
+};
+#undef ATTR
+_Static_assert(sizeof attr_tab / sizeof *attr_tab == AT_COUNT_, "attrs.def and attr_tab disagree");
+
+const AttrDesc *attr_lookup(const char *name)
+{
+    size_t lo = 0, hi = AT_COUNT_;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        int r = strcmp(name, attr_tab[mid].name);
+        if (!r)
+            return &attr_tab[mid];
+        if (r < 0)
+            hi = mid;
+        else
+            lo = mid + 1;
+    }
+    return NULL;
+}
+
+const AttrDesc *attr_lookup_n(const char *s, size_t n)
+{
+    char buf[48], nm[48];
+    if (n == 0 || n >= sizeof buf)
+        return NULL;
+    memcpy(buf, s, n);
+    buf[n] = 0;
+    attr_norm(buf, nm, sizeof nm);
+    return attr_lookup(nm);
+}
+
 bool attr_known(const char *name)
 {
     size_t lo = 0, hi = sizeof known_attrs / sizeof *known_attrs;

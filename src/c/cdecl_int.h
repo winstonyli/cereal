@@ -187,8 +187,6 @@ static inline uint32_t inner_decl(const Checker *c, uint32_t i)
 
 /* ---- cattr.c ---- */
 
-enum { AC_T = 1, AC_G = 2, AC_L = 4, AC_S = 8, AC_P = 16, AC_F = 32, AC_ALL = 63,
-       AC_TLS = 64, AC_PUB = 128 };    /* ... / is externally visible */    /* the object has thread storage duration */
 
 typedef struct AttrState {
     bool pure, cnst;

@@ -7,6 +7,7 @@
 #define CEREAL_CHECK_INT_H
 
 #include "c/check.h"
+#include "c/attrs.h"
 #include "c/ckw.h"
 #include "c/csum.h"
 #include "c/csymidx.h"
