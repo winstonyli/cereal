@@ -1,0 +1,12 @@
+attr_ids_tombstone.c:7:16: warning: 'u1' attribute directive ignored [-Wattributes]
+    7 | typedef struct P T1 __attribute__((u1));
+      |                ^
+attr_ids_tombstone.c:8:1: warning: 'u2' attribute directive ignored [-Wattributes]
+    8 | typedef T1 T2 __attribute__((u2));
+      | ^
+attr_ids_tombstone.c:9:1: warning: 'packed' attribute ignored [-Wattributes]
+    9 | int v __attribute__((packed));
+      | ^
+attr_ids_tombstone.c:11:1: warning: 'u9' attribute directive ignored [-Wattributes]
+   11 | int w __attribute__((u9));
+      | ^

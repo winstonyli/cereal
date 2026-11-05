@@ -1,0 +1,9 @@
+attr_ids_unknown_cap.c:7:16: warning: 'u1' attribute directive ignored [-Wattributes]
+    7 | typedef struct P T1 __attribute__((u1));
+      |                ^
+attr_ids_unknown_cap.c:8:1: warning: 'u2' attribute directive ignored [-Wattributes]
+    8 | typedef T1 T2 __attribute__((u2));
+      | ^
+attr_ids_unknown_cap.c:9:1: warning: 'u3' attribute directive ignored [-Wattributes]
+    9 | T2 x __attribute__((u3));
+      | ^

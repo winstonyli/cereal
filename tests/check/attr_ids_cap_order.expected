@@ -1,0 +1,6 @@
+attr_ids_cap_order.c:7:16: warning: 'u01' attribute directive ignored [-Wattributes]
+    7 |                pure, noreturn)) int f(void);
+      |                ^
+attr_ids_cap_order.c:7:16: warning: 'u02' attribute directive ignored [-Wattributes]
+    7 |                pure, noreturn)) int f(void);
+      |                ^

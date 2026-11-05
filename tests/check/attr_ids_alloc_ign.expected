@@ -1,0 +1,18 @@
+attr_ids_alloc_ign.c:7:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'pure' [-Wattributes]
+    7 | int f1(void) __attribute__((pure, noreturn));
+      | ^
+attr_ids_alloc_ign.c:8:1: warning: ignoring attribute 'noinline' because it conflicts with attribute 'always_inline' [-Wattributes]
+    8 | int f3(void) __attribute__((always_inline, noinline));
+      | ^
+attr_ids_alloc_ign.c:9:1: warning: ignoring attribute 'nocommon' because it conflicts with attribute 'common' [-Wattributes]
+    9 | int v1 __attribute__((common, nocommon));
+      | ^
+attr_ids_alloc_ign.c:16:1: warning: ignoring attribute 'alloc_size (2)' because it conflicts with previous 'alloc_size (1)' [-Wattributes]
+   16 | void *g(size_t, size_t) __attribute__((alloc_size(2)));
+      | ^
+attr_ids_alloc_ign.c:10:35: warning: ignoring attribute 'alloc_size (2)' because it conflicts with previous 'alloc_size (1)' [-Wattributes]
+   10 | #define YES(n, e, a) extern char n[__builtin_has_attribute (e, a) ? 1 : -1]
+      |                                   ^
+attr_ids_alloc_ign.c:18:1: note: in expansion of macro 'YES'
+   18 | YES(e2, g, alloc_size(2));
+      | ^

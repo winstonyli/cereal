@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # Attribute names as ids in checker state, implementation plan (AR4 stage 2)
