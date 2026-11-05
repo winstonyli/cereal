@@ -160,11 +160,6 @@ static uint32_t check_user_alignment_(Checker *c, uint32_t e, SrcLoc loc,
  * input_location. */
 void gnu_attr_argc(Checker *c, uint32_t attr)
 {
-    static const struct { const char *n; uint32_t lo, hi; } t[] = {
-        {"access", 1, 3}, {"alloc_align", 1, 1}, {"assume_aligned", 1, 2}, {"constructor", 0, 1},
-        {"copy", 1, 1}, {"destructor", 0, 1},
-        {"malloc", 0, 2}, {"section", 1, 1}, {"simd", 0, 1},
-        {"strict_flex_array", 1, 1}, {"zero_call_used_regs", 1, 1}};
     Kids k;
     uint32_t j;
     if (tokp(c, cnode(c, attr)->tok)->kind == TK_PUNCT)
@@ -189,24 +184,24 @@ void gnu_attr_argc(Checker *c, uint32_t attr)
     for (j = 0; j < k.n; j++) {
         char name[48];
         Kids ak;
-        size_t n;
+        const AttrDesc *ad;
         if (ntag(c, k.p[j]) != N_ATTR_ITEM)
             continue;
         attr_norm(tstr(c, c->nodes[k.p[j]].tok), name, sizeof name);
         kids_get(c, k.p[j], &ak);
-        for (n = 0; n < sizeof t / sizeof *t; n++)
-            if (!strcmp(name, t[n].n) && (ak.n < t[n].lo || ak.n > t[n].hi)) {
-                Diagnostic *d = cerror_d(c, cinput_loc(c, at),
-                       "wrong number of arguments specified for '%s' "
-                       "attribute", name);
-                if (d && t[n].lo == t[n].hi)
-                    cnote(c, d, cinput_loc(c, at), "expected %u, found %u",
-                          t[n].lo, (unsigned)ak.n);
-                else if (d)
-                    cnote(c, d, cinput_loc(c, at),
-                          "expected between %u and %u, found %u", t[n].lo,
-                          t[n].hi, (unsigned)ak.n);
-            }
+        ad = attr_lookup(name);
+        if (ad && (ak.n < ad->argc_lo || ak.n > ad->argc_hi)) {
+            Diagnostic *d = cerror_d(c, cinput_loc(c, at),
+                   "wrong number of arguments specified for '%s' "
+                   "attribute", name);
+            if (d && ad->argc_lo == ad->argc_hi)
+                cnote(c, d, cinput_loc(c, at), "expected %u, found %u",
+                      ad->argc_lo, (unsigned)ak.n);
+            else if (d)
+                cnote(c, d, cinput_loc(c, at),
+                      "expected between %u and %u, found %u", ad->argc_lo,
+                      ad->argc_hi, (unsigned)ak.n);
+        }
         if (!strcmp(name, "simd") && ak.n == 1) {
             char v[24];
             cdecl_attr_args(c, k.p[j], v, sizeof v);
@@ -2414,16 +2409,8 @@ void aset_add(Checker *c, uint32_t *set, const char *name,
 /* handle_copy_attribute: what is not copied. */
 static bool copy_excluded(const char *n)
 {
-    static const char *const x[] = {
-        "alias", "ifunc", "always_inline", "gnu_inline", "noinline",
-        "visibility", "weakref", "target_clones", "deprecated", "unavailable",
-        "weak", "malloc", "warn_unused_result", "artificial", "fallthrough",
-        "copy"};
-    size_t k;
-    for (k = 0; k < sizeof x / sizeof *x; k++)
-        if (!strcmp(n, x[k]))
-            return true;
-    return false;
+    const AttrDesc *d = attr_lookup(n);
+    return d && (d->flags & AF_COPY_EXCL);
 }
 
 void aset_drop(Checker *c, uint32_t set, const char *name)

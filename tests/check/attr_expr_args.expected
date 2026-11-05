@@ -1,0 +1,15 @@
+attr_expr_args.c:7:5: error: cleanup argument not a function
+    7 |     int x __attribute__((cleanup(undeclared)));
+      |     ^
+attr_expr_args.c:10:50: error: 'undeclared' undeclared here (not in a function)
+   10 | void f1(const char *) __attribute__((__nonnull__(undeclared)));
+      |                                                  ^
+attr_expr_args.c:10:1: warning: 'nonnull' attribute argument is invalid [-Wattributes]
+   10 | void f1(const char *) __attribute__((__nonnull__(undeclared)));
+      | ^
+attr_expr_args.c:11:1: warning: 'format_arg' attribute argument is invalid [-Wattributes]
+   11 | const char *f2(const char *) __attribute__((format_arg(undeclared)));
+      | ^
+attr_expr_args.c:14:1: error: section attribute argument not a string constant
+   14 | int v __attribute__((section(undeclared)));
+      | ^

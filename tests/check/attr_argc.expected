@@ -22,3 +22,9 @@ attr_argc.c:5:1: error: wrong number of arguments specified for 'copy' attribute
 attr_argc.c:5:1: note: expected 1, found 0
     5 | f6 (void);
       | ^
+attr_argc.c:6:1: error: wrong number of arguments specified for 'constructor' attribute
+    6 | void ctor(void) __attribute__((constructor(1, 2)));
+      | ^
+attr_argc.c:6:1: note: expected between 0 and 1, found 2
+    6 | void ctor(void) __attribute__((constructor(1, 2)));
+      | ^

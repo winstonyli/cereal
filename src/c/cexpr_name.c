@@ -1314,24 +1314,11 @@ static bool in_has_attr(const Checker *c, uint32_t i)
  * function name too: a use for the symbol index). */
 static bool attr_takes_expr(Checker *c, uint32_t p, bool cleanup)
 {
-    size_t al, q;
+    size_t al;
     const char *an = ttext(c, c->nodes[p].tok, &al);
-    static const char *const ex[] = {
-        "nonnull", "aligned", "vector_size", "warn_if_not_aligned",
-        "alloc_size", "alloc_align", "assume_aligned", "malloc",
-        "fallthrough", "constructor", "destructor", "format_arg"};
-    if (al > 4 && !strncmp(an, "__", 2) && !strncmp(an + al - 2, "__", 2)) {
-        an += 2;
-        al -= 4;
-    }
-    if (cleanup && al == 7 && !strncmp(an, "cleanup", 7))
-        return true;
-    for (q = 0; q < sizeof ex / sizeof *ex; q++)
-        if (strlen(ex[q]) == al && !strncmp(an, ex[q], al))
-            return true;
-    return false;
+    const AttrDesc *d = attr_lookup_n(an, al);
+    return d && ((cleanup && d->id == AT_CLEANUP) || (d->flags & AF_EXPR_ARGS));
 }
-
 
 void e_ident(Checker *c, uint32_t i)
 {
