@@ -197,7 +197,7 @@ typedef struct AttrState {
     uint32_t pset;           /* the previous declaration's attribute names */
     bool hasprev;
     SrcLoc prevloc;
-    char cur[24][24];        /* the attributes this declaration kept so far */
+    AttrId cur[24];          /* the attributes this declaration kept so far */
     unsigned ncur;
     bool ign_packed, ign_aligned;
     bool copy_set;           /* the attribute being checked comes from copy */
@@ -208,9 +208,9 @@ typedef struct AttrState {
 void acc_chain_implied(Checker *c, uint32_t ref);
 void acc_implied(Checker *c, uint32_t ref, bool redecl, bool def);
 void acc_start(uint32_t name, SrcLoc loc);
-void aset_add(Checker *c, uint32_t *set, const char *name,
+void aset_add(Checker *c, uint32_t *set, AttrId name,
     const char *arg);
-void aset_drop(Checker *c, uint32_t set, const char *name);
+void aset_drop(Checker *c, uint32_t set, AttrId name);
 void aset_keep_max_aligned(Checker *c, uint32_t set);
 TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a, SrcLoc at);
 void attr_collect(Checker *c, uint32_t attr, Attrs *a);

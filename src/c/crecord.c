@@ -1356,7 +1356,7 @@ void cdecl_member_visit(Checker *c, uint32_t i)
     fi.dmsg = a.dep_msg;
     attrs_names(c, sp.node, &fi.aset);
     attrs_names(c, i, &fi.aset);
-    if (!fi.packed && cdecl_aset_has(c, fi.aset, "packed", NULL))
+    if (!fi.packed && cdecl_aset_has(c, fi.aset, AT_PACKED, NULL))
         fi.packed = true;       /* copied from another declaration */
     push_member(c, &fi);
 }

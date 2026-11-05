@@ -68,7 +68,7 @@ enum {
 typedef struct AName {
     uint32_t set;
     uint32_t prev;           /* the set's previous entry, 1-based; 0: none */
-    char name[32];           /* without the __ affixes */
+    uint16_t id;             /* AttrId: AT_NONE once dropped, AT_UNKNOWN for a name with no row */
     char arg[24];            /* canonical arguments (cdecl_attr_args) */
 } AName;
 
@@ -356,7 +356,7 @@ struct Checker {
     VEC(uint32_t) ahead;     /* per set: its newest entry in anames, 1-based */
     uint32_t nasets;
     VEC(uint32_t) tdas;      /* (typedef type, attribute set) pairs */
-    char ign[8][24];         /* attributes the declaration being checked lost to an exclusion */
+    AttrId ign[8];           /* attributes the declaration being checked lost to an exclusion */
     unsigned nign;
     uint32_t last_ualign;    /* the declaration's user alignment, for the symbol */
     BindVec log;
@@ -814,9 +814,9 @@ TypeId type_of_typename(Checker *c, uint32_t i);   /* a TYPE_NAME node */
 SrcLoc cdecl_line_start_loc(Checker *c, uint32_t tok);
 void cdecl_alloc_conflict(Checker *c, SrcLoc loc, const char *name,
                           const char *now, const char *was);
-bool cdecl_aset_first_arg(const Checker *c, uint32_t set, const char *name,
+bool cdecl_aset_first_arg(const Checker *c, uint32_t set, AttrId name,
                           char *out, size_t n);
-bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name,
+bool cdecl_aset_has(const Checker *c, uint32_t set, AttrId name,
                     const char *arg);
 void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set);
 uint32_t cdecl_typedef_aset(const Checker *c, TypeId t);

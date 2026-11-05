@@ -424,7 +424,7 @@ static bool sso_alloc_call(Checker *c, uint32_t e)
                 return true;
     n = cexpr_asets(c, fn, false, sets);
     for (k = 0; k < n; k++)
-        if (cdecl_aset_has(c, sets[k], "malloc", NULL))
+        if (cdecl_aset_has(c, sets[k], AT_MALLOC, NULL))
             return true;
     return false;
 }

@@ -262,8 +262,8 @@ static void init_list(Gx *g, uint32_t n, int32_t base);
 static bool sym_emittable(Gx *g, uint32_t sym)
 {
     const CSym *s = csym(g->c, sym);
-    if (s->aset && (cdecl_aset_has(g->c, s->aset, "alias", NULL) ||
-                    cdecl_aset_has(g->c, s->aset, "ifunc", NULL))) {
+    if (s->aset && (cdecl_aset_has(g->c, s->aset, AT_ALIAS, NULL) ||
+                    cdecl_aset_has(g->c, s->aset, AT_IFUNC, NULL))) {
         unsup(g, "reference to the alias or ifunc symbol %s", cident(g->c, s->name));
         return false;
     }

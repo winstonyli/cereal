@@ -1951,7 +1951,7 @@ void sizeof_memaccess(Checker *c, const uint32_t *kv, uint32_t nk,
         if ((m->flags & MA_COPY) && is_expr && is_array(c, ty) &&
             !array_known(c, c->ty[strip_paren(c, kv[1 + m->dst])]) &&
             !(sref != SYM_NONE &&
-              cdecl_aset_has(c, csym(c, sref)->aset, "nonstring", NULL)) &&
+              cdecl_aset_has(c, csym(c, sref)->aset, AT_NONSTRING, NULL)) &&
             memacc_same(c, kv[1 + m->src], a) &&
             !memacc_same(c, kv[1 + m->dst], kv[1 + m->src]))
             cwarn(c, loc, DW_SIZEOF_POINTER_MEMACCESS, "argument to 'sizeof' "

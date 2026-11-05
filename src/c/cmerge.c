@@ -488,7 +488,7 @@ static bool given_noinline(Checker *c, uint32_t sn, uint32_t idecl)
         r = r || (sn != NO_NODE && attrs_item_named(c, sn, names[k])) ||
             attrs_item_named(c, idecl, names[k]);
     for (k = 0; k < c->nign; k++)
-        if (!strcmp(c->ign[k], "noinline"))
+        if (c->ign[k] == AT_NOINLINE)
             r = false;
     return r;
 }
@@ -648,7 +648,7 @@ static void aset_opt_args(const Checker *c, uint32_t set, char *acc, size_t n)
     if (!set)
         return;
     for (k = c->ahead.data[set - 1]; k && m < 32; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, "optimize"))
+        if (c->anames.data[k - 1].id == AT_OPTIMIZE)
             ord[m++] = k;
     while (m--)
         opt_acc(acc, n, c->anames.data[ord[m] - 1].arg);
@@ -682,7 +682,7 @@ void cdecl_inline_follows(Checker *c, const CSym *nw, uint32_t ltok,
     o = csym(c, ref);
     nw_noinline = given_noinline(c, sn, idecl);
     if ((nw->flags & CSF_INLINE) && !(o->flags & CSF_INLINE) &&
-        cdecl_aset_has(c, o->aset, "noinline", NULL))
+        cdecl_aset_has(c, o->aset, AT_NOINLINE, NULL))
         d = cwarn_d(c, DL_WARNING, iloc(c, ltok), DW_ATTRIBUTES, "inline declaration "
                     "of '%s' follows declaration with attribute 'noinline'",
                     sname(c, nw));

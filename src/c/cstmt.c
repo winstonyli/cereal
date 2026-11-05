@@ -1656,7 +1656,7 @@ void cstmt_scope_end_post(Checker *c, uint32_t i)
             type_base(TT, fty) != ERRT && fs->linkage == LK_INTERNAL &&
             !implicit_int && !is_main_name(c, fs) &&
             !(fs->flags & CSF_NORETURN) &&
-            !cdecl_aset_has(c, fs->aset, "naked", NULL))
+            !cdecl_aset_has(c, fs->aset, AT_NAKED, NULL))
             cwarn(c, cinput_loc(c, c->nodes[i].tok), DW_RETURN_TYPE, "no return statement in "
                   "function returning non-void");
     }

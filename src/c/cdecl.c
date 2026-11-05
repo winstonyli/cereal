@@ -2624,7 +2624,7 @@ static void declared_visit(Checker *c, uint32_t i)
     {   /* merge_decls: a different explicit visibility is not applied */
         char was[32], now[32];
         uint32_t tmp = 0;
-        bool had = cdecl_aset_first_arg(c, csym(c, ref)->aset, "visibility",
+        bool had = cdecl_aset_first_arg(c, csym(c, ref)->aset, AT_VISIBILITY,
                                         was, sizeof was);
         if (had) {
             attrs_names(c, sn, &tmp);
@@ -2632,7 +2632,7 @@ static void declared_visit(Checker *c, uint32_t i)
         }
         if (had && (csym(c, ref)->kind == CS_OBJ ||
                     csym(c, ref)->kind == CS_FUNC) &&
-            cdecl_aset_first_arg(c, tmp, "visibility", now, sizeof now) &&
+            cdecl_aset_first_arg(c, tmp, AT_VISIBILITY, now, sizeof now) &&
             strcmp(was, now)) {
             Diagnostic *vd = cwarn_d(c, DL_WARNING, s.loc, DW_NONE, "redeclaration "
                                      "of '%s' with different visibility (old "
@@ -2647,7 +2647,7 @@ static void declared_visit(Checker *c, uint32_t i)
     if (g.what == GD_FUNC && csym(c, ref)->kind == CS_FUNC)
         acc_chain_implied(c, ref);
     if (a.packed)               /* ignored (attrs_misapplied), so not kept */
-        aset_drop(c, csym(c, ref)->aset, "packed");
+        aset_drop(c, csym(c, ref)->aset, AT_PACKED);
     if (csym(c, ref)->kind == CS_TYPEDEF && csym(c, ref)->aset &&
         type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
         uint32_t p[2] = {TYPE_IDX(csym(c, ref)->ty), csym(c, ref)->aset};
@@ -2660,13 +2660,13 @@ static void declared_visit(Checker *c, uint32_t i)
     c->last_ualign = 0;
     c->nign = 0;
     if (sp.is_noreturn)
-        aset_add(c, &csym(c, ref)->aset, "noreturn", "");
+        aset_add(c, &csym(c, ref)->aset, AT_NORETURN, "");
     if (csym(c, ref)->kind == CS_FUNC && csym(c, ref)->linkage == LK_INTERNAL) {
         /* leaf only means something for external functions */
         if (attrs_item_named(c, sn, "leaf") || attrs_item_named(c, idecl, "leaf"))
             cwarn(c, iloc(c, ltok), DW_ATTRIBUTES, "'leaf' attribute has no "
                   "effect on unit local functions");
-        aset_drop(c, csym(c, ref)->aset, "leaf");
+        aset_drop(c, csym(c, ref)->aset, AT_LEAF);
     }
     c->cb[i] = ref + 1;
     c->cv[i] = initialized ? 1 : incomp_init ? 2 : 0;
@@ -3513,7 +3513,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     attrs_names(c, fp.specs, &csym(c, ref)->aset);
     acc_chain_implied(c, ref);
     if (sp.is_noreturn)
-        aset_add(c, &csym(c, ref)->aset, "noreturn", "");
+        aset_add(c, &csym(c, ref)->aset, AT_NORETURN, "");
     dump_decl(c, csym(c, ref));
     c->func_sym = ref;
     c->kr_decls = (csym(c, ref)->flags & CSF_KR_DEF) != 0;
@@ -4179,7 +4179,7 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
     for (k = c->gsyms.len; k-- > 0;) {
         const CSym *s = &c->gsyms.data[k];
         if (s->kind == CS_FUNC && (s->flags & CSF_INLINE) && sym_public(s) &&
-            !cdecl_aset_has(c, s->aset, "gnu_inline", NULL) &&
+            !cdecl_aset_has(c, s->aset, AT_GNU_INLINE, NULL) &&
             !sym_defined(s) && s->name)
             cpedwarn(c, s->loc, DW_NONE, "inline function '%s' declared but never "
                      "defined", sname(c, s));
@@ -4192,7 +4192,7 @@ void cdecl_finish_object(Checker *c, uint32_t ref)
                    "implicit initialization", sname(c, s));
         if (s->kind == CS_FUNC && !sym_public(s) && !sym_defined(s) &&
             (s->flags & CSF_DECL_EXTERNAL) && s->name &&
-            !cdecl_aset_has(c, s->aset, "weakref", NULL)) {
+            !cdecl_aset_has(c, s->aset, AT_WEAKREF, NULL)) {
             if (s->flags & CSF_CUSED)
                 cpedwarn(c, s->loc, DW_NONE, "'%s' used but never defined",
                          sname(c, s));

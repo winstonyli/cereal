@@ -375,7 +375,7 @@ static void attr_malloc_dealloc(Checker *c, uint32_t arg, uint32_t pos,
     dr = lookup_ord(c, cnode_ident(c, arg));
     if (dr != SYM_NONE && (csym(c, dr)->flags & CSF_INLINE) &&
         (c->opt.optimize ||
-         cdecl_aset_has(c, csym(c, dr)->aset, "always_inline", NULL)))
+         cdecl_aset_has(c, csym(c, dr)->aset, AT_ALWAYS_INLINE, NULL)))
         cwarn(c, loc, DW_ATTRIBUTES, "'malloc (%s)' attribute ignored with "
               "deallocation functions declared 'inline'",
               cident(c, cnode_ident(c, arg)));
@@ -1705,7 +1705,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                     uint32_t ref = ntag(c, e) == N_IDENT ?
                                    lookup_ord(c, cnode_ident(c, e)) : SYM_NONE;
                     if (ref != SYM_NONE && csym(c, ref)->kind == CS_OBJ &&
-                        cdecl_aset_has(c, csym(c, ref)->aset, "tls_model",
+                        cdecl_aset_has(c, csym(c, ref)->aset, AT_TLS_MODEL,
                                        NULL))
                         cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'tls_model' "
                               "attribute ignored because '%s' does not have "
@@ -1839,14 +1839,14 @@ void cdecl_alloc_conflict(Checker *c, SrcLoc loc, const char *name,
 }
 
 /* The arguments of the oldest attribute `name` in the set (false: none). */
-bool cdecl_aset_first_arg(const Checker *c, uint32_t set, const char *name,
+bool cdecl_aset_first_arg(const Checker *c, uint32_t set, AttrId name,
                           char *out, size_t n)
 {
     uint32_t k, first = 0;
     if (!set)
         return false;
     for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, name))
+        if (c->anames.data[k - 1].id == name)
             first = k;
     if (!first)
         return false;
@@ -1856,7 +1856,7 @@ bool cdecl_aset_first_arg(const Checker *c, uint32_t set, const char *name,
 
 /* A redeclaration whose alloc_size / alloc_align differs from the previous
  * declaration's is ignored, with a warning. */
-static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc)
+static void alloc_redecl(Checker *c, uint32_t item, AttrId name, SrcLoc loc)
 {
     uint32_t ref = lookup_ord(c, alloc_name), set, k, first;
     char now[96], was[96];
@@ -1868,14 +1868,14 @@ static void alloc_redecl(Checker *c, uint32_t item, const char *name, SrcLoc loc
         return;
     cdecl_attr_args(c, item, now, sizeof now);
     for (k = c->ahead.data[set - 1], first = 0; k; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, name))
+        if (c->anames.data[k - 1].id == name)
             first = k;          /* the oldest: the ignored ones come later */
     if (!first || !strcmp(c->anames.data[first - 1].arg, now))
         return;
     snprintf(was, sizeof was, "%s", c->anames.data[first - 1].arg);
-    cdecl_alloc_conflict(c, loc, name, now, was);
+    cdecl_alloc_conflict(c, loc, attr_name(name), now, was);
     if (c->nign < 8)
-        snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
+        c->ign[c->nign++] = name;
 }
 
 /* c-attribs.cc append_access_attrs: the access attributes a function has
@@ -2069,7 +2069,7 @@ static void acc_replay_ref(Checker *c, uint32_t ref)
         return;
     for (k = c->ahead.data[csym(c, ref)->aset - 1]; k && n < 64;
          k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, "access"))
+        if (c->anames.data[k - 1].id == AT_ACCESS)
             idx[n++] = k;
     {
         CImplied oi[16];
@@ -2100,7 +2100,7 @@ void acc_implied(Checker *c, uint32_t ref, bool redecl, bool def)
 {
     CImplied oi[16];
     unsigned on, j, m;
-    if (!imp_n && !cdecl_aset_has(c, csym(c, ref)->aset, "access", NULL))
+    if (!imp_n && !cdecl_aset_has(c, csym(c, ref)->aset, AT_ACCESS, NULL))
         return;
     on = cparm_implied(c, csym(c, ref)->parms, oi, 16);
     alloc_name = imp_name;
@@ -2139,7 +2139,7 @@ void acc_chain_implied(Checker *c, uint32_t ref)
         char buf[48];
         snprintf(buf, sizeof buf, "~read_write,%u,%u", imp_l[j].ptr,
                  imp_l[j].size);
-        aset_add(c, &csym(c, ref)->aset, "access", buf);
+        aset_add(c, &csym(c, ref)->aset, AT_ACCESS, buf);
     }
     imp_n = 0;
 }
@@ -2217,16 +2217,16 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 uint32_t pr = alloc_name ? lookup_ord(c, alloc_name) : SYM_NONE;
                 bool excl = false;      /* dropped by an earlier declaration's */
                 if (pr != SYM_NONE && csym(c, pr)->kind == CS_FUNC)
-                    excl = cdecl_aset_has(c, csym(c, pr)->aset, "noreturn", NULL) ||
-                            cdecl_aset_has(c, csym(c, pr)->aset, "const", NULL) ||
-                            cdecl_aset_has(c, csym(c, pr)->aset, "pure", NULL);
+                    excl = cdecl_aset_has(c, csym(c, pr)->aset, AT_NORETURN, NULL) ||
+                            cdecl_aset_has(c, csym(c, pr)->aset, AT_CONST, NULL) ||
+                            cdecl_aset_has(c, csym(c, pr)->aset, AT_PURE, NULL);
                 if (!excl && type_ckind(TT, rt) != TY_PTR &&
                     type_ckind(TT, rt) != TY_ERROR) {
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'malloc' attribute "
                           "ignored on functions returning %s; valid only for "
                           "pointer return types", type_q(TT, rt));
                     if (c->nign < 8)
-                        snprintf(c->ign[c->nign++], sizeof c->ign[0], "malloc");
+                        c->ign[c->nign++] = AT_MALLOC;
                 }
                 continue;
             }
@@ -2253,7 +2253,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES,
                       "'warn_unused_result' attribute ignored");
                 if (c->nign < 8)
-                    snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s", name);
+                    c->ign[c->nign++] = AT_WARN_UNUSED_RESULT;
                 continue;
             }
             if (!strcmp(name, "assume_aligned")) {
@@ -2267,7 +2267,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 type_ckind(TT, type_base(TT, fty)) != TY_PTR &&
                 type_ckind(TT, fty) == TY_FUNC) {
                 /* the copied alloc_align / alloc_size meet the same check */
-                static const char *const an2[] = {"alloc_align", "alloc_size"};
+                static const AttrId an2[] = {AT_ALLOC_ALIGN, AT_ALLOC_SIZE};
                 uint32_t s3[3], ns, m, w;
                 kids_get(c, it.p[q], &ak);
                 ns = ak.n == 1 ? cexpr_asets(c, ak.p[0], true, s3) : 0;
@@ -2284,7 +2284,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                         if (cdecl_aset_has(c, s3[m], an2[w], NULL)) {
                             cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' "
                                   "attribute ignored on a function returning "
-                                  "%s", an2[w],
+                                  "%s", attr_name(an2[w]),
                                   type_q(TT, type_base(TT, fty)));
                             break;
                         }
@@ -2301,15 +2301,14 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                     cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute ignored on a "
                           "function returning %s", name, type_q(TT, rt));
                     if (c->nign < 8)
-                        snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s",
-                                 name);
+                        c->ign[c->nign++] = align ? AT_ALLOC_ALIGN : AT_ALLOC_SIZE;
                 } else {
                     for (i = 0; i < ak.n && ok; i++)
                         ok = positional_arg(c, name, ak.p[i],
                                             ak.n > 1 ? (int)i + 1 : 0, fty, loc,
                                             PA_INT, NULL);
                     if (ok && alloc_name && !alloc_via_ptr)
-                        alloc_redecl(c, it.p[q], name, loc);
+                        alloc_redecl(c, it.p[q], align ? AT_ALLOC_ALIGN : AT_ALLOC_SIZE, loc);
                 }
             }
             kids_free(&ak);
@@ -2326,9 +2325,9 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
 /* Whether the attribute `name` written with arguments have equals the query
  * want.  nonnull without arguments covers every parameter; nonnull(N,...)
  * and alloc_size(N,M) are lists any element of which is found. */
-static bool attr_arg_eq(const char *name, const char *have, const char *want)
+static bool attr_arg_eq(AttrId name, const char *have, const char *want)
 {
-    if ((!strcmp(name, "nonnull") || !strcmp(name, "alloc_size")) && *want) {
+    if ((name == AT_NONNULL || name == AT_ALLOC_SIZE) && *want) {
         size_t n = strlen(want);
         const char *p;
         if (!*have)
@@ -2343,14 +2342,14 @@ static bool attr_arg_eq(const char *name, const char *have, const char *want)
 
 /* Whether the set has the attribute name; with arg (not NULL) one whose
  * arguments are those. */
-bool cdecl_aset_has(const Checker *c, uint32_t set, const char *name,
+bool cdecl_aset_has(const Checker *c, uint32_t set, AttrId name,
                     const char *arg)
 {
     size_t k;
     if (!set)
         return false;
     for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, name) &&
+        if (c->anames.data[k - 1].id == name &&
             (!arg || attr_arg_eq(name, c->anames.data[k - 1].arg, arg)))
             return true;
     return false;
@@ -2401,12 +2400,11 @@ void cdecl_attr_name(const char *s, char *out, size_t n)
     attr_norm(s, out, n);
 }
 
-void aset_add(Checker *c, uint32_t *set, const char *name,
-                     const char *arg)
+void aset_add(Checker *c, uint32_t *set, AttrId name, const char *arg)
 {
     AName n;
     for (unsigned k = 0; k < c->nign; k++)
-        if (!strcmp(c->ign[k], name))
+        if (c->ign[k] == name)
             return;             /* dropped by an exclusion */
     if (cdecl_aset_has(c, *set, name, arg))
         return;
@@ -2417,25 +2415,25 @@ void aset_add(Checker *c, uint32_t *set, const char *name,
     }
     n.set = *set;
     n.prev = c->ahead.data[*set - 1];
-    snprintf(n.name, sizeof n.name, "%s", name);
+    n.id = (uint16_t)name;
     snprintf(n.arg, sizeof n.arg, "%s", arg);
     vec_push(&c->anames, n);
     c->ahead.data[*set - 1] = (uint32_t)c->anames.len;
 }
 
 /* handle_copy_attribute: what is not copied. */
-static bool copy_excluded(const char *n)
+static bool copy_excluded(AttrId id)
 {
-    const AttrDesc *d = attr_lookup(n);
+    const AttrDesc *d = attr_by_id(id);
     return d && (d->flags & AF_COPY_EXCL);
 }
 
-void aset_drop(Checker *c, uint32_t set, const char *name)
+void aset_drop(Checker *c, uint32_t set, AttrId name)
 {
     size_t k;
     for (k = set ? c->ahead.data[set - 1] : 0; k; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, name))
-            c->anames.data[k - 1].name[0] = '';
+        if (c->anames.data[k - 1].id == name)
+            c->anames.data[k - 1].id = AT_NONE;
 }
 
 /* A typedef keeps only its largest aligned attribute. */
@@ -2444,14 +2442,14 @@ void aset_keep_max_aligned(Checker *c, uint32_t set)
     size_t k;
     long long best = 0;
     for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, "aligned") &&
+        if (c->anames.data[k - 1].id == AT_ALIGNED &&
             atoll(c->anames.data[k - 1].arg) > best)
             best = atoll(c->anames.data[k - 1].arg);
     for (k = c->ahead.data[set - 1]; k; k = c->anames.data[k - 1].prev)
-        if (!strcmp(c->anames.data[k - 1].name, "aligned") &&
+        if (c->anames.data[k - 1].id == AT_ALIGNED &&
             c->anames.data[k - 1].arg[0] &&
             atoll(c->anames.data[k - 1].arg) < best)
-            c->anames.data[k - 1].name[0] = 0;
+            c->anames.data[k - 1].id = AT_NONE;
 }
 
 static void aset_copy(Checker *c, uint32_t *dst, uint32_t src)
@@ -2461,8 +2459,8 @@ static void aset_copy(Checker *c, uint32_t *dst, uint32_t src)
         return;
     for (k = 0; k < c->anames.len; k++) {
         AName a = c->anames.data[k];
-        if (a.set == src && !copy_excluded(a.name))
-            aset_add(c, dst, a.name, a.arg);
+        if (a.set == src && !copy_excluded((AttrId)a.id))
+            aset_add(c, dst, (AttrId)a.id, a.arg);
     }
 }
 
@@ -2474,10 +2472,12 @@ void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set)
     kids_get(c, attr, &it);
     for (q = 0; q < it.n; q++) {
         char an[32];
+        AttrId id;
         if (ntag(c, it.p[q]) != N_ATTR_ITEM)
             continue;
         attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
-        if (!strcmp(an, "copy")) {
+        id = attr_id_of(an);
+        if (id == AT_COPY) {
             Kids ak;
             kids_get(c, it.p[q], &ak);
             if (ak.n == 1) {
@@ -2489,7 +2489,7 @@ void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set)
         } else {
             char args[24];
             cdecl_attr_args(c, it.p[q], args, sizeof args);
-            aset_add(c, set, an, args);
+            aset_add(c, set, id, args);
         }
     }
     kids_free(&it);
@@ -2559,53 +2559,53 @@ void attrs_names_ptrs(Checker *c, uint32_t h, uint32_t *set)
  * each attribute with the ones it may not be combined with.  fn_only: the
  * exclusion does not apply to variables and types. */
 static const struct AttrExcl {
-    const char *n, *ex[8];
+    AttrId n, ex[8];
     bool fn_only;
 } attr_excl_tab[] = {
-    {"aligned", {"packed"}, true}, {"packed", {"aligned"}, true},
-    {"cold", {"cold", "hot"}, false}, {"hot", {"cold", "hot"}, false},
-    {"common", {"common", "nocommon"}, false},
-    {"nocommon", {"common", "nocommon"}, false},
-    {"always_inline", {"noinline", "noipa"}, false},
-    {"gnu_inline", {"noinline", "noipa"}, false},
-    {"noinline", {"always_inline", "gnu_inline"}, false},
-    {"noipa", {"always_inline", "gnu_inline"}, false},
-    {"noreturn", {"alloc_align", "alloc_size", "const", "malloc", "pure",
-                  "returns_twice", "warn_unused_result"}, false},
-    {"warn_unused_result", {"noreturn", "warn_unused_result"}, false},
-    {"returns_twice", {"noreturn"}, false},
-    {"alloc_align", {"const", "noreturn", "pure"}, false},
-    {"alloc_size", {"const", "noreturn", "pure"}, false},
-    {"malloc", {"const", "noreturn", "pure"}, false},
-    {"const", {"const", "alloc_align", "alloc_size", "malloc", "noreturn",
-               "pure"}, false},
-    {"pure", {"const", "alloc_align", "alloc_size", "malloc", "noreturn",
-              "pure"}, false},
-    {"stack_protect", {"stack_protect", "no_stack_protector"}, true},
-    {"no_stack_protector", {"stack_protect", "no_stack_protector"}, true},
+    {AT_ALIGNED, {AT_PACKED}, true}, {AT_PACKED, {AT_ALIGNED}, true},
+    {AT_COLD, {AT_COLD, AT_HOT}, false}, {AT_HOT, {AT_COLD, AT_HOT}, false},
+    {AT_COMMON, {AT_COMMON, AT_NOCOMMON}, false},
+    {AT_NOCOMMON, {AT_COMMON, AT_NOCOMMON}, false},
+    {AT_ALWAYS_INLINE, {AT_NOINLINE, AT_NOIPA}, false},
+    {AT_GNU_INLINE, {AT_NOINLINE, AT_NOIPA}, false},
+    {AT_NOINLINE, {AT_ALWAYS_INLINE, AT_GNU_INLINE}, false},
+    {AT_NOIPA, {AT_ALWAYS_INLINE, AT_GNU_INLINE}, false},
+    {AT_NORETURN, {AT_ALLOC_ALIGN, AT_ALLOC_SIZE, AT_CONST, AT_MALLOC, AT_PURE,
+                  AT_RETURNS_TWICE, AT_WARN_UNUSED_RESULT}, false},
+    {AT_WARN_UNUSED_RESULT, {AT_NORETURN, AT_WARN_UNUSED_RESULT}, false},
+    {AT_RETURNS_TWICE, {AT_NORETURN}, false},
+    {AT_ALLOC_ALIGN, {AT_CONST, AT_NORETURN, AT_PURE}, false},
+    {AT_ALLOC_SIZE, {AT_CONST, AT_NORETURN, AT_PURE}, false},
+    {AT_MALLOC, {AT_CONST, AT_NORETURN, AT_PURE}, false},
+    {AT_CONST, {AT_CONST, AT_ALLOC_ALIGN, AT_ALLOC_SIZE, AT_MALLOC, AT_NORETURN,
+               AT_PURE}, false},
+    {AT_PURE, {AT_CONST, AT_ALLOC_ALIGN, AT_ALLOC_SIZE, AT_MALLOC, AT_NORETURN,
+              AT_PURE}, false},
+    {AT_STACK_PROTECT, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, true},
+    {AT_NO_STACK_PROTECTOR, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, true},
 };
 
 /* True when attribute an conflicts with one already on this declaration or
  * on the previous one (it is then ignored, with a warning). */
-static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
+static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
                               uint32_t kind, AttrState *st)
 {
     size_t i, e;
     unsigned k;
     for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
         const struct AttrExcl *x = &attr_excl_tab[i];
-        if (strcmp(x->n, an) || (x->fn_only && kind != CS_FUNC))
+        if (x->n != an || (x->fn_only && kind != CS_FUNC))
             continue;
         for (e = 0; e < 8 && x->ex[e]; e++) {
-            const char *o = x->ex[e];
+            AttrId o = x->ex[e];
             bool prev = false, hit = false;
-            if (!strcmp(o, an))
+            if (o == an)
                 continue;
-            if ((!strcmp(an, "pure") || !strcmp(an, "const")) &&
-                (!strcmp(o, "pure") || !strcmp(o, "const")))
+            if ((an == AT_PURE || an == AT_CONST) &&
+                (o == AT_PURE || o == AT_CONST))
                 continue;               /* attr_excl */
             for (k = 0; k < st->ncur && !hit; k++)
-                hit = !strcmp(st->cur[k], o);
+                hit = st->cur[k] == o;
             if (!hit && st->hasprev && cdecl_aset_has(c, st->pset, o, NULL))
                 hit = prev = true;
             if (!hit)
@@ -2613,42 +2613,41 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, const char *an,
             {
                 /* noipa acts as noinline; one met on this declaration after
                  * an inline attribute makes gcc drop the inline attribute */
-                bool noipa = !strcmp(an, "noipa"), swap = noipa && !prev;
-                const char *ia = swap ? o : noipa ? "noinline" : an;
-                const char *io = swap || !strcmp(o, "noipa") ? "noinline" : o;
+                bool noipa = an == AT_NOIPA, swap = noipa && !prev;
+                AttrId ia = swap ? o : noipa ? AT_NOINLINE : an;
+                AttrId io = swap || o == AT_NOIPA ? AT_NOINLINE : o;
                 Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok),
                                         DW_ATTRIBUTES, "ignoring attribute '%s' "
                                         "because it conflicts with attribute "
-                                        "'%s'", ia, io);
+                                        "'%s'", attr_name(ia), attr_name(io));
                 if (d && prev)
                     cnote(c, d, st->prevloc, "previous declaration here");
                 else if (d && st->copy_set)
                     cnote(c, d, st->copy_loc, "previous declaration here");
                 /* gcc 13 says it twice when noreturn meets an earlier
                  * alloc_align or alloc_size (Wattributes-6.c) */
-                if (prev && !strcmp(an, "noreturn") &&
-                    (!strcmp(o, "alloc_align") || !strcmp(o, "alloc_size"))) {
+                if (prev && an == AT_NORETURN &&
+                    (o == AT_ALLOC_ALIGN || o == AT_ALLOC_SIZE)) {
                     d = cwarn_d(c, DL_WARNING, iloc(c, tok), DW_ATTRIBUTES,
                                 "ignoring attribute '%s' because it conflicts "
-                                "with attribute '%s'", an, o);
+                                "with attribute '%s'", attr_name(an), attr_name(o));
                     if (d)
                         cnote(c, d, st->prevloc, "previous declaration here");
                 }
             }
             if (c->nign < 8)
-                snprintf(c->ign[c->nign++], sizeof c->ign[0], "%.23s",
-                         !strcmp(an, "noipa") && !prev ? o
-                         : !strcmp(an, "noipa") ? "noinline" : an);
-            if (!strcmp(an, "packed"))
+                c->ign[c->nign++] = an == AT_NOIPA && !prev ? o
+                                    : an == AT_NOIPA ? AT_NOINLINE : an;
+            if (an == AT_PACKED)
                 st->ign_packed = true;
-            if (!strcmp(an, "aligned"))
+            if (an == AT_ALIGNED)
                 st->ign_aligned = true;
             return true;
         }
         break;
     }
     if (st->ncur < 24)
-        snprintf(st->cur[st->ncur++], sizeof st->cur[0], "%.23s", an);
+        st->cur[st->ncur++] = an;
     return false;
 }
 
@@ -2712,17 +2711,19 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
         kids_get(c, k.p[j], &it);
         for (q = 0; q < it.n; q++) {
             char an[48];
+            AttrId id;
             Kids ak;
             if (ntag(c, it.p[q]) != N_ATTR_ITEM)
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
+            id = attr_id_of(an);
             if (!st->inited) {
                 attrs_state_init(c, st, kind, name);
                 c->nign = 0;
             }
-            if (attr_excl_generic(c, tok, an, kind, st))
+            if (attr_excl_generic(c, tok, id, kind, st))
                 continue;
-            if (kind == CS_FUNC && !strcmp(an, "aligned")) {
+            if (kind == CS_FUNC && id == AT_ALIGNED) {
                 Kids aa;
                 uint32_t na = 0;
                 kids_get(c, it.p[q], &aa);
@@ -2748,11 +2749,11 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                 if (na && na > st->calign)
                     st->calign = na;
             }
-            if (kind == CS_FUNC && (!strcmp(an, "pure") || !strcmp(an, "const"))) {
-                attr_excl(c, tok, an[0] == 'p', st, false, 0);
+            if (kind == CS_FUNC && (id == AT_PURE || id == AT_CONST)) {
+                attr_excl(c, tok, id == AT_PURE, st, false, 0);
                 continue;
             }
-            if (strcmp(an, "copy"))
+            if (id != AT_COPY)
                 continue;
             kids_get(c, it.p[q], &ak);
             if (ak.n == 1) {
@@ -2812,7 +2813,7 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                     st->nonnull |= r->nonnull;
                 } else if (kind == CS_OBJ) {
                     /* the referenced variable's common/nocommon is copied */
-                    static const char *const cn[] = {"common", "nocommon"};
+                    static const AttrId cn[] = {AT_COMMON, AT_NOCOMMON};
                     unsigned m;
                     for (m = 0; m < 2; m++)
                         if (cdecl_aset_has(c, r->aset, cn[m], NULL)) {

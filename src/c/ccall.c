@@ -1622,8 +1622,8 @@ static bool call_pure(Checker *c, uint32_t i, uint32_t callee)
         if (csym(c, ref)->kind != CS_FUNC)
             return false;
         pure = csym(c, ref)->aset &&
-               (cdecl_aset_has(c, csym(c, ref)->aset, "const", NULL) ||
-               cdecl_aset_has(c, csym(c, ref)->aset, "pure", NULL));
+               (cdecl_aset_has(c, csym(c, ref)->aset, AT_CONST, NULL) ||
+               cdecl_aset_has(c, csym(c, ref)->aset, AT_PURE, NULL));
     }
     if (!pure) {
         if (ref == SYM_NONE && strncmp(name, "__builtin_", 10))

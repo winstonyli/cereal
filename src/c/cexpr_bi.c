@@ -448,7 +448,7 @@ static unsigned typedef_asets(Checker *c, TypeId t, uint32_t *out, unsigned n,
             uint32_t s = cdecl_typedef_aset(c, t);
             if (s && n < max) {
                 out[n++] = s;
-                al |= cdecl_aset_has(c, s, "aligned", NULL);
+                al |= cdecl_aset_has(c, s, AT_ALIGNED, NULL);
             }
             t = type_ent(TT, t)->base;
         }
@@ -503,6 +503,7 @@ void e_has_attr(Checker *c, uint32_t i)
 {
     uint32_t k[2], sets[3], n = 0, j;
     char an[32], args[24];
+    AttrId aid;
     bool has = false, nonnull = false;
     if (nkids(c, i, k, 2) < 2 || ntag(c, k[1]) != N_ATTR_ITEM) {
         set_err(c, i);
@@ -526,6 +527,7 @@ void e_has_attr(Checker *c, uint32_t i)
             return;
         }
     }
+    aid = attr_id_of(an);
     if (!strcmp(an, "mode")) {
         cwarn(c, ctok_loc(c, c->nodes[k[1]].tok), DW_ATTRIBUTES, "'mode' attribute "
               "not supported in '__builtin_has_attribute'");
@@ -612,7 +614,7 @@ void e_has_attr(Checker *c, uint32_t i)
                       "ignored on a function returning %s", an, type_q(TT, rt));
             else
                 for (j = 0; j < n; j++)
-                    if (cdecl_aset_first_arg(c, sets[j], an, was, sizeof was)) {
+                    if (cdecl_aset_first_arg(c, sets[j], aid, was, sizeof was)) {
                         if (strcmp(was, args))
                             cdecl_alloc_conflict(c, cdecl_line_start_loc(c, c->nodes[i].tok), an, args, was);
                         break;
@@ -621,7 +623,7 @@ void e_has_attr(Checker *c, uint32_t i)
     }
     for (j = 0; j < n; j++)
         {
-            has |= cdecl_aset_has(c, sets[j], an, args[0] || nonnull ? args : NULL);
+            has |= cdecl_aset_has(c, sets[j], aid, args[0] || nonnull ? args : NULL);
         }
     set_ice(c, i, TYPE_B(INT), has);
 }
