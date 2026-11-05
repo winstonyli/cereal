@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Attribute descriptor table, implementation plan (AR4)
