@@ -272,3 +272,9 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | What | Why parked | Status |
 |---|---|---|
 | cereal applies the built-in's `nonnull`/`pure`/`fmt` attributes to a user-declared plain name that is gnu-only (`gnu = 1`, e.g. `index`) even under `-std=c99`; gcc does not (`index(0, 'a')` warns in cereal, not in gcc). | The attribute columns are read by `bt_attr` ignoring the gnu filter, as the old side tables did, so AR1 kept behaviour identical. Trigger: a corpus file that declares such a name under `-std=c99` and diffs against gcc. Evidence: `src/c/cexpr_name.c` `bt_attr`, `tests/check/bt_nonnull_gnu.c` (checked 2026-11-04). | parked |
+
+## Attribute handler dispatch: per-attribute handler pointers in the descriptor table (docs/CLEANUP_PLAN.md AR4; 2026-11-04)
+
+| What | Why parked | Status |
+|---|---|---|
+| Turn the ~44-test name chain in `attr_collect` and the `attrs_alloc_check` chains into handler pointers held by the AR4 descriptor rows. | By decision (the user's "park n2", 2026-11-04): AR4 first replaces the name tables and hand-synced lists (n1); the handler bodies stay either way and the diagnostics risk is larger. Trigger: the AR4 table has landed and a new attribute needs a branch in the chain. Evidence: `src/c/cattr.c` `attr_collect` (the chain was counted by grep, not read line by line). | parked |
