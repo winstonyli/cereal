@@ -118,7 +118,7 @@ typedef struct CSym {
                               * declaration (gcc then keeps no actual argument
                               * types to check) */
     uint8_t fmtarg;          /* the 'format_arg' attribute's argument number */
-    uint32_t aset;           /* attribute names written or copied: Checker.anames set id */
+    uint32_t aset;           /* attributes written or copied: Checker.anames set id */
     uint32_t ualign;         /* a function's user alignment in bytes (aligned attribute) */
     uint32_t strinit;        /* const char array initialised by a string: Checker.strinits + 1 */
     uint32_t cximg;          /* constexpr aggregate: its bytes, Checker.cximg + 1 */
@@ -352,7 +352,7 @@ struct Checker {
     VEC(uint32_t) ucn_seen;           /* cexpr.c: literal tokens whose escapes were checked */
     VEC(uint32_t) tdvla;              /* cparm.c: (typedef type, pdescs index + 1) pairs */
     VEC(struct CParmDesc *) pdescs;   /* cparm.c: parameter declarations */
-    VEC(AName) anames;       /* attribute names by set (__builtin_has_attribute, copy) */
+    VEC(AName) anames;       /* attribute ids by set (__builtin_has_attribute, copy) */
     VEC(uint32_t) ahead;     /* per set: its newest entry in anames, 1-based */
     uint32_t nasets;
     VEC(uint32_t) tdas;      /* (typedef type, attribute set) pairs */

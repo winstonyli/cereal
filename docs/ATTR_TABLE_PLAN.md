@@ -31,7 +31,7 @@ status: done
 
 ## End-state fit
 
-Home: `src/c/attrs.def`, `src/c/attrs.h`, `attr_lookup`, `attr_lookup_n` in `cattr.c`, guard in `bench/tools/attr_lists.sh`. Replaces the lists named in the spec's table and deletes them task by task; nothing is kept beside the new table. Allowlist: `cattr.c attr_excl_tab` only.
+Home: `src/c/attrs.def`, `src/c/attrs.h`, `attr_lookup`, `attr_lookup_n` in `cattr.c`, guard in `bench/tools/attr_lists.sh`. Replaces the lists named in the spec's table and deletes them task by task; nothing is kept beside the new table. Allowlist: `cattr.c attr_excl_tab` only (removed by AR4 stage 2).
 
 ---
 
@@ -93,7 +93,7 @@ Home: `src/c/attrs.def`, `src/c/attrs.h`, `attr_lookup`, `attr_lookup_n` in `cat
 
 ### Task 6: the guard
 
-**Files:** Create `bench/tools/attr_lists.sh`, `bench/tools/attr_lists.allow` (`cattr.c attr_excl_tab`). Modify `bench/tools/gate.sh` (stage `0attrs`, grep the success line, fail on missing).
+**Files:** Create `bench/tools/attr_lists.sh`, `bench/tools/attr_lists.allow` (`cattr.c attr_excl_tab`, removed by AR4 stage 2). Modify `bench/tools/gate.sh` (stage `0attrs`, grep the success line, fail on missing).
 
 - [ ] **Step 1: Write the script** to the spec's "Guard" rule (sorted-unique check on `attrs.def`; outermost-initialiser scan of `src/c/*.c` and `*.h`; the array name comes from the `NAME[] = {` text, and for `attr_excl_tab` from the `} attr_excl_tab[] = {` line of a multi-line statement; stale-allowlist failure; prints `attr lists: ok`). Note `gate.sh` pipes stage output through `tail`, so the success line, not the exit code, is what the gate checks.
 - [ ] **Step 2: Watch it fail.** Make a scratch worktree of the Task 1 commit, copy in `attrs.def`, `attr_lists.sh` and the allow file, and run it. Expected: eleven hits (the ten lists of the spec plus `attr_excl_tab`). Then break the scratch copy three ways, each must fail: an unsorted `attrs.def` row, a duplicate row, an allowlist entry matching nothing.

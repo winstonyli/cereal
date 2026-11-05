@@ -29,11 +29,10 @@ per attribute makes each such fact exist once.
 - No change to `attr_collect`, `attrs_alloc_check`, `attrs_misapplied`, `attrs_merge`, `struct Attrs` or the
   diagnostics' wording and order. The handler chains stay code (handler dispatch is parked: PARKED.md "Attribute
   handler dispatch").
-- No `AttrId` in `AttrState`, `CSym.aset`, `Checker.anames` or the `ign[]` filter: state keeps name strings (r1);
-  ids there are parked (PARKED.md "Attribute names as ids"). Anti-goal: a second, id-keyed copy of a fact beside
-  the name-keyed state. Ids are therefore never persisted or stored in state; adding a row renumbers the enum.
-- `attr_excl_tab` stays where it is. It is a single copy (no drift) whose entries are compared against the string
-  state, so it moves to ids only with the parked state conversion.
+- No `AttrId` in state was the v1 scope (r1); AR4 stage 2 (docs/ATTR_IDS_DESIGN.md) put ids in `AName`, `AttrState.cur`
+  and `Checker.ign`, in-process only (no digest, summary or index holds them). Anti-goal stays: a second, id-keyed
+  copy of a fact beside the name-keyed state; the `pure`/`cnst` and `Attrs`-flag pairs are stage 3 (PARKED.md).
+- `attr_excl_tab` stayed in v1 as a single copy compared against string state; stage 2 converted it to enumerators.
 
 ## Decisions already made (the user, 2026-11-04)
 
@@ -151,7 +150,7 @@ mirror (`Attrs` flag versus `aset` name, `AttrState` pure/const).
   initialiser (a `= {` ... `};` statement, so a nested row is not counted alone) that holds three or more string
   literals that are all attribute names from `attrs.def`, except entries in `bench/tools/attr_lists.allow`
   (`FILE ARRAY-NAME` per line, as `globals.allow` is `OBJECT SYMBOL`; the script fails when an entry no longer
-  matches a list, so it can only shrink). The allowlist starts with `cattr.c attr_excl_tab`.
+  matches a list, so it can only shrink). The allowlist started with `cattr.c attr_excl_tab` (removed by AR4 stage 2; it is now empty).
 
 It checks array-style lists only: it does not look at `strcmp` OR-chains (`!strcmp(a,"alias") || ...`,
 `cattr.c:638`), which are handler code, and it misses a list built any other way. It catches the way these copies
@@ -167,7 +166,7 @@ how the throwaway comparison is produced, the exact `awk` of the guard.
 
 ## Calls I made (not the user's)
 
-- `attr_excl_tab` and the state stay strings and outside the table.
+- `attr_excl_tab` and the state stayed strings and outside the table in v1 (stage 2 moved both to ids).
 - `AC_E` is a new context bit rather than a separate enumerator table.
 - The new neutral header `src/c/attrs.h`, and `attr_lookup_n` doing the affix stripping for all callers.
 - The guard's detection rule (top-level initialiser, three or more attribute-name literals) and that it ignores
@@ -175,8 +174,8 @@ how the throwaway comparison is produced, the exact `awk` of the guard.
 
 ## Decided at approval (the user, 2026-11-05)
 
-- v1: `attr_excl_tab` stays allowlisted until the parked ids work (PARKED.md "Attribute names as ids"), then it
-  is deleted with that work.
+- v1: `attr_excl_tab` stays allowlisted until the parked ids work, then it
+  is deleted with that work (done by AR4 stage 2).
 - w1: the `format` enumerator fix stays; it matches gcc 15.2 (gcc 13, the version the code comments cite, is not
   installed), and the golden's comment names the version.
 - The spec is approved. Plan: `docs/ATTR_TABLE_PLAN.md`.

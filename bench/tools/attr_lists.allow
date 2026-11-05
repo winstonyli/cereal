@@ -1,2 +1,1 @@
-# FILE ARRAY reason   (docs/ATTR_TABLE_DESIGN.md "Guard"; checked by attr_lists.sh; entries can only be removed)
-cattr.c attr_excl_tab  exclusions compare against the string state; moves with the parked ids work (PARKED.md)
+# FILE ARRAY reason   (docs/ATTR_TABLE_DESIGN.md "Guard"; checked by attr_lists.sh; entries can only be removed; empty since AR4 stage 2)

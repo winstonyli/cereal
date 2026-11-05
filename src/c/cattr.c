@@ -2320,7 +2320,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
 
 /* ---- attribute names ---------------------------------------------------
  * Every attribute written on (or copied to) a symbol, field or record is kept
- * by name, for __builtin_has_attribute and for 'copy'. */
+ * by id (AT_UNKNOWN: a name without a row), for __builtin_has_attribute and for copy. */
 
 /* Whether the attribute `name` written with arguments have equals the query
  * want.  nonnull without arguments covers every parameter; nonnull(N,...)

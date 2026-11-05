@@ -279,11 +279,11 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 |---|---|---|
 | Turn the ~44-test name chain in `attr_collect` and the `attrs_alloc_check` chains into handler pointers held by the AR4 descriptor rows. | By decision (the user's "park n2", 2026-11-04): AR4 first replaces the name tables and hand-synced lists (n1); the handler bodies stay either way and the diagnostics risk is larger. Trigger: the AR4 table has landed and a new attribute needs a branch in the chain. Evidence: `src/c/cattr.c` `attr_collect` (the chain was counted by grep, not read line by line). | parked |
 
-## Attribute names as ids in `AttrState` and `aset` (docs/CLEANUP_PLAN.md AR4; 2026-11-04)
+## `pure`/`cnst` and `Attrs`-flag duplicates in attribute state (AR4 stage 3; docs/CLEANUP_PLAN.md AR4; 2026-11-04)
 
 | What | Why parked | Status |
 |---|---|---|
-| Hold `AttrId` bitsets in `AttrState.cur[]`, `CSym.aset`, `Checker.anames` and the `ign[]` filter instead of name strings, which also removes the pure/const duplicates in `AttrState` and the `Attrs` flag versus `aset` name pairs. | By decision (the user's "park r2", 2026-11-04): AR4 stage 1 (descriptor lookup, name strings kept) lands first; ids in `Checker` and `CSym` state reach many more files. Trigger: AR4 stage 1 has landed and a second hand-synced flag/name pair drifts. Evidence: `src/c/cdecl_int.h` (`AttrState`), `src/c/cattr.c` `aset_add`, `attrs_merge`. | parked |
+| Remove the pure/const duplicates in `AttrState` (`pure`/`cnst`) and the `Attrs` flag versus `aset` entry pairs, now that ids are in `AName`, `cur` and `ign` (AR4 stage 2 landed; docs/ATTR_IDS_DESIGN.md). | By decision: stage 2 kept to the three name stores. Trigger: a second hand-synced flag/entry pair drifts. Evidence: `src/c/cdecl_int.h` (`AttrState`), `src/c/cattr.c` `attr_excl`, `attrs_merge` (2026-11-05). | parked |
 
 ## `e_has_attr` may overflow `sets[3]` (docs/ATTR_IDS_DESIGN.md "Found, not part of this work"; 2026-11-05)
 

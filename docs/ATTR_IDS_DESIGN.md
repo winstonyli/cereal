@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Attribute names as ids in checker state (AR4 stage 2)
