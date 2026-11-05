@@ -167,9 +167,10 @@ how the throwaway comparison is produced, the exact `awk` of the guard.
 - The guard's detection rule (top-level initialiser, three or more attribute-name literals) and that it ignores
   OR-chains.
 
-## Open for the user
+## Decided at approval (the user, 2026-11-05)
 
-- Should `attr_excl_tab` stay allowlisted permanently, or move into the table when ids come (the parked state
-  conversion)? Recommendation: leave the entry; it is deleted with that work.
-- Is the `format` enumerator fix wanted? It matches gcc 15.2; I could not check gcc 13 (the code's "probed"
-  version). Recommendation: yes, and note the gcc version in the golden.
+- v1: `attr_excl_tab` stays allowlisted until the parked ids work (PARKED.md "Attribute names as ids"), then it
+  is deleted with that work.
+- w1: the `format` enumerator fix stays; it matches gcc 15.2 (gcc 13, the version the code comments cite, is not
+  installed), and the golden's comment names the version.
+- The spec is approved. Plan: `docs/ATTR_TABLE_PLAN.md`.
