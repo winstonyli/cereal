@@ -309,11 +309,11 @@ static const AttrDesc attr_tab[] = {
 #include "c/attrs.def"
 };
 #undef ATTR
-_Static_assert(sizeof attr_tab / sizeof *attr_tab == AT_COUNT_, "attrs.def and attr_tab disagree");
+_Static_assert(sizeof attr_tab / sizeof *attr_tab == AT_UNKNOWN - 1, "attrs.def and attr_tab disagree");
 
 const AttrDesc *attr_lookup(const char *name)
 {
-    size_t lo = 0, hi = AT_COUNT_;
+    size_t lo = 0, hi = sizeof attr_tab / sizeof *attr_tab;
     while (lo < hi) {
         size_t mid = (lo + hi) / 2;
         int r = strcmp(name, attr_tab[mid].name);
@@ -336,6 +336,23 @@ const AttrDesc *attr_lookup_n(const char *s, size_t n)
     buf[n] = 0;
     attr_norm(buf, nm, sizeof nm);
     return attr_lookup(nm);
+}
+
+const AttrDesc *attr_by_id(AttrId id)
+{
+    return id > AT_NONE && id < AT_UNKNOWN ? &attr_tab[id - 1] : NULL;
+}
+
+const char *attr_name(AttrId id)
+{
+    const AttrDesc *d = attr_by_id(id);
+    return d ? d->name : id == AT_NONE ? "" : "?";
+}
+
+AttrId attr_id_of(const char *name)
+{
+    const AttrDesc *d = attr_lookup(name);
+    return d ? (AttrId)d->id : AT_UNKNOWN;
 }
 
 

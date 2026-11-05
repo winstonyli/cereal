@@ -19,10 +19,11 @@ enum { AF_KNOWN = 1, AF_STD = 2, AF_FN_ONLY = 4, AF_EXPR_ARGS = 8, AF_COPY_EXCL 
 
 /* AT_* names must stay clear of the atomic-operation enum in cintrin.h (a clash fails to compile). */
 #define ATTR(n, id, fl, cx, lo, hi) id,
-enum AttrId {
+typedef enum AttrId {
+    AT_NONE = 0,                /* no attribute: the tombstone of a dropped entry (not a row) */
 #include "c/attrs.def"
-    AT_COUNT_
-};
+    AT_UNKNOWN                  /* a name with no row (not a row) */
+} AttrId;
 #undef ATTR
 
 typedef struct AttrDesc {
@@ -35,6 +36,11 @@ typedef struct AttrDesc {
 const AttrDesc *attr_lookup(const char *name);
 /* The row for a spelling s[0..n) that may be unterminated and wrapped in __ __ (attr_norm's rule). */
 const AttrDesc *attr_lookup_n(const char *s, size_t n);
+/* The row of an id (NULL for AT_NONE and AT_UNKNOWN), a row's name ("" for AT_NONE, "?" for AT_UNKNOWN: never
+ * printed), and the id of a normalised name (AT_UNKNOWN when it has no row). */
+const AttrDesc *attr_by_id(AttrId id);
+const char *attr_name(AttrId id);
+AttrId attr_id_of(const char *name);
 
 /* Whether gcc 13 registers the normalised name (__has_attribute, __builtin_has_attribute). */
 static inline bool attr_is_known(const char *name)
