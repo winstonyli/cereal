@@ -1,0 +1,12 @@
+attr_spell.c:4:1: warning: 'nonnull' attribute only applies to function types [-Wattributes]
+    4 | int __attribute__((__nonnull__)) v;
+      | ^
+attr_spell.c:6:1: warning: 'const' attribute ignored [-Wattributes]
+    6 | int w __attribute__((__const));
+      | ^
+attr_spell.c:7:1: warning: '__nonnull__' attribute directive ignored [-Wattributes]
+    7 | int x __attribute__((____nonnull____));
+      | ^
+attr_spell.c:11:37: error: unknown attribute '____nonnull____'
+   11 | int t3 = __builtin_has_attribute(g, ____nonnull____);
+      |                                     ^

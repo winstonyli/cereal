@@ -214,7 +214,6 @@ void aset_drop(Checker *c, uint32_t set, const char *name);
 void aset_keep_max_aligned(Checker *c, uint32_t set);
 TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a, SrcLoc at);
 void attr_collect(Checker *c, uint32_t attr, Attrs *a);
-bool attr_known(const char *name);
 void attr_norm(const char *s, char *out, size_t n);
 bool attr_scope_of(Checker *c, uint32_t tok);
 void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,

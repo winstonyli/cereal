@@ -36,4 +36,11 @@ const AttrDesc *attr_lookup(const char *name);
 /* The row for a spelling s[0..n) that may be unterminated and wrapped in __ __ (attr_norm's rule). */
 const AttrDesc *attr_lookup_n(const char *s, size_t n);
 
+/* Whether gcc 13 registers the normalised name (__has_attribute, __builtin_has_attribute). */
+static inline bool attr_is_known(const char *name)
+{
+    const AttrDesc *d = attr_lookup(name);
+    return d && (d->flags & AF_KNOWN);
+}
+
 #endif

@@ -901,7 +901,7 @@ static void enumerator_attrs(Checker *c, uint32_t i, SrcLoc loc, uint32_t name,
                 continue;
             if (!strcmp(an, "unused") && ref != SYM_NONE)
                 csym(c, ref)->flags |= CSF_ATTR_UNUSED;
-            if (!attr_known(an) || !strcmp(an, "maybe_unused") ||
+            if (!attr_is_known(an) || !strcmp(an, "maybe_unused") ||
                 !strcmp(an, "nodiscard")) {
                 cwarn(c, loc, DW_ATTRIBUTES, "'%s' attribute directive "
                       "ignored", an);

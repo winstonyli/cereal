@@ -1,0 +1,21 @@
+attr_std_c99.c:3:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    3 | [[unknown(1 +)]] int a;
+      | ^
+attr_std_c99.c:3:1: warning: 'unknown' attribute ignored [-Wattributes]
+    3 | [[unknown(1 +)]] int a;
+      | ^
+attr_std_c99.c:4:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    4 | [[__deprecated__("m")]] int b;
+      | ^
+attr_std_c99.c:5:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    5 | [[_Noreturn(1)]] void c(void);
+      | ^
+attr_std_c99.c:5:1: warning: '_Noreturn' attribute directive ignored [-Wattributes]
+    5 | [[_Noreturn(1)]] void c(void);
+      | ^
+attr_std_c99.c:6:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    6 | [[nodiscard]] int d(void);
+      | ^
+attr_std_c99.c:7:1: warning: ISO C does not support '[[]]' attributes before C2X [-Wpedantic]
+    7 | [[maybe_unused(2)]] int e;
+      | ^

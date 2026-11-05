@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "lex.h"
+#include "c/attrs.h"
 #include "c/ckw.h"
 #include "c/fixptok.h"
 #include "c/fuzzy.h"
@@ -1312,20 +1313,10 @@ static bool at_col0(Parser *p, uint32_t i)
  * skipped as balanced tokens, not parsed). */
 static bool std_attr_known(Parser *p, uint32_t tok)
 {
-    static const char *const known[] = {"deprecated", "fallthrough",
-        "maybe_unused", "nodiscard", "noreturn", "_Noreturn"};
     PTok t = tok_at(p, tok);
     const Ident *id = ident_by_id(p->in, t.t.aux);
-    const char *s = id->str;
-    size_t n = id->len, k;
-    if (n > 4 && !strncmp(s, "__", 2) && !strcmp(s + n - 2, "__")) {
-        s += 2;
-        n -= 4;
-    }
-    for (k = 0; k < sizeof known / sizeof *known; k++)
-        if (strlen(known[k]) == n && !strncmp(s, known[k], n))
-            return true;
-    return false;
+    const AttrDesc *d = attr_lookup_n(id->str, id->len);
+    return d && (d->flags & AF_STD);
 }
 
 /* [[ name [(args)] , ... ]] (no 'ns::' before C2X) */

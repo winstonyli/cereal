@@ -519,7 +519,7 @@ void e_has_attr(Checker *c, uint32_t i)
         cdecl_attr_name(raw, an, sizeof an);
         cdecl_attr_args(c, k[1], args, sizeof args);
         nonnull = !strcmp(an, "nonnull");
-        if (!cdecl_attr_known(an)) {
+        if (!attr_is_known(an)) {
             cerror(c, ctok_loc(c, c->nodes[k[1]].tok), "unknown attribute "
                    "'%s'", raw);
             set_err(c, i);

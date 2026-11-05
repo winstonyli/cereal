@@ -233,8 +233,11 @@ bool attr_scope_of(Checker *c, uint32_t tok)
  * of the standard attributes is pedwarned and dropped, at input_location
  * with the lookahead just past the name and its arguments.  (Before C2X
  * 'ns::name' is not parsed: 'ns' is such a name.) */
-static const char *const std_known[] = {"deprecated", "fallthrough",
-    "maybe_unused", "nodiscard", "noreturn", "_Noreturn"};
+static bool attr_is_std(const char *name)
+{
+    const AttrDesc *d = attr_lookup(name);
+    return d && (d->flags & AF_STD);
+}
 
 /* An unscoped [[name]] outside the standard set: gcc drops it after the
  * warning std_attr_unknown gives, so nothing else may see it. */
@@ -242,21 +245,16 @@ static bool std_attr_dropped(Checker *c, uint32_t attr, uint32_t item)
 {
     char name[48];
     uint32_t at = c->nodes[item].tok;
-    size_t n;
     if (tokp(c, cnode(c, attr)->tok)->kind != TK_PUNCT ||
         (c->opt.gnu && at >= 1 && tpunct(c, at - 1) == P_COLONCOLON) ||
         attr_scope_of(c, at))
         return false;
     attr_norm(tstr(c, at), name, sizeof name);
-    for (n = 0; n < sizeof std_known / sizeof *std_known; n++)
-        if (!strcmp(name, std_known[n]))
-            return false;
-    return true;
+    return !attr_is_std(name);
 }
 
 void std_attr_unknown(Checker *c, uint32_t attr)
 {
-    const char *const *known = std_known;
     Kids k;
     uint32_t j;
     if (tokp(c, cnode(c, attr)->tok)->kind != TK_PUNCT)
@@ -266,17 +264,13 @@ void std_attr_unknown(Checker *c, uint32_t attr)
     kids_get(c, attr, &k);
     for (j = 0; j < k.n; j++) {
         char name[48];
-        size_t n;
         if (ntag(c, k.p[j]) != N_ATTR_ITEM)
             continue;
         uint32_t at = c->nodes[k.p[j]].tok;
         attr_norm(tstr(c, at), name, sizeof name);
         if (c->opt.gnu && at >= 1 && tpunct(c, at - 1) == P_COLONCOLON)
             continue;           /* gnu::name, taken as a GNU attribute */
-        for (n = 0; n < sizeof std_known / sizeof *std_known; n++)
-            if (!strcmp(name, known[n]))
-                break;
-        if (n < sizeof std_known / sizeof *std_known)
+        if (attr_is_std(name))
             continue;
         if (attr_scope_of(c, at))
             cwarn(c, iloc(c, last_tok(c, k.p[j]) + 1), DW_ATTRIBUTES,
@@ -314,41 +308,6 @@ bool decl_has_dep_attr(Checker *c, uint32_t d)
     return false;
 }
 
-/* The attribute names gcc 13 registers for C on x86-64 (probed with
- * __has_attribute), sorted, without the __ affixes. */
-static const char *const known_attrs[] = {
-    "access", "alias", "aligned", "alloc_align", "alloc_size",
-    "always_inline", "artificial", "assume", "assume_aligned",
-    "callee_pop_aggregate_return", "cdecl", "cf_check", "cleanup", "cold",
-    "common", "const", "constructor", "copy", "deprecated", "designated_init",
-    "destructor", "error", "externally_visible", "fallthrough", "fastcall",
-    "fd_arg", "fd_arg_read", "fd_arg_write", "fentry_name", "fentry_section",
-    "flatten", "force_align_arg_pointer", "format", "format_arg",
-    "function_return", "gcc_struct", "gnu_inline", "hot", "ifunc",
-    "indirect_branch", "indirect_return", "interrupt", "leaf", "malloc",
-    "may_alias", "maybe_unused", "mode", "ms_abi", "ms_hook_prologue",
-    "ms_struct", "naked", "no_address_safety_analysis",
-    "no_caller_saved_registers", "no_icf", "no_instrument_function",
-    "no_profile_instrument_function", "no_reorder", "no_sanitize",
-    "no_sanitize_address", "no_sanitize_coverage", "no_sanitize_thread",
-    "no_sanitize_undefined", "no_split_stack", "no_stack_limit",
-    "no_stack_protector", "nocf_check", "noclone", "nocommon",
-    "nodirect_extern_access", "nodiscard", "noinit", "noinline", "noipa",
-    "nonnull", "nonstring", "noplt", "noreturn", "nothrow",
-    "objc_nullability", "objc_root_class", "optimize", "packed",
-    "patchable_function_entry", "pure", "regparm", "retain",
-    "returns_nonnull", "returns_twice", "scalar_storage_order", "section",
-    "sentinel", "signed_bool_precision", "simd", "sseregparm",
-    "stack_protect", "stdcall", "strict_flex_array", "symver", "sysv_abi",
-    "tainted_args", "target", "target_clones", "thiscall", "tls_model",
-    "transaction_callable", "transaction_may_cancel_outer",
-    "transaction_pure", "transaction_safe", "transaction_safe_dynamic",
-    "transaction_unsafe", "transaction_wrap", "transparent_union",
-    "unavailable", "uninitialized", "unused", "used", "vector_mask",
-    "vector_size", "visibility", "volatile", "warn_if_not_aligned",
-    "warn_unused", "warn_unused_result", "warning", "weak", "weakref",
-    "zero_call_used_regs",
-};
 
 #define ATTR(n, id, fl, cx, lo, hi) {#n, id, fl, cx, lo, hi},
 static const AttrDesc attr_tab[] = {
@@ -384,26 +343,6 @@ const AttrDesc *attr_lookup_n(const char *s, size_t n)
     return attr_lookup(nm);
 }
 
-bool attr_known(const char *name)
-{
-    size_t lo = 0, hi = sizeof known_attrs / sizeof *known_attrs;
-    while (lo < hi) {
-        size_t mid = (lo + hi) / 2;
-        int r = strcmp(name, known_attrs[mid]);
-        if (!r)
-            return true;
-        if (r < 0)
-            hi = mid;
-        else
-            lo = mid + 1;
-    }
-    return false;
-}
-
-bool cdecl_attr_known(const char *name)
-{
-    return attr_known(name);
-}
 
 /* malloc (dealloc[, pos]): the deallocator must name a function whose
  * parameter number pos (default 1) is a pointer. */
@@ -673,11 +612,11 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
                                !strcmp(name, "weakref")))
             a->defn = true;
         if (c->attr_defer && !c->attr_quiet && strcmp(name, "gnu") &&
-            !attr_known(name) && !attr_scope_of(c, c->nodes[item].tok)) {
+            !attr_is_known(name) && !attr_scope_of(c, c->nodes[item].tok)) {
             if (a->nunk < 2)      /* `__int128__` is the keyword's spelling */
                 snprintf(a->unk[a->nunk++], sizeof a->unk[0], "%s",
                          strcmp(name, "int128") ? name : "__int128");
-        } else if (!c->attr_quiet && strcmp(name, "gnu") && !attr_known(name) &&
+        } else if (!c->attr_quiet && strcmp(name, "gnu") && !attr_is_known(name) &&
                    !attr_scope_of(c, c->nodes[item].tok))   /* gnu:: is a [[]] scope */
             cwarn(c, c->attr_at_set ? c->attr_at : iloc(c, c->nodes[item].tok),
                   DW_ATTRIBUTES, "'%s' attribute directive ignored",
