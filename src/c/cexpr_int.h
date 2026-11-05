@@ -7,6 +7,8 @@
 
 #include "c/check_int.h"
 #include "c/fuzzy.h"
+#include "fparith.h"
+#include "intarith.h"
 
 #define TT (&c->tt)
 #define ERRT TYPE_B(ERROR)
@@ -400,5 +402,61 @@ bool sq_for_cond(Checker *c, uint32_t p, uint32_t i);
 void sq_check(Checker *c, uint32_t e, bool cond);
 
 
+
+/* Shared by the cexpr*.c files (the split of the expression checker). */
+enum { RK_PED, RK_WARN };
+bool float_to_int(Checker *c, long double f, TypeId t, uint64_t *out);
+const Field *member_field_of(Checker *c, uint32_t x, TypeId *recp);
+const char *fqual_str(char *b, unsigned q);
+const char *qual_str(char *b, unsigned q);
+const char *fnref_builtin(Checker *c, uint32_t e, TypeId *pt, char *buf, size_t n);
+void alias_cast(Checker *c, uint32_t a, TypeId pt);
+void builtin_noproto_arg(Conv *x);
+int comp_target(Conv *x, TypeId lt, TypeId rt);
+void constexpr_read(Checker *c, uint32_t i, const CSym *s);
+bool constvar_in(Checker *c, uint32_t i);
+void conv_const(Checker *c, uint32_t i, uint32_t a, TypeId to);
+void conv_diag(Conv *x, int rk, DiagOpt opt, char (*m)[640], bool near);
+SrcLoc conv_note_loc(const Conv *x);
+bool cplx_arith(Checker *c, int op, TypeId tc, long double ar, long double ai, long double br, long double bi, long double *rr, long double *ri);
+bool cplx_conv(Checker *c, uint32_t a, TypeId to, long double *re, long double *im);
+long double cplx_ld(Checker *c, TypeId t, uint64_t u);
+void e_addr_label(Checker *c, uint32_t i);
+void e_assign(Checker *c, uint32_t i);
+void e_binary(Checker *c, uint32_t i);
+void e_cast(Checker *c, uint32_t i);
+void e_char(Checker *c, uint32_t i);
+void e_complit(Checker *c, uint32_t i);
+void e_cond(Checker *c, uint32_t i);
+void e_convertvector(Checker *c, uint32_t i);
+void e_generic(Checker *c, uint32_t i);
+void e_generic_assoc(Checker *c, uint32_t i);
+void e_has_attr(Checker *c, uint32_t i);
+void e_ident(Checker *c, uint32_t i);
+void e_number(Checker *c, uint32_t i);
+void e_offsetof(Checker *c, uint32_t i);
+void e_paren(Checker *c, uint32_t i);
+void e_postfix(Checker *c, uint32_t i);
+void e_sizeof(Checker *c, uint32_t i, bool align);
+void e_stmt_expr(Checker *c, uint32_t i);
+void e_string(Checker *c, uint32_t i);
+void e_types_compat(Checker *c, uint32_t i);
+void e_unary(Checker *c, uint32_t i);
+void e_va_arg(Checker *c, uint32_t i);
+FpTy fp_ty(Checker *c, TypeId t);
+long double fround(Checker *c, TypeId t, long double v);
+unsigned gq(Checker *c, TypeId t);
+IaTy cx_ia_ty(Checker *c, TypeId t);
+bool noop_ptr_cast(Checker *c, TypeId to, uint32_t operand);
+void packed_ptr_check_x(Checker *c, TypeId to, uint32_t e, int mode, SrcLoc castloc, bool arg);
+void ped_arith(Checker *c, uint32_t i, SrcLoc loc, const char *msg);
+void set_ice(Checker *c, uint32_t i, TypeId t, uint64_t v);
+uint32_t sizeof_outer(const Checker *c, uint32_t i);
+void sp(char *b, const char *fmt, ...);
+void sso_decay(Checker *c, uint32_t i);
+TypeId strip_arr(Checker *c, TypeId t);
+void undeclared(Checker *c, uint32_t i, uint32_t id);
+bool value_use(Checker *c, uint32_t i);
+bool var_size(Checker *c, TypeId t);
 
 #endif

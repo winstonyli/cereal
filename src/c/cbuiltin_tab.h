@@ -11,7 +11,7 @@
  * without side effects, nonnull = bit mask of 1-based nonnull argument positions, fmt =
  * format argument position (bits 0-3) and kind (bits 4-5: printf, scanf, strfmon, strftime).
  * Sorted by name.  Generated from gcc's own diagnostics. */
-static const struct { const char *name, *hdr; unsigned char mismatch; const char *sig; unsigned char gnu, pure, nonnull, fmt; } cbuiltin_tab[] = {
+static const BTab cbuiltin_tab[] = {
     {"FILE", "", 0, "const char *|", 2, 1, 0, 0},
     {"FUNCTION", "", 0, "const char *|", 2, 1, 0, 0},
     {"LINE", "", 0, "int|", 2, 1, 0, 0},

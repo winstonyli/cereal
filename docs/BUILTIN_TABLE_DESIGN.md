@@ -40,8 +40,9 @@ Anti-goal: a hand-edited column inside a generated file. Every new column has a 
 
 ## Design
 
-**Row shape.** The row struct exists three times: the anonymous struct in the generated
-`cbuiltin_tab.h:11`, `BTab` (`cexpr_int.h:15`; `bt_find` casts the first to the second), and
+**Row shape.** (As designed; since AR6 the generated table is typed `BTab` directly, so the
+struct exists twice.) The row struct existed three times: the anonymous struct in the generated
+`cbuiltin_tab.h:11`, `BTab` (`cexpr_int.h:15`; `bt_find` cast the first to the second), and
 `IaBt.bt` (`cexpr_int.h:34`; the x86 rows, built by the `IA_ROW` macros). The three new fields go
 after `gnu`, numeric, in all three, so that `tests/run.sh:810` (an `awk -F'"'` reading the sig as
 quote-field 6) keeps working and the x86 rows default to 0 (no pure, no nonnull, no fmt, which
