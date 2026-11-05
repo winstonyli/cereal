@@ -284,3 +284,9 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | What | Why parked | Status |
 |---|---|---|
 | Hold `AttrId` bitsets in `AttrState.cur[]`, `CSym.aset`, `Checker.anames` and the `ign[]` filter instead of name strings, which also removes the pure/const duplicates in `AttrState` and the `Attrs` flag versus `aset` name pairs. | By decision (the user's "park r2", 2026-11-04): AR4 stage 1 (descriptor lookup, name strings kept) lands first; ids in `Checker` and `CSym` state reach many more files. Trigger: AR4 stage 1 has landed and a second hand-synced flag/name pair drifts. Evidence: `src/c/cdecl_int.h` (`AttrState`), `src/c/cattr.c` `aset_add`, `attrs_merge`. | parked |
+
+## `e_has_attr` may overflow `sets[3]` (docs/ATTR_IDS_DESIGN.md "Found, not part of this work"; 2026-11-05)
+
+| What | Why parked | Status |
+|---|---|---|
+| `src/c/cexpr_bi.c:581-590` writes the record set and then `sets[n++] = tmp` into `sets[3]` without a bound after up to two typedef sets; reachable only if unknown-only attribute sets create a set in a deep typedef chain. Found by the spec review; read from the code, not run. | Not verified (no asan run); found during AR4 stage 2 spec work. Trigger: a reproducer under asan, or the stage 2 work touching `cexpr_asets`/`e_has_attr`. | parked; evidence `src/c/cexpr_bi.c:581-590` (read 2026-11-05) |
