@@ -76,15 +76,21 @@ ATTR(name, ID, flags, ctx, argc_lo, argc_hi)
 
 `src/c/attrs.h` is a new neutral header (enum, `AttrDesc`, `AF_*`, `AC_*` moved from `cdecl_int.h`, `attr_lookup`,
 `attr_lookup_n`), because `parse.c` includes only parser headers and cannot take `cdecl_int.h` (which pulls in the
-whole Checker). `cdecl_int.h`, `parse.c` and `cexpr_name.c` include it; the array and the two functions live in
-`cattr.c` (the file that owns attribute semantics).
+whole Checker). `check_int.h` (so `cexpr_bi.c` and `cexpr_name.c`, which get it through `cexpr_int.h`),
+`cdecl_int.h` and `parse.c` include it; `check_int.h`'s `cdecl_attr_known` prototype is deleted. The array and the
+two functions live in `cattr.c` (the file that owns attribute semantics). `AT_*` and `AF_*` already exist in
+`cintrin.h:93-98` (`AT_LOAD…`, `AF_PTR…`): `attrs.h` documents the clash risk and Task 2 checks the new names against it.
 
-`attr_lookup_n(const char *s, size_t n)` takes a possibly unterminated, possibly `__x__`-spelled name and strips
-the affixes itself by `attr_norm`'s rule (`cattr.c:75`: `__const` → `const`, else `n > 4` and both ends `__`);
-`attr_lookup(name)` is `attr_lookup_n(name, strlen(name))`. `std_attr_known` and `attr_takes_expr` strip by the
-same rule minus the `__const` case, which is harmless there (`const` is in neither the STD nor the EXPR set).
-Callers that already hold a normalised name see no change, and the two affix-stripping copies in `parse.c` and
-`cexpr_name.c` are deleted; `attr_norm` stays for callers that need the string.
+Two lookups, so no caller's behaviour moves:
+- `attr_lookup(const char *name)` is exact: no stripping, NUL-terminated. It replaces `attr_known` and
+  `cdecl_attr_known` for callers that already hold a normalised name (`cattr.c:642,646`, `crecord.c:904`,
+  `cexpr_bi.c:522`); a doubly wrapped spelling such as `____nonnull____` stays unknown, as today.
+- `attr_lookup_n(const char *s, size_t n)` takes a possibly unterminated, possibly `__x__`-spelled name and strips
+  the affixes by `attr_norm`'s rule (`cattr.c:75`: `__const` → `const`, else `n > 4` and both ends `__`), then
+  compares whole names (the row name must end exactly at `n`; `n == 0` gives NULL). Only `std_attr_known`
+  (`parse.c`) and `attr_takes_expr` (`cexpr_name.c`) call it, replacing their two private strippers; the missing
+  `__const` case there is harmless (`const` is in neither the STD nor the EXPR set). `attr_norm` stays for
+  callers that need the string.
 `attr_takes_expr`'s `cleanup` parameter branch stays code and `cleanup` gets no `AF_EXPR_ARGS` (it would change the
 `cleanup=false` callers).
 
@@ -93,7 +99,7 @@ Callers that already hold a normalised name see no change, and the two affix-str
 | Today | Becomes |
 |---|---|
 | `known_attrs[]` + `attr_known` binary search; `cdecl_attr_known` wrapper (`cattr.c`) | `attr_lookup(..)->flags & AF_KNOWN`; both functions and the wrapper deleted, callers at `cattr.c:642,646`, `crecord.c:904`, `cexpr_bi.c:522` call the lookup |
-| `std_known[]` (`cattr.c:236`, three loops: `std_attr_dropped`, `std_attr_unknown`, and the pointer at `:259`) and `known[]` in `parse.c` `std_attr_known` | `AF_STD` (four consumers) |
+| `std_known[]` (`cattr.c:236`; read by the loops in `std_attr_dropped` and `std_attr_unknown`, the latter through the pointer at `:259`) and `known[]` in `parse.c` `std_attr_known` | `AF_STD` (three consumers) |
 | `attr_ign_tab` (`cattr.c`), `ignored[]` (`crecord.c`) | `ctx` with `AC_E` |
 | `attr_fnonly_tab` (`cattr.c`), `fnonly[]` (`crecord.c`) | `AF_FN_ONLY` |
 | `ex[]` (`cexpr_name.c`) | `AF_EXPR_ARGS` |
