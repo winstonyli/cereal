@@ -143,60 +143,63 @@ static const char *arg_value(Options *o, int argc, char **argv, int *i,
  * (IGN_SEMANTIC) and never skipped silently.  `args` is the number of
  * separate arguments the option takes; `joined` also accepts the value
  * attached to the name (-lm, -MFfile, -Wl,x).  IGN_OUTPUT options change no
- * diagnostics but the dependency output reads them (note_ignored). */
+ * diagnostics but the dependency output reads them: `act` says how. */
 enum { IGN_SILENT, IGN_OUTPUT, IGN_SEMANTIC };
+/* What note_ignored records; -MD..-MM are in strength order. */
+enum { ACT_NONE, ACT_MD, ACT_MMD, ACT_M, ACT_MM, ACT_STAGE, ACT_FREESTANDING,
+       ACT_MF, ACT_MT, ACT_MQ, ACT_MP, ACT_MG };
 
 static const struct IgnoredOpt {
     const char *name;
-    unsigned char kind, args, joined;
+    unsigned char kind, args, joined, act;
 } ignored_opts[] = {
-    {"-c", IGN_OUTPUT, 0, 0}, {"-S", IGN_OUTPUT, 0, 0},
-    {"-pipe", IGN_SILENT, 0, 0}, {"-pthread", IGN_SILENT, 0, 0},
-    {"-shared", IGN_SILENT, 0, 0}, {"-static", IGN_SILENT, 0, 0},
-    {"-rdynamic", IGN_SILENT, 0, 0}, {"-pie", IGN_SILENT, 0, 0},
-    {"-no-pie", IGN_SILENT, 0, 0}, {"-fPIC", IGN_SILENT, 0, 0},
-    {"-fPIE", IGN_SILENT, 0, 0}, {"-fpic", IGN_SILENT, 0, 0},
-    {"-fpie", IGN_SILENT, 0, 0}, {"-fno-plt", IGN_SILENT, 0, 0},
-    {"-ffunction-sections", IGN_SILENT, 0, 0},
-    {"-fdata-sections", IGN_SILENT, 0, 0},
-    {"-fno-omit-frame-pointer", IGN_SILENT, 0, 0},
-    {"-fomit-frame-pointer", IGN_SILENT, 0, 0},
-    {"-fasynchronous-unwind-tables", IGN_SILENT, 0, 0},
-    {"-fno-asynchronous-unwind-tables", IGN_SILENT, 0, 0},
-    {"-fno-stack-protector", IGN_SILENT, 0, 0},
-    {"-fstack-clash-protection", IGN_SILENT, 0, 0},
-    {"-fno-semantic-interposition", IGN_SILENT, 0, 0},
-    {"-fno-ident", IGN_SILENT, 0, 0},
-    {"-m64", IGN_SILENT, 0, 0},            /* the host is x86-64 */
-    {"-fsigned-char", IGN_SILENT, 0, 0},   /* ... where char is signed */
-    {"-g", IGN_SILENT, 0, 1}, {"-fstack-protector", IGN_SILENT, 0, 1},
-    {"-fvisibility=", IGN_SILENT, 0, 1}, {"-Wl,", IGN_SILENT, 0, 1},
-    {"-Wa,", IGN_SILENT, 0, 1}, {"-march=", IGN_SILENT, 0, 1},
-    {"-mtune=", IGN_SILENT, 0, 1}, {"-mcpu=", IGN_SILENT, 0, 1},
-    {"-l", IGN_SILENT, 1, 1}, {"-L", IGN_SILENT, 1, 1},
-    {"-T", IGN_SILENT, 1, 1}, {"-u", IGN_SILENT, 1, 1},
-    {"-z", IGN_SILENT, 1, 1},
-    {"-Xclang", IGN_SILENT, 1, 0}, {"-Xpreprocessor", IGN_SILENT, 1, 0},
-    {"-Xlinker", IGN_SILENT, 1, 0}, {"-Xassembler", IGN_SILENT, 1, 0},
-    {"-arch", IGN_SILENT, 1, 0}, {"-target", IGN_SILENT, 1, 0},
-    {"-aux-info", IGN_SILENT, 1, 0}, {"-dumpdir", IGN_SILENT, 1, 0},
-    {"-dumpbase", IGN_SILENT, 1, 0}, {"-iprefix", IGN_SILENT, 1, 0},
-    {"-iwithprefix", IGN_SILENT, 1, 0},
-    {"-M", IGN_OUTPUT, 0, 0}, {"-MM", IGN_OUTPUT, 0, 0},
-    {"-MD", IGN_OUTPUT, 0, 0}, {"-MMD", IGN_OUTPUT, 0, 0},
-    {"-MP", IGN_OUTPUT, 0, 0}, {"-MG", IGN_OUTPUT, 0, 0},
-    {"-MF", IGN_OUTPUT, 1, 1}, {"-MT", IGN_OUTPUT, 1, 1},
-    {"-MQ", IGN_OUTPUT, 1, 1},
-    {"-ffreestanding", IGN_SEMANTIC, 0, 0},
-    {"-fno-builtin", IGN_SEMANTIC, 0, 0},
-    {"-funsigned-char", IGN_SEMANTIC, 0, 0},
-    {"-fwrapv", IGN_SEMANTIC, 0, 0}, {"-fno-common", IGN_SEMANTIC, 0, 0},
-    {"-fpack-struct", IGN_SEMANTIC, 0, 1},
-    {"-fms-extensions", IGN_SEMANTIC, 0, 0},
-    {"-fshort-wchar", IGN_SEMANTIC, 0, 0},
-    {"-m32", IGN_SEMANTIC, 0, 0}, {"-mx32", IGN_SEMANTIC, 0, 0},
-    {"-idirafter", IGN_SEMANTIC, 1, 0},
-    {"-isysroot", IGN_SEMANTIC, 1, 0}, {"--sysroot", IGN_SEMANTIC, 1, 1},
+    {"-c", IGN_OUTPUT, 0, 0, ACT_STAGE}, {"-S", IGN_OUTPUT, 0, 0, ACT_STAGE},
+    {"-pipe", IGN_SILENT, 0, 0, ACT_NONE}, {"-pthread", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-shared", IGN_SILENT, 0, 0, ACT_NONE}, {"-static", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-rdynamic", IGN_SILENT, 0, 0, ACT_NONE}, {"-pie", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-no-pie", IGN_SILENT, 0, 0, ACT_NONE}, {"-fPIC", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fPIE", IGN_SILENT, 0, 0, ACT_NONE}, {"-fpic", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fpie", IGN_SILENT, 0, 0, ACT_NONE}, {"-fno-plt", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-ffunction-sections", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fdata-sections", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fno-omit-frame-pointer", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fomit-frame-pointer", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fasynchronous-unwind-tables", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fno-asynchronous-unwind-tables", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fno-stack-protector", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fstack-clash-protection", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fno-semantic-interposition", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-fno-ident", IGN_SILENT, 0, 0, ACT_NONE},
+    {"-m64", IGN_SILENT, 0, 0, ACT_NONE},            /* the host is x86-64 */
+    {"-fsigned-char", IGN_SILENT, 0, 0, ACT_NONE},   /* ... where char is signed */
+    {"-g", IGN_SILENT, 0, 1, ACT_NONE}, {"-fstack-protector", IGN_SILENT, 0, 1, ACT_NONE},
+    {"-fvisibility=", IGN_SILENT, 0, 1, ACT_NONE}, {"-Wl,", IGN_SILENT, 0, 1, ACT_NONE},
+    {"-Wa,", IGN_SILENT, 0, 1, ACT_NONE}, {"-march=", IGN_SILENT, 0, 1, ACT_NONE},
+    {"-mtune=", IGN_SILENT, 0, 1, ACT_NONE}, {"-mcpu=", IGN_SILENT, 0, 1, ACT_NONE},
+    {"-l", IGN_SILENT, 1, 1, ACT_NONE}, {"-L", IGN_SILENT, 1, 1, ACT_NONE},
+    {"-T", IGN_SILENT, 1, 1, ACT_NONE}, {"-u", IGN_SILENT, 1, 1, ACT_NONE},
+    {"-z", IGN_SILENT, 1, 1, ACT_NONE},
+    {"-Xclang", IGN_SILENT, 1, 0, ACT_NONE}, {"-Xpreprocessor", IGN_SILENT, 1, 0, ACT_NONE},
+    {"-Xlinker", IGN_SILENT, 1, 0, ACT_NONE}, {"-Xassembler", IGN_SILENT, 1, 0, ACT_NONE},
+    {"-arch", IGN_SILENT, 1, 0, ACT_NONE}, {"-target", IGN_SILENT, 1, 0, ACT_NONE},
+    {"-aux-info", IGN_SILENT, 1, 0, ACT_NONE}, {"-dumpdir", IGN_SILENT, 1, 0, ACT_NONE},
+    {"-dumpbase", IGN_SILENT, 1, 0, ACT_NONE}, {"-iprefix", IGN_SILENT, 1, 0, ACT_NONE},
+    {"-iwithprefix", IGN_SILENT, 1, 0, ACT_NONE},
+    {"-M", IGN_OUTPUT, 0, 0, ACT_M}, {"-MM", IGN_OUTPUT, 0, 0, ACT_MM},
+    {"-MD", IGN_OUTPUT, 0, 0, ACT_MD}, {"-MMD", IGN_OUTPUT, 0, 0, ACT_MMD},
+    {"-MP", IGN_OUTPUT, 0, 0, ACT_MP}, {"-MG", IGN_OUTPUT, 0, 0, ACT_MG},
+    {"-MF", IGN_OUTPUT, 1, 1, ACT_MF}, {"-MT", IGN_OUTPUT, 1, 1, ACT_MT},
+    {"-MQ", IGN_OUTPUT, 1, 1, ACT_MQ},
+    {"-ffreestanding", IGN_SEMANTIC, 0, 0, ACT_FREESTANDING},
+    {"-fno-builtin", IGN_SEMANTIC, 0, 0, ACT_NONE},
+    {"-funsigned-char", IGN_SEMANTIC, 0, 0, ACT_NONE},
+    {"-fwrapv", IGN_SEMANTIC, 0, 0, ACT_NONE}, {"-fno-common", IGN_SEMANTIC, 0, 0, ACT_NONE},
+    {"-fpack-struct", IGN_SEMANTIC, 0, 1, ACT_NONE},
+    {"-fms-extensions", IGN_SEMANTIC, 0, 0, ACT_NONE},
+    {"-fshort-wchar", IGN_SEMANTIC, 0, 0, ACT_NONE},
+    {"-m32", IGN_SEMANTIC, 0, 0, ACT_NONE}, {"-mx32", IGN_SEMANTIC, 0, 0, ACT_NONE},
+    {"-idirafter", IGN_SEMANTIC, 1, 0, ACT_NONE},
+    {"-isysroot", IGN_SEMANTIC, 1, 0, ACT_NONE}, {"--sysroot", IGN_SEMANTIC, 1, 1, ACT_NONE},
 };
 
 /* -x LANG: C (or none) is the only language cereal reads. */
@@ -236,33 +239,29 @@ bool option_affects_diagnostics(const char *a)
 /* What the dependency output reads of a skipped option (`val`: its
  * argument).  -MD < -MMD < -M < -MM: the strongest wins, whatever the order
  * on the command line (probed on gcc-13). */
-static void note_ignored(Options *o, const char *name, const char *val)
+static void note_ignored(Options *o, const struct IgnoredOpt *g, const char *val)
 {
     DepsOpts *d = &o->deps;
-    int style = !strcmp(name, "-MD") ? 1 : !strcmp(name, "-MMD") ? 2
-              : !strcmp(name, "-M") ? 3 : !strcmp(name, "-MM") ? 4 : 0;
-    if (style) {
+    switch (g->act) {
+    case ACT_MD: case ACT_MMD: case ACT_M: case ACT_MM: {
+        int style = g->act - ACT_MD + 1;
         d->md |= style <= 2;
         if (style > d->style)
             d->style = style;
         return;
     }
-    if (!strcmp(name, "-c") || !strcmp(name, "-S")) {
-        o->stage = name[1];
-    } else if (!strcmp(name, "-ffreestanding")) {
-        d->freestanding = true;
-    } else if (name[0] == '-' && name[1] == 'M') {
-        d->other = true;
-        if (!strcmp(name, "-MF"))
-            d->file = val;
-        else if (!strcmp(name, "-MT"))
-            vec_push(&d->mt, val);
-        else if (!strcmp(name, "-MQ"))
-            vec_push(&d->mq, val);
-        else if (!strcmp(name, "-MP"))
-            d->phony = true;
-        else if (!strcmp(name, "-MG"))
-            d->missing_ok = true;
+    case ACT_STAGE:        o->stage = g->name[1]; return;
+    case ACT_FREESTANDING: d->freestanding = true; return;
+    case ACT_NONE:         return;
+    default:               d->other = true;
+    }
+    switch (g->act) {
+    case ACT_MF: d->file = val; break;
+    case ACT_MT: vec_push(&d->mt, val); break;
+    case ACT_MQ: vec_push(&d->mq, val); break;
+    case ACT_MP: d->phony = true; break;
+    case ACT_MG: d->missing_ok = true; break;
+    default: break;
     }
 }
 
@@ -287,7 +286,7 @@ static int option_ignored(Options *o, int argc, char **argv, int i)
     }
     if (!o->lenient && g->kind == IGN_SEMANTIC)
         vec_push(&o->ignored_semantic, a);
-    note_ignored(o, g->name, used == 2 ? argv[i + 1] : a + strlen(g->name));
+    note_ignored(o, g, used == 2 ? argv[i + 1] : a + strlen(g->name));
     return used;
 }
 
