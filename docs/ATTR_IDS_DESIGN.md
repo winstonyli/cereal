@@ -98,8 +98,8 @@ here). Deletes `AName.name`, the empty-string spelling of the tombstone (it beco
 
 ## Build notes
 
-- A `const char *` passed where an `AttrId` is expected is only an int-conversion warning in C: grep every
-  `aset_*`/`cdecl_aset_*` caller (the lists above are not exhaustive) and build once with `-Werror=int-conversion`.
+- A `const char *` passed where an `AttrId` is expected is an error here (the Makefile has `-Werror=int-conversion`), but `%s` of an id in `cwarn` compiles silently: grep every
+  `aset_*`/`cdecl_aset_*` caller (the lists above are not exhaustive) and see the plan for the format-attribute trick.
 - `check_int.h` and `cdecl_int.h` need `#include "c/attrs.h"` if they lack it.
 - Goldens (a) and (c) pin cereal's 3-slot cap, not gcc's behaviour (gcc has no such cap and probably says 1): say so in a
   comment in each file and cross-reference the "Found" item. In (a) each typedef in the chain carries an attribute
