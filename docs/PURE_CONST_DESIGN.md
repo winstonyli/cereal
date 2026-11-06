@@ -83,7 +83,7 @@ in `cdecl_int.h`; the flag enumerators in `check_int.h`; their writers in `cdecl
   `__builtin_has_attribute(v, pure)` is false; the prototype says true. `main` already differs from gcc on other
   inapplicable attributes there (`noreturn`, `cold`, `const` alone). The general fix is to drop attributes inapplicable to
   the declaration kind from the set; parked as a separate item.
-- **Regression to resolve (Decide, see the covering message):** the kind gate treats a function-pointer object as a
+- **Away from gcc, accepted 2026-11-06 (decision z1; not pinned):** the kind gate treats a function-pointer object as a
   variable. gcc applies `noreturn`/`const`/`pure` there to the pointed-to function type, so it still reports
   `int (*fp)(int) __attribute__((noreturn, pure))` (conflict) and `void (*p)(void) __attribute__((const, noreturn))`;
   `main` matches gcc, the prototype prints nothing. For `cold,hot`, `noinline,always_inline`, `returns_twice,noreturn`,
@@ -179,5 +179,5 @@ section: the second check), `docs/ATTR_IDS_DESIGN.md:75` and `docs/ATTR_IDS_PLAN
 check).
 
 New `PARKED.md` entries (added with the plan): `common, nocommon` on a function prints no "attribute ignored"; attributes
-inapplicable to a declaration kind stay in its set (`has_attribute` on variables);copying `hot`/`cold`/`noreturn`/`returns_twice`/`alloc_*` through `copy`; `pure`/`const` on a function-pointer variable
+inapplicable to a declaration kind stay in its set (`has_attribute` on variables); type-level pairs (`noreturn`/`const`/`pure`) no longer conflict on a function-pointer object;copying `hot`/`cold`/`noreturn`/`returns_twice`/`alloc_*` through `copy`; `pure`/`const` on a function-pointer variable
 prints no "attribute ignored"; `_Noreturn ... const` redeclared with `const` warns where gcc does not.
