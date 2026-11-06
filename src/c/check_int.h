@@ -35,7 +35,7 @@ enum {
     CSF_THREAD = 16,
     CSF_IMPLICIT = 32,       /* implicitly declared function */
     CSF_USED = 64,
-    CSF_NORETURN = 128,
+    CSF_NORETURN = 128,      /* _Noreturn or __attribute__((noreturn)) */
     CSF_BLOCK_EXTERN = 256,  /* first declared at block scope */
     CSF_PROTO_DEF = 1024,    /* a function defined with a prototype */
     CSF_KR_DEF = 2048,       /* a function defined K&R style */
@@ -54,8 +54,6 @@ enum {
     CSF_UNAVAILABLE = 16777216, /* __attribute__((unavailable)) */
     CSF_INNER_COMP = 33554432, /* incomplete array completed in an inner scope */
     CSF_GNU_INLINE = 67108864, /* __attribute__((gnu_inline)) */
-    CSF_PURE = 134217728,    /* __attribute__((pure)), possibly copied */
-    CSF_CONSTFN = 268435456, /* __attribute__((const)), possibly copied */
     CSF_CONST_VAL = 536870912, /* -O: const integer, constant initializer in
                                  CSym.val (gcc's decl_constant_value) */
     CSF_WEAKREF = 1073741824 /* __attribute__((weakref)) */

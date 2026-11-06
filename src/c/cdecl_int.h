@@ -189,9 +189,6 @@ static inline uint32_t inner_decl(const Checker *c, uint32_t i)
 
 
 typedef struct AttrState {
-    bool pure, cnst;
-    bool pure_from, cnst_from;
-    SrcLoc pure_loc, cnst_loc;
     uint64_t nonnull;
     bool inited;             /* the declared name looked up (a summary read) */
     uint32_t pset;           /* the previous declaration's attribute names */

@@ -19,12 +19,15 @@ attr_copy_excl.c:9:27: note: previous declaration here
 attr_copy_excl.c:11:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
    11 | __attribute__((copy(a), copy(b))) int g(void);
       | ^
-attr_copy_excl.c:3:28: note: previous declaration here
-    3 | __attribute__((const)) int a(void);
-      |                            ^
+attr_copy_excl.c:4:27: note: previous declaration here
+    4 | __attribute__((pure)) int b(void);
+      |                           ^
 attr_copy_excl.c:12:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
    12 | __attribute__((pure, copy(a))) int h(void);
       | ^
+attr_copy_excl.c:3:28: note: previous declaration here
+    3 | __attribute__((const)) int a(void);
+      |                            ^
 attr_copy_excl.c:13:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
    13 | int __attribute__((const, pure)) c1(void);
       | ^

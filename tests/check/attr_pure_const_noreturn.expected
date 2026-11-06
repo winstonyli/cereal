@@ -1,0 +1,21 @@
+attr_pure_const_noreturn.c:3:15: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+    3 | _Noreturn int n1(void) __attribute__((const));
+      |               ^
+attr_pure_const_noreturn.c:4:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+    4 | int n1(void) __attribute__((pure));
+      | ^
+attr_pure_const_noreturn.c:3:15: note: previous declaration here
+    3 | _Noreturn int n1(void) __attribute__((const));
+      |               ^
+attr_pure_const_noreturn.c:5:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    5 | int n2(void) __attribute__((pure, const, noreturn));
+      | ^
+attr_pure_const_noreturn.c:5:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'pure' [-Wattributes]
+    5 | int n2(void) __attribute__((pure, const, noreturn));
+      | ^
+attr_pure_const_noreturn.c:10:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'const' [-Wattributes]
+   10 | int n3(void) __attribute__((noreturn));
+      | ^
+attr_pure_const_noreturn.c:9:5: note: previous declaration here
+    9 | int n3(void) __attribute__((const));
+      |     ^

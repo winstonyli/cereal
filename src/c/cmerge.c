@@ -722,7 +722,7 @@ static void merge_decls(Checker *c, CSym *nw, CSym *o, TypeId newtype,
     m.flags |= o->flags & (CSF_DEFINED | CSF_USED | CSF_CUSED | CSF_NORETURN | CSF_THREAD |
                            CSF_INLINE | CSF_BLOCK_EXTERN | CSF_TENTATIVE |
                            CSF_WEAK | CSF_WEAKREF | CSF_ADDR_WARNED | CSF_DEPRECATED |
-                           CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE | CSF_PURE | CSF_CONSTFN);
+                           CSF_UNAVAILABLE | CSF_INNER_COMP | CSF_GNU_INLINE);
     m.olddef_merged = o->olddef_merged ||
                       (new_def && !new_proto && !sym_defined(o));
     /* merge_weak: PR 49899, a static function cannot become weak and public */

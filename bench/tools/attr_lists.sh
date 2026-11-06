@@ -4,10 +4,14 @@
 #   - the rows are not strictly strcmp-sorted and unique (attr_lookup bisects them), or
 #   - a src/c file other than attrs.def/attrs.h holds an array initialiser (the outermost "= {" ... "};" of
 #     a statement) of three or more string literals that are all attribute names, unless
-#     bench/tools/attr_lists.allow lists it ("FILE ARRAY", FILE without the directory).
+#     bench/tools/attr_lists.allow lists it ("FILE ARRAY", FILE without the directory), or
+#   - src/c/check_int.h has a CSF_X enumerator mirroring an attribute (its comment names __attribute__((x)), x a row
+#     here), unless the allowlist lists it ("check_int.h CSF_X").  The attribute set is the one home of the fact.
 # An allowed entry that no longer matches is reported and fails too, so the list only shrinks.
 # A text check: comments are ignored and a brace on the next line is handled; it does not look at strcmp chains, and misses
 # a list split across statements, one mixed with non-attribute strings, a compound literal, or runtime assignments.
+# CSF_X: only a single-line "CSF_X = ..." enumerator whose comment spells __attribute__((x)) is seen; a #define, a
+# multi-line comment (CSF_CONST_VAL) or a comment without that spelling is invisible.
 # ATTR_ROOT overrides the tree (the self-check in docs/ATTR_TABLE_PLAN.md Task 6).
 ROOT=${ATTR_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
@@ -22,6 +26,7 @@ if ! LC_ALL=C sort -c -u $T.names 2>$T.err; then
     echo "attr lists: $DEF rows are not strictly sorted and unique (LC_ALL=C sort -c -u): $(cat $T.err)"
     bad=1
 fi
+{
 for f in src/c/*.c src/c/*.h; do
     case $f in src/c/attrs.h) continue ;; esac
     awk -v names=$T.names -v file="${f##*/}" '
@@ -75,7 +80,15 @@ for f in src/c/*.c src/c/*.h; do
         }
         function done() { if (lits >= 3 && allname) print file, cur }
     ' "$f" || echo "!awk $f"
-done | sort -u >$T.hits
+done
+awk -v names=$T.names '
+    BEGIN { while ((getline l < names) > 0) isname[l] = 1 }
+    /^[ \t]*CSF_[A-Z_0-9]+[ \t]*=/ && match($0, /__attribute__\(\([a-z_0-9]+\)\)/) {
+        w = substr($0, RSTART + 15, RLENGTH - 17)
+        if (w in isname) { nm = $1; sub(/=.*/, "", nm); print "check_int.h", nm }
+    }
+' src/c/check_int.h || echo "!awk src/c/check_int.h"
+} | sort -u >$T.hits
 if grep -q "^!awk" $T.hits; then
     echo "attr lists: awk failed on: $(grep "^!awk" $T.hits)"
     exit 2

@@ -2407,10 +2407,8 @@ static void declared_visit(Checker *c, uint32_t i)
         c->last_ualign = st.calign;
         ign_packed = st.ign_packed;
         ign_aligned = st.ign_aligned;
-        if (s.kind == CS_FUNC) {
-            s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
+        if (s.kind == CS_FUNC)
             a.nonnull |= st.nonnull;
-        }
     }
     attrs_merge(&a, &sp.attrs);
     if (ign_packed)
@@ -3358,7 +3356,6 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     {
         AttrState st = {0};
         attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok, &st);
-        g.s.flags |= (st.pure ? CSF_PURE : 0) | (st.cnst ? CSF_CONSTFN : 0);
         if (st.calign > g.s.ualign)
             g.s.ualign = st.calign;
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;

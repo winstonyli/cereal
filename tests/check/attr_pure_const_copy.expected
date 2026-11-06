@@ -1,0 +1,36 @@
+attr_pure_const_copy.c:6:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+    6 | int d(void) __attribute__((copy(a), pure));
+      | ^
+attr_pure_const_copy.c:7:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    7 | int e(void) __attribute__((pure, copy(a)));
+      | ^
+attr_pure_const_copy.c:3:5: note: previous declaration here
+    3 | int a(void) __attribute__((const));
+      |     ^
+attr_pure_const_copy.c:8:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+    8 | int f(void) __attribute__((const, copy(b)));
+      | ^
+attr_pure_const_copy.c:4:5: note: previous declaration here
+    4 | int b(void) __attribute__((pure));
+      |     ^
+attr_pure_const_copy.c:9:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'noreturn' [-Wattributes]
+    9 | int g(void) __attribute__((noreturn, copy(b)));
+      | ^
+attr_pure_const_copy.c:4:5: note: previous declaration here
+    4 | int b(void) __attribute__((pure));
+      |     ^
+attr_pure_const_copy.c:10:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'pure' [-Wattributes]
+   10 | int h(void) __attribute__((copy(b), noreturn));
+      | ^
+attr_pure_const_copy.c:11:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   11 | int x(void) __attribute__((const, pure));
+      | ^
+attr_pure_const_copy.c:13:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   13 | int j(void) __attribute__((copy(x), pure));
+      | ^
+attr_pure_const_copy.c:14:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   14 | int k(void) __attribute__((copy(a), copy(b)));
+      | ^
+attr_pure_const_copy.c:4:5: note: previous declaration here
+    4 | int b(void) __attribute__((pure));
+      |     ^

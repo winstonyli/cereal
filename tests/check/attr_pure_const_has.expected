@@ -1,0 +1,27 @@
+attr_pure_const_has.c:3:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    3 | int a(int) __attribute__((pure, const));
+      | ^
+attr_pure_const_has.c:7:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    7 | int b(int) __attribute__((const));
+      | ^
+attr_pure_const_has.c:6:5: note: previous declaration here
+    6 | int b(int) __attribute__((pure));
+      |     ^
+attr_pure_const_has.c:12:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+   12 | int c1(int) __attribute__((copy(p), copy(q)));
+      | ^
+attr_pure_const_has.c:11:5: note: previous declaration here
+   11 | int q(int) __attribute__((const));
+      |     ^
+attr_pure_const_has.c:15:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+   15 | int c2(int) __attribute__((copy(p), const));
+      | ^
+attr_pure_const_has.c:18:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   18 | int c3(int) __attribute__((const, copy(p)));
+      | ^
+attr_pure_const_has.c:10:5: note: previous declaration here
+   10 | int p(int) __attribute__((pure));
+      |     ^
+attr_pure_const_has.c:21:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+   21 | int t(int) __attribute__((pure, const));
+      | ^

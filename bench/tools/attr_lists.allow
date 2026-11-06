@@ -1,1 +1,9 @@
-# FILE ARRAY reason   (docs/ATTR_TABLE_DESIGN.md "Guard"; checked by attr_lists.sh; entries can only be removed; empty since AR4 stage 2)
+# FILE ARRAY reason   (docs/ATTR_TABLE_DESIGN.md "Guard"; checked by attr_lists.sh; entries can only be removed)
+# AR4 stage 3: the CSF_* mirrors of attributes that stay (docs/PURE_CONST_DESIGN.md; PARKED.md)
+check_int.h CSF_NORETURN encoding differs, see PARKED.md
+check_int.h CSF_WEAK encoding differs, see PARKED.md
+check_int.h CSF_ATTR_UNUSED encoding differs, see PARKED.md
+check_int.h CSF_DEPRECATED encoding differs, see PARKED.md
+check_int.h CSF_UNAVAILABLE encoding differs, see PARKED.md
+check_int.h CSF_GNU_INLINE encoding differs, see PARKED.md
+check_int.h CSF_WEAKREF encoding differs, see PARKED.md

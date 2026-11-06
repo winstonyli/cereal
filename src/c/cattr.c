@@ -2556,10 +2556,10 @@ void attrs_names_ptrs(Checker *c, uint32_t h, uint32_t *set)
     }
 }
 
-/* The function attributes a declaration ends up with, applied in source order
- * (gcc's decl_attributes): 'pure' and 'const' exclude each other, and 'copy'
- * brings the referenced symbol's along.  *_loc: where the attribute came from
- * (for the note), have_*: whether it came from another declaration. */
+/* The attributes a declaration ends up with, applied in source order (gcc's
+ * decl_attributes): each is checked against the ones already kept on this
+ * declaration, the previous declaration's, and the ones 'copy' brought along
+ * (attr_excl_generic); a conflict is noted at the incoming attribute's origin. */
 
 /* attribs.cc diag_attr_exclusions over c-attribs.cc's attr_*_exclusions:
  * each attribute with the ones it may not be combined with.  obj: the
@@ -2608,9 +2608,6 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
             bool prev = false, hit = false;
             if (o == an)
                 continue;
-            if ((an == AT_PURE || an == AT_CONST) &&
-                (o == AT_PURE || o == AT_CONST))
-                continue;               /* attr_excl */
             for (k = 0; k < st->ncur && !hit; k++)
                 hit = st->cur[k] == o;
             if (!hit && st->hasprev && cdecl_aset_has(c, st->pset, o, NULL))
@@ -2658,30 +2655,6 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
     return false;
 }
 
-static void attr_excl(Checker *c, uint32_t tok, bool fn_pure, AttrState *st,
-                      bool from, SrcLoc loc)
-{
-    /* fn_pure: the incoming attribute is 'pure', else 'const' */
-    bool conflict = fn_pure ? st->cnst : st->pure;
-    if (conflict) {
-        Diagnostic *d = cwarn_d(c, DL_WARNING, iloc(c, tok), DW_ATTRIBUTES,
-                                "ignoring attribute '%s' because it conflicts "
-                                "with attribute '%s'", fn_pure ? "pure" : "const",
-                                fn_pure ? "const" : "pure");
-        if (d && (fn_pure ? st->cnst_from : st->pure_from))
-            cnote(c, d, fn_pure ? st->cnst_loc : st->pure_loc,
-                  "previous declaration here");
-    } else if (fn_pure) {
-        st->pure = true;
-        st->pure_from = from;
-        st->pure_loc = loc;
-    } else {
-        st->cnst = true;
-        st->cnst_from = from;
-        st->cnst_loc = loc;
-    }
-}
-
 static void attrs_state_init(Checker *c, AttrState *st, uint32_t kind,
                              uint32_t name)
 {
@@ -2694,10 +2667,6 @@ static void attrs_state_init(Checker *c, AttrState *st, uint32_t kind,
             st->hasprev = true;
             st->prevloc = r->loc;
             st->palign = r->ualign;
-            st->pure = (r->flags & CSF_PURE) != 0;
-            st->cnst = (r->flags & CSF_CONSTFN) != 0;
-            st->pure_from = st->cnst_from = true;
-            st->pure_loc = st->cnst_loc = r->loc;
         }
     }
 }
@@ -2756,10 +2725,6 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                 if (na && na > st->calign)
                     st->calign = na;
             }
-            if (kind == CS_FUNC && (id == AT_PURE || id == AT_CONST)) {
-                attr_excl(c, tok, id == AT_PURE, st, false, 0);
-                continue;
-            }
             if (id != AT_COPY)
                 continue;
             kids_get(c, it.p[q], &ak);
@@ -2812,15 +2777,12 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                         cnote(c, d, r->loc, "symbol '%s' referenced by '%s' "
                               "declared here", cident(c, r->name),
                               cident(c, name));
-                } else if (kind == CS_FUNC) {
-                    if (r->flags & CSF_PURE)
-                        attr_excl(c, tok, true, st, true, r->loc);
-                    if (r->flags & CSF_CONSTFN)
-                        attr_excl(c, tok, false, st, true, r->loc);
-                    st->nonnull |= r->nonnull;
-                } else if (kind == CS_OBJ) {
-                    /* the referenced variable's common/nocommon is copied */
-                    static const AttrId cn[] = {AT_COMMON, AT_NOCOMMON};
+                } else {
+                    /* the referenced symbol's exclusion-bearing attributes
+                     * are copied: pure/const of a function, common/nocommon
+                     * of a variable */
+                    const AttrId cn[2] = {kind == CS_FUNC ? AT_PURE : AT_COMMON,
+                                          kind == CS_FUNC ? AT_CONST : AT_NOCOMMON};
                     unsigned m;
                     for (m = 0; m < 2; m++)
                         if (cdecl_aset_has(c, r->aset, cn[m], NULL)) {
@@ -2829,6 +2791,8 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                             attr_excl_generic(c, tok, cn[m], kind, st);
                             st->copy_set = false;
                         }
+                    if (kind == CS_FUNC)
+                        st->nonnull |= r->nonnull;
                 }
             }
             kids_free(&ak);
