@@ -501,7 +501,7 @@ unsigned cexpr_asets(Checker *c, uint32_t e, bool strip, uint32_t out[3])
 
 void e_has_attr(Checker *c, uint32_t i)
 {
-    uint32_t k[2], sets[3], n = 0, j;
+    uint32_t k[2], sets[4], n = 0, j;
     char an[32], args[24];
     AttrId aid;
     bool has = false, nonnull = false;

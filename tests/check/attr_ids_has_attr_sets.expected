@@ -1,0 +1,6 @@
+attr_ids_has_attr_sets.c:6:16: warning: 'u1' attribute directive ignored [-Wattributes]
+    6 | typedef struct P T1 __attribute__((u1));
+      |                ^
+attr_ids_has_attr_sets.c:7:1: warning: 'u2' attribute directive ignored [-Wattributes]
+    7 | typedef T1 T2 __attribute__((u2));
+      | ^
