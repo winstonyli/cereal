@@ -2562,16 +2562,17 @@ void attrs_names_ptrs(Checker *c, uint32_t h, uint32_t *set)
  * (for the note), have_*: whether it came from another declaration. */
 
 /* attribs.cc diag_attr_exclusions over c-attribs.cc's attr_*_exclusions:
- * each attribute with the ones it may not be combined with.  fn_only: the
- * exclusion does not apply to variables and types. */
+ * each attribute with the ones it may not be combined with.  obj: the
+ * exclusion applies to variables only, else to functions only (gcc drops an
+ * attribute that does not apply to the declaration before it can conflict). */
 static const struct AttrExcl {
     AttrId n, ex[8];
-    bool fn_only;
+    bool obj;
 } attr_excl_tab[] = {
-    {AT_ALIGNED, {AT_PACKED}, true}, {AT_PACKED, {AT_ALIGNED}, true},
+    {AT_ALIGNED, {AT_PACKED}, false}, {AT_PACKED, {AT_ALIGNED}, false},
     {AT_COLD, {AT_COLD, AT_HOT}, false}, {AT_HOT, {AT_COLD, AT_HOT}, false},
-    {AT_COMMON, {AT_COMMON, AT_NOCOMMON}, false},
-    {AT_NOCOMMON, {AT_COMMON, AT_NOCOMMON}, false},
+    {AT_COMMON, {AT_COMMON, AT_NOCOMMON}, true},
+    {AT_NOCOMMON, {AT_COMMON, AT_NOCOMMON}, true},
     {AT_ALWAYS_INLINE, {AT_NOINLINE, AT_NOIPA}, false},
     {AT_GNU_INLINE, {AT_NOINLINE, AT_NOIPA}, false},
     {AT_NOINLINE, {AT_ALWAYS_INLINE, AT_GNU_INLINE}, false},
@@ -2587,8 +2588,8 @@ static const struct AttrExcl {
                AT_PURE}, false},
     {AT_PURE, {AT_CONST, AT_ALLOC_ALIGN, AT_ALLOC_SIZE, AT_MALLOC, AT_NORETURN,
               AT_PURE}, false},
-    {AT_STACK_PROTECT, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, true},
-    {AT_NO_STACK_PROTECTOR, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, true},
+    {AT_STACK_PROTECT, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, false},
+    {AT_NO_STACK_PROTECTOR, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, false},
 };
 
 /* True when attribute an conflicts with one already on this declaration or
@@ -2600,7 +2601,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
     unsigned k;
     for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
         const struct AttrExcl *x = &attr_excl_tab[i];
-        if (x->n != an || (x->fn_only && kind != CS_FUNC))
+        if (x->n != an || (x->obj ? kind != CS_OBJ : kind != CS_FUNC))
             continue;
         for (e = 0; e < 8 && x->ex[e]; e++) {
             AttrId o = x->ex[e];

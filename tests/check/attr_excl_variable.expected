@@ -1,0 +1,129 @@
+attr_excl_variable.c:5:1: warning: 'noreturn' attribute ignored [-Wattributes]
+    5 | int v1 __attribute__((noreturn, pure));
+      | ^
+attr_excl_variable.c:5:1: warning: 'pure' attribute ignored [-Wattributes]
+    5 | int v1 __attribute__((noreturn, pure));
+      | ^
+attr_excl_variable.c:6:1: warning: 'const' attribute ignored [-Wattributes]
+    6 | int v2 __attribute__((const, noreturn));
+      | ^
+attr_excl_variable.c:6:1: warning: 'noreturn' attribute ignored [-Wattributes]
+    6 | int v2 __attribute__((const, noreturn));
+      | ^
+attr_excl_variable.c:7:1: warning: 'malloc' attribute ignored; valid only for functions [-Wattributes]
+    7 | int v3 __attribute__((malloc, pure));
+      | ^
+attr_excl_variable.c:7:1: warning: 'pure' attribute ignored [-Wattributes]
+    7 | int v3 __attribute__((malloc, pure));
+      | ^
+attr_excl_variable.c:8:1: warning: 'cold' attribute ignored [-Wattributes]
+    8 | int v4 __attribute__((cold, hot));
+      | ^
+attr_excl_variable.c:8:1: warning: 'hot' attribute ignored [-Wattributes]
+    8 | int v4 __attribute__((cold, hot));
+      | ^
+attr_excl_variable.c:9:1: warning: 'always_inline' attribute ignored [-Wattributes]
+    9 | int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written; cereal does for this order only (PARKED.md) */
+      | ^
+attr_excl_variable.c:9:1: warning: 'noinline' attribute ignored [-Wattributes]
+    9 | int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written; cereal does for this order only (PARKED.md) */
+      | ^
+attr_excl_variable.c:10:1: warning: 'returns_twice' attribute ignored [-Wattributes]
+   10 | int v6 __attribute__((returns_twice, noreturn));
+      | ^
+attr_excl_variable.c:10:1: warning: 'noreturn' attribute ignored [-Wattributes]
+   10 | int v6 __attribute__((returns_twice, noreturn));
+      | ^
+attr_excl_variable.c:11:1: warning: 'alloc_size' attribute only applies to function types [-Wattributes]
+   11 | int v7 __attribute__((alloc_size(1), const));
+      | ^
+attr_excl_variable.c:11:1: warning: 'const' attribute ignored [-Wattributes]
+   11 | int v7 __attribute__((alloc_size(1), const));
+      | ^
+attr_excl_variable.c:12:1: warning: 'alloc_size' attribute only applies to function types [-Wattributes]
+   12 | int v8 __attribute__((alloc_size(1), pure));
+      | ^
+attr_excl_variable.c:12:1: warning: 'pure' attribute ignored [-Wattributes]
+   12 | int v8 __attribute__((alloc_size(1), pure));
+      | ^
+attr_excl_variable.c:13:1: warning: 'alloc_size' attribute only applies to function types [-Wattributes]
+   13 | int v9 __attribute__((alloc_size(1), noreturn));
+      | ^
+attr_excl_variable.c:13:1: warning: 'noreturn' attribute ignored [-Wattributes]
+   13 | int v9 __attribute__((alloc_size(1), noreturn));
+      | ^
+attr_excl_variable.c:14:1: warning: 'alloc_align' attribute only applies to function types [-Wattributes]
+   14 | int v10 __attribute__((alloc_align(1), const));
+      | ^
+attr_excl_variable.c:14:1: warning: 'const' attribute ignored [-Wattributes]
+   14 | int v10 __attribute__((alloc_align(1), const));
+      | ^
+attr_excl_variable.c:15:1: warning: 'alloc_align' attribute only applies to function types [-Wattributes]
+   15 | int v11 __attribute__((alloc_align(1), pure));
+      | ^
+attr_excl_variable.c:15:1: warning: 'pure' attribute ignored [-Wattributes]
+   15 | int v11 __attribute__((alloc_align(1), pure));
+      | ^
+attr_excl_variable.c:16:1: warning: 'alloc_align' attribute only applies to function types [-Wattributes]
+   16 | int v12 __attribute__((alloc_align(1), noreturn));
+      | ^
+attr_excl_variable.c:16:1: warning: 'noreturn' attribute ignored [-Wattributes]
+   16 | int v12 __attribute__((alloc_align(1), noreturn));
+      | ^
+attr_excl_variable.c:17:1: warning: 'warn_unused_result' attribute only applies to function types [-Wattributes]
+   17 | int v13 __attribute__((warn_unused_result, noreturn));
+      | ^
+attr_excl_variable.c:17:1: warning: 'noreturn' attribute ignored [-Wattributes]
+   17 | int v13 __attribute__((warn_unused_result, noreturn));
+      | ^
+attr_excl_variable.c:18:1: warning: 'const' attribute ignored [-Wattributes]
+   18 | int v14 __attribute__((const, malloc));
+      | ^
+attr_excl_variable.c:18:1: warning: 'malloc' attribute ignored; valid only for functions [-Wattributes]
+   18 | int v14 __attribute__((const, malloc));
+      | ^
+attr_excl_variable.c:19:1: warning: 'gnu_inline' attribute ignored [-Wattributes]
+   19 | int v15 __attribute__((gnu_inline, noinline));
+      | ^
+attr_excl_variable.c:19:1: warning: 'noinline' attribute ignored [-Wattributes]
+   19 | int v15 __attribute__((gnu_inline, noinline));
+      | ^
+attr_excl_variable.c:20:1: warning: 'noipa' attribute ignored [-Wattributes]
+   20 | int v16 __attribute__((noipa, always_inline));
+      | ^
+attr_excl_variable.c:20:1: warning: 'always_inline' attribute ignored [-Wattributes]
+   20 | int v16 __attribute__((noipa, always_inline));
+      | ^
+attr_excl_variable.c:22:1: warning: 'packed' attribute ignored [-Wattributes]
+   22 | int v17 __attribute__((aligned(8), packed));
+      | ^
+attr_excl_variable.c:23:1: warning: 'stack_protect' attribute ignored [-Wattributes]
+   23 | int v18 __attribute__((stack_protect, no_stack_protector));
+      | ^
+attr_excl_variable.c:23:1: warning: 'no_stack_protector' attribute ignored [-Wattributes]
+   23 | int v18 __attribute__((stack_protect, no_stack_protector));
+      | ^
+attr_excl_variable.c:25:1: warning: ignoring attribute 'nocommon' because it conflicts with attribute 'common' [-Wattributes]
+   25 | int v19 __attribute__((common, nocommon));
+      | ^
+attr_excl_variable.c:26:1: warning: ignoring attribute 'common' because it conflicts with attribute 'nocommon' [-Wattributes]
+   26 | int v20 __attribute__((nocommon, common));
+      | ^
+attr_excl_variable.c:27:1: warning: 'common' attribute ignored [-Wattributes]
+   27 | typedef int t1 __attribute__((common, nocommon));
+      | ^
+attr_excl_variable.c:27:1: warning: 'nocommon' attribute ignored [-Wattributes]
+   27 | typedef int t1 __attribute__((common, nocommon));
+      | ^
+attr_excl_variable.c:28:8: warning: 'common' attribute ignored [-Wattributes]
+   28 | struct s { int f __attribute__((common, nocommon)); };
+      |        ^
+attr_excl_variable.c:28:8: warning: 'nocommon' attribute ignored [-Wattributes]
+   28 | struct s { int f __attribute__((common, nocommon)); };
+      |        ^
+attr_excl_variable.c:29:1: warning: 'common' attribute ignored [-Wattributes]
+   29 | void fn(int p __attribute__((common, nocommon)));
+      | ^
+attr_excl_variable.c:29:1: warning: 'nocommon' attribute ignored [-Wattributes]
+   29 | void fn(int p __attribute__((common, nocommon)));
+      | ^
