@@ -6,7 +6,7 @@ status: done
 
 Spec for the parked "Attribute names as ids in `AttrState` and `aset`" entry (PARKED.md; origin docs/CLEANUP_PLAN.md AR4,
 whose design is docs/ATTR_TABLE_DESIGN.md). Scope chosen by the user 2026-11-05 (j1): the name strings in `AName`,
-`AttrState.cur` and `Checker.ign`; not the `pure`/`cnst` and `Attrs`-flag duplicates (stage 3, stays parked).
+`AttrState.cur` and `Checker.ign`; not the `pure`/`cnst` and `Attrs`-flag duplicates (stage 3: `pure`/`cnst` done, docs/PURE_CONST_DESIGN.md; the `Attrs`-flag pair decided against, PARKED.md).
 
 ## Intent
 
@@ -19,12 +19,12 @@ compares, lets `attr_excl_tab` use enumerators, and empties the allowlist.
 ## Goals
 
 - `AName`, `cur` and `ign` hold ids; `aset_*`/`cdecl_aset_*` take ids. No attribute-name string is stored in checker state.
-- `attr_excl_tab` rows are enumerators; the allowlist entry is deleted and the guard passes with an empty allowlist.
+- `attr_excl_tab` rows are enumerators; the allowlist entry is deleted and the guard passes with an empty allowlist (at stage 2; stage 3 lists the kept `CSF_*` mirrors).
 - Output is byte-identical on the whole corpus: same gate counts, no golden changes.
 
 ## Non-goals
 
-`AttrState.pure/cnst` and the `Attrs`-flag versus `aset` pairs; handler dispatch in `attr_collect`; the string-keyed
+`AttrState.pure/cnst` (removed in stage 3) and the `Attrs`-flag versus `aset` pairs; handler dispatch in `attr_collect`; the string-keyed
 helpers that parse source text (`attrs_item_named`, `attr_arg_eq`, `cdecl_attr_name`, `cdecl_attr_args`); diagnostics
 wording (they print `attr_name(id)`, the row's name).
 
@@ -72,7 +72,7 @@ The set machinery is observable through more than names, so each of these is pin
   cattr.c:2125, the five `ign` push sites 1861, 2212, 2239, 2287 and 2622 (all five push table names, e.g. 2239 is `warn_unused_result`: enumerators, never `AT_UNKNOWN`, which is why `aset_add` needs no filter for it), `alloc_redecl` (takes an id), the `an2[]`/`cn[]` arrays at ~2257/~2796, `attrs_copy_check`'s `strcmp(an, ...)` tests at 2706-2735, `aset_opt_args` at
   cmerge.c:651 (the function starts at 645), `acc_replay_ref` cattr.c:2055, the `aligned` loops, `alloc_redecl`, `attr_excl_generic`).
 - `attr_excl_generic(c, tok, AttrId an, ...)`; `cur` is `AttrId cur[24]`; `ign` is `AttrId ign[8]`; `cmerge.c:491`
-  compares `AT_NOINLINE`. `attr_excl_tab` rows are `{AttrId n; AttrId ex[8]; bool fn_only}` zero-terminated by `AT_NONE`.
+  compares `AT_NOINLINE`. `attr_excl_tab` rows are `{AttrId n; AttrId ex[8]; bool fn_only}` zero-terminated by `AT_NONE` (stage 3 renamed it `obj`, true for object-only rows).
 - Strings stay where the *source text* is the input: `attrs_item_named`, `attr_arg_eq` (called with the id's name or kept
   string-keyed: builder's call), `cdecl_attr_name`, `attr_lookup_n`.
 
@@ -88,13 +88,13 @@ here). Deletes `AName.name`, the empty-string spelling of the tombstone (it beco
   (a) a declaration whose only attribute is unknown, with two typedef sets in its type chain and a record carrying
   `packed`, queried with `__builtin_has_attribute(x, packed)` (the 3-slot case: result today is 0);
   (b) 24 unknown attributes, then `pure`, then `noreturn` (the cap drops the `pure` push, so no conflict is printed today; a
-  `pure`+`const` pair would not discriminate, it is decided by `AttrState.pure/cnst`); (c) `int v __attribute__((packed));`
+  `pure`+`const` pair would not discriminate, it was decided by `AttrState.pure/cnst`, removed in stage 3); (c) `int v __attribute__((packed));`
   (the drop leaves a tombstone-only set, to be confirmed in the probe), then `int y __attribute__((copy(v)));`, then `y`
   in the 3-slot setup of (a): the extra set gives 0 today (`y`'s tombstone-only set, the two typedef sets and the cap fill `sets[3]`) and 1 if tombstones were skipped;
   (d) a function redeclared with differing `alloc_size`, then `__builtin_has_attribute(f, alloc_size(2))` (proves `aset_add` still honours `ign`). Each golden's current output is recorded from the unmodified binary before the change; none is assumed.
 - `tests/run.sh` 2370/0 (or the count then current) at each task commit; one full gate at the end (run/san/verify,
   callgrind recorded: AR4 stage 1 moved −0.10%).
-- `sh bench/tools/attr_lists.sh` prints ok with the allowlist empty.
+- `sh bench/tools/attr_lists.sh` prints ok with the allowlist empty (at stage 2; stage 3 lists the kept `CSF_*` mirrors).
 
 ## Build notes
 

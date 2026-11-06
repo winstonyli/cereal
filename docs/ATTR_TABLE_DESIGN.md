@@ -31,7 +31,7 @@ per attribute makes each such fact exist once.
   handler dispatch").
 - No `AttrId` in state was the v1 scope (r1); AR4 stage 2 (docs/ATTR_IDS_DESIGN.md) put ids in `AName`, `AttrState.cur`
   and `Checker.ign`, in-process only (no digest, summary or index holds them). Anti-goal stays: a second, id-keyed
-  copy of a fact beside the name-keyed state; the `pure`/`cnst` and `Attrs`-flag pairs are stage 3 (PARKED.md).
+  copy of a fact beside the name-keyed state; stage 3 removed the `pure`/`cnst` pair (docs/PURE_CONST_DESIGN.md); the `Attrs`-flag pair and the seven other `CSF_*` mirrors stay (PARKED.md, decided against).
 - `attr_excl_tab` stayed in v1 as a single copy compared against string state; stage 2 converted it to enumerators.
 
 ## Decisions already made (the user, 2026-11-04)
@@ -150,7 +150,9 @@ mirror (`Attrs` flag versus `aset` name, `AttrState` pure/const).
   initialiser (a `= {` ... `};` statement, so a nested row is not counted alone) that holds three or more string
   literals that are all attribute names from `attrs.def`, except entries in `bench/tools/attr_lists.allow`
   (`FILE ARRAY-NAME` per line, as `globals.allow` is `OBJECT SYMBOL`; the script fails when an entry no longer
-  matches a list, so it can only shrink). The allowlist started with `cattr.c attr_excl_tab` (removed by AR4 stage 2; it is now empty).
+  matches a list, so it can only shrink). The allowlist started with `cattr.c attr_excl_tab` (removed by AR4 stage 2). Stage 3 added a second check and seven entries (`check_int.h CSF_X`): see below.
+
+- fails if a `CSF_*` enumerator in `src/c/check_int.h` mirrors an attribute (its single-line comment spells `__attribute__((x))` with `x` a row of `attrs.def`), except entries `check_int.h CSF_X` in the allowlist (AR4 stage 3; a `#define`, a multi-line comment or a comment without that spelling is invisible).
 
 It checks array-style lists only: it does not look at `strcmp` OR-chains (`!strcmp(a,"alias") || ...`,
 `cattr.c:638`), which are handler code, and it misses a list built any other way. It catches the way these copies

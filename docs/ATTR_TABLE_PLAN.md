@@ -31,7 +31,7 @@ status: done
 
 ## End-state fit
 
-Home: `src/c/attrs.def`, `src/c/attrs.h`, `attr_lookup`, `attr_lookup_n` in `cattr.c`, guard in `bench/tools/attr_lists.sh`. Replaces the lists named in the spec's table and deletes them task by task; nothing is kept beside the new table. Allowlist: `cattr.c attr_excl_tab` only (removed by AR4 stage 2).
+Home: `src/c/attrs.def`, `src/c/attrs.h`, `attr_lookup`, `attr_lookup_n` in `cattr.c`, guard in `bench/tools/attr_lists.sh`. Replaces the lists named in the spec's table and deletes them task by task; nothing is kept beside the new table. Allowlist: `cattr.c attr_excl_tab` only (removed by AR4 stage 2; stage 3 added the `check_int.h CSF_X` entries).
 
 ---
 
