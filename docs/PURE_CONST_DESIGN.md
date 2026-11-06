@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Pure/const state in the name sets (AR4 stage 3)
