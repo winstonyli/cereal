@@ -4,47 +4,138 @@ status: draft
 
 # Pure/const state in the name sets (AR4 stage 3)
 
-Follows `docs/ATTR_IDS_DESIGN.md` (stage 2, done). Scope chosen by the user 2026-11-05: pure/const only (the s1 option);
-the other `CSF_*` attribute mirrors and the `Attrs` bools stay, with the evidence below.
+Follows `docs/ATTR_IDS_DESIGN.md` (stage 2, done). Scope chosen 2026-11-05: pure/const only; the other `CSF_*` attribute
+mirrors and the `Attrs` bools stay (evidence below). Shape: prototype `proto-y1` (2026-11-06; saved in the session scratchpad, not
+committed): the suite passes except the two `attr_copy_excl` hunks below, and its probe lines match gcc 15.2 except the
+function `common, nocommon` gap, `has_attribute` on variables, and gaps present on `main` (see Behaviour changes). An earlier variant with a per-pair note rule (`proto-x1`) passed the gate (run
+`2026-11-06-ar4s3-proto-x1`) but encoded a note rule gcc does not have; the final shape still needs its own asan and
+gate run before this spec is marked active.
 
 ## Problem
 
 "This function is pure / const" is held three times:
 
-1. `AttrState` (`cdecl_int.h`): `pure`, `cnst`, `pure_from`, `cnst_from`, `pure_loc`, `cnst_loc`, used only by
-   `attr_excl` and `attrs_state_init` (`cattr.c`).
+1. `AttrState` (`cdecl_int.h`): `pure`, `cnst`, `pure_from`, `cnst_from`, `pure_loc`, `cnst_loc`, used by `attr_excl` and
+   `attrs_state_init` (`cattr.c`) only.
 2. `CSym.flags`: `CSF_PURE`, `CSF_CONSTFN`, written from (1) at `cdecl.c:2411` and `cdecl.c:3361`, read by
-   `attrs_state_init`, the `copy` branch of `attrs_copy_check`, `cmerge.c:725` (merge) and `cwarn_expr.c:912`
+   `attrs_state_init`, the function branch of `attrs_copy_check`, `cmerge.c:725` (merge mask) and `cwarn_expr.c:912`
    (call equality).
-3. The `AT_PURE` / `AT_CONST` entries of `CSym.aset`, which hold the same fact and survive redeclaration merges
-   already (`attrs_merge`).
+3. The `AT_PURE` / `AT_CONST` entries of `CSym.aset` (built by `cdecl_attrs_names`, carried across redeclarations by
+   `attrs_names` at `cdecl.c:2644-2646` and replaced per declaration at `cmerge.c:748`), which hold the same fact.
+   `ccall.c:1624-1626` already derives pure/const from the set; call equality is the one reader still on the flags.
 
-The conflict check for the pair is also done twice: `attr_excl_generic` skips the pure/const pair with a `continue`
-(`cattr.c`, "attr_excl") and `attr_excl` (about 25 lines) re-implements it with its own state. It is the only attribute
-pair outside the generic table, and `copy` of a function handles it by flag where `copy` of an object (common/nocommon)
-uses the generic mechanism (`copy_set`, `copy_loc`, `cdecl_aset_has(r->aset, ...)`).
+The pair's conflict check is also done twice: `attr_excl_generic` skips the pure/const pair (`continue`, "attr_excl") and
+`attr_excl` (about 25 lines) redoes it with its own state. Separately, `attr_excl_tab` carries `fn_only` to keep four
+rows off variables, but the other rows still fire on variables and print conflicts gcc does not (below).
 
 ## Design
 
-Place: all of it in `cattr.c` (the exclusion machinery) plus the three flag readers. No new module.
+Place: exclusion state and rules in `cattr.c` (`attr_excl_tab`, `attr_excl_generic`, `attrs_copy_check`) and `AttrState`
+in `cdecl_int.h`; the flag enumerators in `check_int.h`; their writers in `cdecl.c` (two lines) and the merge mask in
+`cmerge.c`; the one pure/const predicate beside `cdecl_aset_has`, used by `ccall.c` and `cwarn_expr.c`; the guard in
+`bench/tools`. No new module.
 
-1. **Exclusion.** `attr_excl_generic` handles pure/const like every other pair: the `continue` stays only as a kind guard
-   (the pair is checked by gcc's handlers, so only for functions: today `int v __attribute__((pure, const))` prints
-   two "attribute ignored" warnings and no conflict; keep that). `attr_excl` and its call at the `kind == CS_FUNC &&
-   (AT_PURE || AT_CONST)` branch are deleted. The "previous declaration here" note comes from `st->prevloc` (previous
-   declaration, via `pset`) or `st->copy_loc` (via `copy`), the two sources the generic path already has.
-2. **Copy.** The function branch of `attrs_copy_check` and the object branch become one loop over a per-kind list of ids
-   (function: `AT_PURE`, `AT_CONST`; object: `AT_COMMON`, `AT_NOCOMMON`) using `cdecl_aset_has(r->aset, id)`,
-   `copy_set`/`copy_loc` and `attr_excl_generic`. `st->nonnull |= r->nonnull` stays in the function case.
-3. **State.** `AttrState` loses its six fields; `attrs_state_init` loses the flag seeding.
-4. **Flags.** `CSF_PURE` and `CSF_CONSTFN` are deleted (enumerators, the two writes, the merge mask, the `copy` reads). The
-   call-equality reader asks `cdecl_aset_has(c, csym(c, ref)->aset, AT_PURE)` and `AT_CONST`. Dropped entries are
-   `AT_NONE` tombstones, so an excluded `pure` is not found, as the flag was not set. The other enumerator values keep
-   their numbers (gaps stay; no renumbering).
-5. **Guard** (WORKING_STYLE "a cleanup leaves a guard"): `bench/tools/attr_lists.sh` gains a check that fails on a
-   `CSF_*` enumerator whose comment names `__attribute__((x))` with `x` a row of `attrs.def`, unless listed in
-   `bench/tools/attr_lists.allow`. The seven that remain are the allowlist: `CSF_NORETURN`, `CSF_WEAK`,
-   `CSF_ATTR_UNUSED`, `CSF_DEPRECATED`, `CSF_UNAVAILABLE`, `CSF_GNU_INLINE`, `CSF_WEAKREF`. It can only shrink.
+1. **Gate by declaration kind.** `attr_excl_tab`'s `fn_only` becomes `obj`: a row applies to a declaration when
+   `obj ? kind == CS_OBJ : kind == CS_FUNC`. Only the two `common`/`nocommon` rows are `obj`. gcc drops an inapplicable
+   attribute ("attribute ignored", already printed elsewhere) before it can conflict, so exclusion never applies to
+   variables. Today we print a conflict as well for `noreturn,pure`, `const,noreturn`, `malloc,pure`, `cold,hot`,
+   `noinline,always_inline`, `returns_twice,noreturn` on a variable; gcc 15.2 prints none (checked 2026-11-06). The
+   pure/const `continue` guard is then unnecessary and deleted: the pair is a function-only row like the rest.
+2. **One note rule.** `attr_excl_generic` already notes the *incoming* attribute's origin: the previous declaration
+   (`st->prevloc`) when the conflict is with it, else the `copy` source (`copy_set`/`copy_loc`), and nothing for an
+   attribute written on this declaration. That is gcc's rule for every pair, including pure/const (gcc 13.4 and 15.2
+   agree on 20 probe lines, reviewer run 2026-11-06). Only `attr_excl` differed, noting the *kept* attribute's origin.
+   Going generic needs no per-entry origin: `AttrState.cur[]` stays `AttrId[24]`.
+3. **Copy.** The function branch of `attrs_copy_check` is the object branch with a different id pair: one loop over a
+   per-kind pair (function: `AT_PURE`, `AT_CONST`; object: `AT_COMMON`, `AT_NOCOMMON`) using
+   `cdecl_aset_has(c, r->aset, id, NULL)`, `copy_set`/`copy_loc` and `attr_excl_generic`; `st->nonnull |= r->nonnull`
+   stays for functions. Previous-declaration pure/const is found by `attr_excl_generic` through `st->pset`.
+4. **State.** `AttrState` loses its six fields; `attr_excl` and its call branch, and `attrs_state_init`'s flag seeding,
+   are deleted.
+5. **Flags.** `CSF_PURE` and `CSF_CONSTFN` are deleted: enumerators, the two writes, the merge mask bits. Call equality
+   asks a new predicate `cdecl_fn_pure(c, ref)` (`csym(c, ref)->kind == CS_FUNC` and the set has `AT_PURE` or
+   `AT_CONST`), which replaces only the set test open-coded at `ccall.c:1624-1626`. The early `return false` for a non-function at
+   `ccall.c:1622` stays (it also skips the built-in table lookup, so a variable named like a pure built-in is not pure).
+   The kind test in the predicate is needed: the flags were written for functions only, but a variable's set
+   records `pure` too (`int (*fp)(int) __attribute__((pure));` has it), and `fp(x) == fp(x)` must stay silent. Other
+   enumerator values keep their numbers.
+6. **Guard.** `bench/tools/attr_lists.sh` gains a second check (a new parse of `check_int.h`, not the string-array scan):
+   a `CSF_*` enumerator whose comment names `__attribute__((x))` with `x` a row of `attrs.def` fails unless
+   `bench/tools/attr_lists.allow` lists it as `check_int.h CSF_X <reason>` (the existing "FILE ARRAY" format; the
+   reader ignores the trailing reason). The new hits are appended to the script's one `$T.hits` file, so the existing
+   `comm` serves both checks: a new hit not in the list fails, a listed entry that no longer matches is reported stale,
+   and the list only shrinks. The header of `attr_lists.allow` is updated (it says "empty since AR4 stage 2"). Limit: a
+   mirror whose comment does not name `__attribute__((x))` is invisible to the check. The allowlist starts with the
+   seven kept mirrors:
+   `CSF_NORETURN` (its comment gains `__attribute__((noreturn))` or `_Noreturn` so the check sees it), `CSF_WEAK`,
+   `CSF_ATTR_UNUSED`, `CSF_DEPRECATED`, `CSF_UNAVAILABLE`, `CSF_GNU_INLINE`, `CSF_WEAKREF`.
+7. **Comment.** The stale block comment above `attr_excl_tab` ("'pure' and 'const' exclude each other, and 'copy' ...")
+   is rewritten to describe the table and the kind gate.
+
+## Behaviour changes (toward gcc 15.2 except the one flagged; each pinned by a new golden unless said)
+
+- The `fn_only=false` rows stop firing on variables (gcc prints none there; `aligned/packed` and `stack_protect`
+  already behaved so). `attr_excl_variable` has one case per such row: the six named above, plus alloc_size/alloc_align
+  with const|pure|noreturn, warn_unused_result with noreturn, const with malloc, gnu_inline with noinline, noipa with
+  always_inline, and the unchanged aligned/packed and stack_protect pairs as pins.
+- **Away from gcc (known, not pinned):** an attribute gcc drops as inapplicable to a variable now stays in the variable's
+  set, because `c->ign` was only written by the conflict. `int v __attribute__((noreturn, pure))`: gcc and `main` say
+  `__builtin_has_attribute(v, pure)` is false; the prototype says true. `main` already differs from gcc on other
+  inapplicable attributes there (`noreturn`, `cold`, `const` alone). The general fix is to drop attributes inapplicable to
+  the declaration kind from the set; parked as a separate item.
+- **Regression to resolve (Decide, see the covering message):** the kind gate treats a function-pointer object as a
+  variable. gcc applies `noreturn`/`const`/`pure` there to the pointed-to function type, so it still reports
+  `int (*fp)(int) __attribute__((noreturn, pure))` (conflict) and `void (*p)(void) __attribute__((const, noreturn))`;
+  `main` matches gcc, the prototype prints nothing. For `cold,hot`, `noinline,always_inline`, `returns_twice,noreturn`,
+  `malloc,pure`, `gnu_inline,noinline` on a function pointer gcc prints only "attribute ignored", while `main` prints a
+  conflict plus another warning, so the gate would improve those. Unpinned by any listed golden.
+- Copy now enters the exclusion state, so `has_attribute` follows gcc on `copy(p), copy(q)` (const false), `copy(p), const`
+  (const false), `const, copy(p)` (pure false), and on `copy(t)` of a `pure, const` function (const false); the old note
+  at `p` for `copy(p), const` is gone (gcc prints none). A redeclaration `pure` then `const` makes `const` false in the
+  set. `pure, const, noreturn` reports `noreturn` against `pure` (gcc; `main` said `const`).
+- `int w0(int) __attribute__((common, nocommon));` (a function): gcc 15.2 prints "'common' attribute ignored" and
+  "'nocommon' attribute ignored"; we print one wrong conflict. The gate drops the conflict, and the prototype then prints
+  nothing: the ignored-attribute path (`attrs.def` `ctx` for `common`/`nocommon`) has no function context. Still a gap,
+  smaller than before; parked, and not pinned by a golden (a golden must match gcc).
+- Copy now goes through the whole table: `__attribute__((noreturn, copy(p))) int f(int);` with `p` pure warns "ignoring
+  attribute 'pure' because it conflicts with attribute 'noreturn'" with a note at `p`, and `copy(p), noreturn` ignores
+  `noreturn` (gcc 15.2 does both; cereal printed nothing).
+- `int f(void) __attribute__((pure, const));`: `__builtin_has_attribute(f, const)` is now false (the ignored `const` is
+  recorded in `c->ign`, as every other excluded attribute, instead of staying in the set).
+- `_Noreturn int f(void) __attribute__((const));` then `int f(void) __attribute__((pure));`: the conflict is now reported
+  with `const` (table order, the pair is no longer special) instead of `noreturn`.
+- Copy notes follow gcc's rule for pure/const (`attr_copy_excl.expected` changes by two hunks, verified against gcc 15.2
+  on the unmodified test): line 11 `copy(a), copy(b)` notes `b` (4:27), not `a`; line 12 `pure, copy(a)` gains the note at
+  `a` (3:28). `const, copy(p)` now notes `p`, closing the old gap.
+
+Not in scope (behaviour extension, parked): copying `hot`/`cold`/`noreturn`/`returns_twice`/`alloc_*` through `copy` so
+that they conflict as gcc does. cereal copies only pure/const/common/nocommon today.
+
+## Goldens (each new file adds 2 test passes)
+
+1. `attr_excl_variable`: one variable case per exclusion row (list under Behaviour changes), plus `common, nocommon` on a
+   typedef/field/parameter; expected output only "attribute ignored" warnings, as gcc 15.2.
+2. `attr_pure_const_has`: `has_attribute` for `pure, const` (const false, pure true), after a redeclaration, and the
+   `copy` cases listed under Behaviour changes. Only cases where gcc agrees.
+3. `attr_pure_const_noreturn`: `_Noreturn` + const then pure redeclaration, and `pure, const, noreturn`. Avoid
+   `_Noreturn ... const` redeclared with `const`: `main` and the prototype warn, gcc does not (pre-existing, parked).
+4. `attr_pure_const_copy`: `copy(a)` then `const` / `pure` on the declaration, `const, copy(p)`, `noreturn, copy(p)` and
+   `copy(p), noreturn` (pins the merged copy loop), and copying a function whose own `pure` was excluded.
+5. `attr_pure_const_call`: calls with equal arguments (the equality warning needs the fact) after a redeclaration
+   without the attribute, after a definition (`cdecl.c:3361` path), after `copy`, and with `pure, const` (const dropped);
+   and silence for a function-pointer variable carrying `pure` (pins the `CS_FUNC` test).
+Existing goldens that cover the rest: `attr_excl`, `attr_copy_excl`, `attr_pure_const_void`, `misc_105`.
+
+## Verification
+
+Per-golden mutation: in a scratch copy apply each of these mutants and see the named golden fail: make the `fn_only=false` rows apply to `CS_OBJ` again (`attr_excl_variable`); drop the
+`kind != CS_FUNC` test in the predicate (`attr_pure_const_call`); make the copy loop skip the function pair
+(`attr_pure_const_copy`); route pure/const around the generic path by re-adding the `continue` (`attr_copy_excl`,
+`attr_pure_const_has`). The gate's `obj` half (`common`/`nocommon` on a function) has no pinning golden by design and its
+mutant survives; that is the stated cost of the parked gap. The suite passes unchanged apart from the new files and
+the two `attr_copy_excl.expected` hunks; asan over the checker goldens; gate green. Callgrind: the gate's stage prints no
+count, so record the checker's instruction count before and after (ICOUNT.md, A/A first); the aset-chain walk in call
+equality is the expected cost.
 
 ## Found, kept (evidence, 2026-11-05)
 
@@ -52,31 +143,41 @@ Place: all of it in `cattr.c` (the exclusion machinery) plus the three flag read
   `SF_NORETURN` (`csum.c:272`); `CSF_DEPRECATED`/`CSF_UNAVAILABLE` use an exclusive encoding (`unavailable` wins,
   `cdecl.c:2483`), are also stored in `dep` on records, fields and enumerators (`crecord.c:773`, `1066`, `1354`) and pair
   with `dep_msg`; `CSF_WEAKREF` implies `CSF_WEAK` (`cdecl.c:2497`). Folding them would add a second encoding.
-- `Attrs` bools and `aset` entries are not a synced pair: `aset` is built from the attribute nodes by
-  `cdecl_attrs_names`, `Attrs` by `attr_collect`; the tombstone golden (`attr_ids_tombstone`) pins that they differ
-  (written versus kept).
+- `Attrs` bools and `aset` entries are not a synced pair: `aset` is built from attribute nodes by `cdecl_attrs_names`,
+  `Attrs` by `attr_collect`; `attr_ids_tombstone` pins that they differ (written versus kept).
 
-## Risks and checks
+## End-state fit
 
-- **Order of reports.** The generic table reports the first matching exclusion in table order (for `pure`: `const`
-  first). Before, the pair was reported after every other exclusion. They differ only when a declaration conflicts both
-  with the pair and with another attribute, which needs a previous declaration holding `noreturn`/`malloc`/`alloc_*`
-  together with a `const`/`pure` that conflicts, and those exclude each other, so I expect no reachable case. The
-  existing goldens (`attr_excl`, `attr_copy_excl`, `attr_pure_const_void`) and the corpus diff check it.
-- **Merge.** `cmerge.c` ORed the flags from the old symbol; the merged `aset` must hold the same. A new golden redeclares a
-  pure function without the attribute and calls it twice with equal arguments (the equality warning needs the fact).
-- **`copy`.** A new golden copies a pure function onto a declaration with `const` (conflict, note at the source) and copies
-  a function with excluded (tombstone-only) `pure`.
-- **Variables.** A golden keeps `int v __attribute__((pure, const))` free of a conflict.
-- Verification: the existing suite passes unchanged apart from the new goldens (each new golden file adds 2 passes);
-  per-golden mutations (revert each of the four changes in a scratch copy and see the new golden fail); gate green,
-  callgrind total not worse (the baseline is recorded in the plan).
+- Target: pure/const state lives only in `CSym.aset`; exclusion lives only in `attr_excl_tab` + `attr_excl_generic`.
+- Replaces: `AttrState` pure/cnst fields, `attr_excl`, `CSF_PURE`/`CSF_CONSTFN`, `fn_only`, the pair `continue`, the
+  function/object split in `attrs_copy_check`.
+- Deletes: `attr_excl`, six state fields, two flags, the pair `continue`, one copy branch (prototype `proto-y1`: +17/-60
+  over six files, before goldens and the guard).
+- Adds: the `obj` gate (replaces a column), `cdecl_fn_pure` (replaces two open-coded copies), one guard check. No new
+  fields.
+- Special cases that remain: the noipa/noreturn oddities already in `attr_excl_generic`; none added.
 
 ## Non-goals
 
-The seven kept flags, `Attrs`, handler dispatch, the second pure/const-like pair candidates (none found).
+The seven kept flags, `Attrs`, handler dispatch, `common`/`nocommon` on typedefs and fields (see Risks).
+
+## Risks
+
+- **`common`/`nocommon` kinds.** Only `CS_FUNC` and `CS_OBJ` reach `attrs_copy_check` (`cdecl.c:2391`), so typedef,
+  field and parameter never reached the table. The one kind that changes is `CS_FUNC` (above). Local and file-scope
+  objects of non-function-pointer type print the same as gcc 15.2 on `main` and stay so; function-pointer objects are
+  the open regression above.
+- **Golden edit.** `attr_copy_excl.expected` was generated by cereal, not gcc, on the two hunks above; the edit is
+  checked against gcc 15.2 output of the same file.
 
 ## Docs to update
 
-`PARKED.md` (the stage-3 entry is replaced by the kept-flags evidence as `decided against`), `docs/CLEANUP_PLAN.md` (AR4
-line), `docs/STATUS.md` (golden count), `docs/ATTR_IDS_DESIGN.md` (no change: it names the stage-3 entry).
+`PARKED.md` (replace the stage-3 active row with the kept-flags evidence as `decided against`; add the `const, copy(p)`
+note gap), `docs/CLEANUP_PLAN.md` (AR4 line), `docs/STATUS.md` (golden count), `docs/ATTR_TABLE_DESIGN.md` ("Guard"
+section: the second check), `docs/ATTR_IDS_DESIGN.md:75` and `docs/ATTR_IDS_PLAN.md:71` (they spell the row shape with
+`fn_only`; done docs, fix the field name), `bench/tools/attr_lists.allow` header and the `bench/tools/attr_lists.sh` header comment (it describes only the array
+check).
+
+New `PARKED.md` entries (added with the plan): `common, nocommon` on a function prints no "attribute ignored"; attributes
+inapplicable to a declaration kind stay in its set (`has_attribute` on variables);copying `hot`/`cold`/`noreturn`/`returns_twice`/`alloc_*` through `copy`; `pure`/`const` on a function-pointer variable
+prints no "attribute ignored"; `_Noreturn ... const` redeclared with `const` warns where gcc does not.
