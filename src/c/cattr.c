@@ -2556,15 +2556,14 @@ void attrs_names_ptrs(Checker *c, uint32_t h, uint32_t *set)
     }
 }
 
-/* The attributes a declaration ends up with, applied in source order (gcc's
- * decl_attributes): each is checked against the ones already kept on this
- * declaration, the previous declaration's, and the ones 'copy' brought along
- * (attr_excl_generic); a conflict is noted at the incoming attribute's origin. */
-
 /* attribs.cc diag_attr_exclusions over c-attribs.cc's attr_*_exclusions:
  * each attribute with the ones it may not be combined with.  obj: the
  * exclusion applies to variables only, else to functions only (gcc drops an
- * attribute that does not apply to the declaration before it can conflict). */
+ * attribute that does not apply to the declaration before it can conflict).
+ * Attributes are applied in source order (gcc's decl_attributes), each checked
+ * against the ones kept on this declaration, the previous declaration's and
+ * the ones 'copy' brought along (attr_excl_generic); a conflict is noted at
+ * the incoming attribute's origin. */
 static const struct AttrExcl {
     AttrId n, ex[8];
     bool obj;

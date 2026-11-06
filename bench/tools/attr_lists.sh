@@ -13,6 +13,8 @@
 # CSF_X: only a single-line "CSF_X = ..." enumerator whose comment spells __attribute__((x)) is seen; a #define, a
 # multi-line comment (CSF_CONST_VAL) or a comment without that spelling is invisible.
 # ATTR_ROOT overrides the tree (the self-check in docs/ATTR_TABLE_PLAN.md Task 6).
+LC_ALL=C
+export LC_ALL
 ROOT=${ATTR_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
 DEF=src/c/attrs.def
