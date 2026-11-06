@@ -5,3 +5,7 @@
 __attribute__((u01, u02, u03, u04, u05, u06, u07, u08, u09, u10, u11, u12,
                u13, u14, u15, u16, u17, u18, u19, u20, u21, u22, u23, u24,
                pure, noreturn)) int f(void);
+/* Positive control: with 22 unknown names the later `pure` is recorded and `noreturn` conflicts. */
+__attribute__((u01, u02, u03, u04, u05, u06, u07, u08, u09, u10, u11, u12,
+               u13, u14, u15, u16, u17, u18, u19, u20, u21, u22,
+               pure, noreturn)) int g(void);

@@ -174,8 +174,7 @@ how the throwaway comparison is produced, the exact `awk` of the guard.
 
 ## Decided at approval (the user, 2026-11-05)
 
-- v1: `attr_excl_tab` stays allowlisted until the parked ids work, then it
-  is deleted with that work (done by AR4 stage 2).
+- v1: `attr_excl_tab` stayed allowlisted until the ids work and was deleted with it (AR4 stage 2).
 - w1: the `format` enumerator fix stays; it matches gcc 15.2 (gcc 13, the version the code comments cite, is not
   installed), and the golden's comment names the version.
 - The spec is approved. Plan: `docs/ATTR_TABLE_PLAN.md`.

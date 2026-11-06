@@ -1,7 +1,7 @@
 /* attrs.def - one row per attribute name: ATTR(name, ID, flags, ctx, argc_lo, argc_hi).
  * Included by attrs.h (the AttrId enum) and cattr.c (the AttrDesc array); the row for AT_X is
- * attr_tab[AT_X - 1] (AT_NONE = 0 and AT_UNKNOWN are not rows).  Rows are sorted by strcmp in the C locale (attr_lookup bisects them;
- * bench/tools/attr_lists.sh checks it).  Names are spelled without their __ affixes.
+ * attr_tab[AT_X - 1] (AT_NONE = 0 and AT_UNKNOWN are not rows).  Rows are sorted by strcmp in the C
+ * locale (attr_lookup bisects them; bench/tools/attr_lists.sh checks it).  Names are spelled without their __ affixes.
  * flags: AF_KNOWN __has_attribute and __builtin_has_attribute (gcc 13 on x86-64), AF_STD a C2X
  *   standard attribute, AF_FN_ONLY needs a function type, AF_EXPR_ARGS arguments are
  *   expressions, AF_COPY_EXCL not copied by attribute copy.

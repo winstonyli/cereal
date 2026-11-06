@@ -1874,8 +1874,6 @@ static void alloc_redecl(Checker *c, uint32_t item, AttrId name, SrcLoc loc)
         return;
     snprintf(was, sizeof was, "%s", c->anames.data[first - 1].arg);
     cdecl_alloc_conflict(c, loc, attr_name(name), now, was);
-    if (c->nign < 8)
-        c->ign[c->nign++] = name;
 }
 
 /* c-attribs.cc append_access_attrs: the access attributes a function has
