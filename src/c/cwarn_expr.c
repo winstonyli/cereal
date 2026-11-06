@@ -909,7 +909,7 @@ bool opeq(Checker *c, uint32_t x, uint32_t y)
             return false;
         ref = lookup_ord(c, cnode_ident(c, strip_paren(c, kx[0])));
         if (ref == SYM_NONE || ref != lookup_ord(c, cnode_ident(c, strip_paren(c, ky[0]))) ||
-            !(csym(c, ref)->flags & (CSF_PURE | CSF_CONSTFN)))
+            !cdecl_fn_pure(c, ref))
             return false;
         for (j = 1; j < nx; j++)
             if (!opeq(c, kx[j], ky[j]))

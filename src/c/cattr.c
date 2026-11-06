@@ -2353,6 +2353,14 @@ bool cdecl_aset_has(const Checker *c, uint32_t set, AttrId name,
     return false;
 }
 
+/* Whether the symbol is a function declared pure or const (its set has either). */
+bool cdecl_fn_pure(Checker *c, uint32_t ref)
+{
+    const CSym *s = csym(c, ref);
+    return s->kind == CS_FUNC && (cdecl_aset_has(c, s->aset, AT_PURE, NULL) ||
+                                  cdecl_aset_has(c, s->aset, AT_CONST, NULL));
+}
+
 /* The attribute set written on the typedef declaration t names (0: none). */
 uint32_t cdecl_typedef_aset(const Checker *c, TypeId t)
 {
