@@ -1,0 +1,27 @@
+attr_apply_order.c:1:16: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+    1 | _Noreturn void d(void) __attribute__((noreturn, const));
+      |                ^
+attr_apply_order.c:1:1: warning: ignoring attribute 'const' because it conflicts with attribute 'noreturn' [-Wattributes]
+    1 | _Noreturn void d(void) __attribute__((noreturn, const));
+      | ^
+attr_apply_order.c:2:1: warning: ignoring attribute 'alloc_size' because it conflicts with attribute 'pure' [-Wattributes]
+    2 | int f1(int) __attribute__((pure, alloc_size(1)));
+      | ^
+attr_apply_order.c:3:1: warning: 'pure' attribute on function returning 'void' [-Wattributes]
+    3 | void f3(void) __attribute__((pure, const));
+      | ^
+attr_apply_order.c:3:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    3 | void f3(void) __attribute__((pure, const));
+      | ^
+attr_apply_order.c:4:1: warning: ignoring attribute 'malloc' because it conflicts with attribute 'pure' [-Wattributes]
+    4 | int f4(int) __attribute__((pure, malloc));
+      | ^
+attr_apply_order.c:5:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'noreturn' [-Wattributes]
+    5 | void f5(void) __attribute__((noreturn, pure));
+      | ^
+attr_apply_order.c:6:1: warning: 'const' attribute on function returning 'void' [-Wattributes]
+    6 | void f6(void) __attribute__((const, noreturn));
+      | ^
+attr_apply_order.c:6:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'const' [-Wattributes]
+    6 | void f6(void) __attribute__((const, noreturn));
+      | ^

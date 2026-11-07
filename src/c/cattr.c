@@ -1669,46 +1669,35 @@ static uint32_t copy_target(Checker *c, uint32_t e)
  * neither a function nor a pointer to one: attributes that apply only to
  * functions, and the ones ignored in this context.  With ctx AC_FN (a function
  * declaration or definition) only the attributes ignored on functions. */
-static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
-                             unsigned ctx)
+static void attr_ctx_item(Checker *c, uint32_t holder, uint32_t attr,
+                          uint32_t item, const char *name, TypeId oty,
+                          uint32_t tok, unsigned ctx)
 {
-    Kids k;
-    uint32_t j;
+    TypeId ty = oty;
     bool fnty;
-    TypeId oty = ty;
+    const AttrDesc *ad;
     if (type_ckind(TT, ty) == TY_PTR)       /* a pointer to function is fine */
         ty = type_base(TT, ty);
     fnty = type_ckind(TT, ty) == TY_FUNC;
-    kids_get(c, holder, &k);
-    for (j = 0; j < k.n; j++) {
-        Kids it;
-        uint32_t q;
-        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
-            continue;
-        kids_get(c, k.p[j], &it);
-        for (q = 0; q < it.n; q++) {
-            char name[48];
-            const AttrDesc *ad;
-            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
-                continue;
-            attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
+    {
+        {
             if (ctx == AC_FN) {         /* a function: only the AC_FN rows apply */
                 ad = attr_lookup(name);
                 if (ad && (ad->ctx & AC_FN))
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
                           "ignored", name);
-                continue;
+                return;
             }
             if (!strcmp(name, "malloc")) {
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'malloc' attribute "
                       "ignored; valid only for functions");
-                continue;
+                return;
             }
             if (!strcmp(name, "copy") && (ctx & (AC_G | AC_S | AC_L)) &&
                 !(ctx & AC_TLS)) {
                 /* a copied tls_model needs thread storage */
                 Kids ak;
-                kids_get(c, it.p[q], &ak);
+                kids_get(c, item, &ak);
                 if (ak.n == 1) {
                     uint32_t e = copy_target(c, ak.p[0]);
                     uint32_t ref = ntag(c, e) == N_IDENT ?
@@ -1721,7 +1710,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                               "thread storage duration", ctx_vname);
                 }
                 kids_free(&ak);
-                continue;
+                return;
             }
             if (!strcmp(name, "leaf")) {
                 /* on anything but a function; a decl that is not public
@@ -1731,7 +1720,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                 if (!(ctx & AC_PUB))
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'leaf' attribute "
                           "has no effect on unit local functions");
-                continue;
+                return;
             }
             if (!strcmp(name, "tls_model") && (ctx & (AC_G | AC_S | AC_L))) {
                 char v[24];
@@ -1739,15 +1728,15 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'tls_model' "
                           "attribute ignored because '%s' does not have "
                           "thread storage duration", ctx_vname);
-                    continue;
+                    return;
                 }
-                cdecl_attr_args(c, it.p[q], v, sizeof v);
+                cdecl_attr_args(c, item, v, sizeof v);
                 if (strcmp(v, "\"local-exec\"") && strcmp(v, "\"initial-exec\"") &&
                     strcmp(v, "\"local-dynamic\"") && strcmp(v, "\"global-dynamic\""))
                     cerror(c, iloc(c, tok), "'tls_model' argument must be "
                            "one of 'local-exec', 'initial-exec', "
                            "'local-dynamic', or 'global-dynamic'");
-                continue;
+                return;
             }
             if (!strcmp(name, "nonstring")) {
                 /* handle_nonstring_attribute: a character array or pointer */
@@ -1758,7 +1747,7 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'nonstring' "
                           "attribute does not apply to %s",
                           ctx == AC_T ? "types" : "functions");
-                    continue;
+                    return;
                 }
                 if (kd == TY_PTR || kd == TY_ARRAY || kd == TY_VLA) {
                     e = type_base(TT, e);
@@ -1769,17 +1758,17 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'nonstring' "
                           "attribute ignored on objects of type %s",
                           type_q(TT, oty));
-                continue;
+                return;
             }
             if (type_ckind(TT, ty) == TY_UNION && !strcmp(name, "transparent_union"))
-                continue;
+                return;
             if (fnty)
-                continue;
+                return;
             ad = attr_lookup(name);
             if (ad && (ad->flags & AF_FN_ONLY)) {
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute only "
                       "applies to function types", name);
-                continue;
+                return;
             }
             if (ad && (ad->ctx & ctx)) {
                 if (!strcmp(name, "fallthrough") && !cat_file_scope(c)) {
@@ -1789,14 +1778,36 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
                            d != c->par[d])
                         d = c->par[d];
                     if (d != NO_NODE && ntag(c, d) == N_DECL &&
-                        cfirst(c, d) == cfirst(c, k.p[j]))
-                        cwarn(c, cdecl_line_start_loc(c, c->nodes[k.p[j]].tok),
+                        cfirst(c, d) == cfirst(c, attr))
+                        cwarn(c, cdecl_line_start_loc(c, c->nodes[attr].tok),
                               DW_ATTRIBUTES, "'fallthrough' attribute "
                               "not followed by ';'");
                 }
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
                       "ignored", name);
             }
+        }
+    }
+}
+
+static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
+                             unsigned ctx)
+{
+    Kids k;
+    uint32_t j;
+    kids_get(c, holder, &k);
+    for (j = 0; j < k.n; j++) {
+        Kids it;
+        uint32_t q;
+        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
+            continue;
+        kids_get(c, k.p[j], &it);
+        for (q = 0; q < it.n; q++) {
+            char name[48];
+            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
+                continue;
+            attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
+            attr_ctx_item(c, holder, k.p[j], it.p[q], name, ty, tok, ctx);
         }
         kids_free(&it);
     }
@@ -2151,83 +2162,56 @@ void acc_chain_implied(Checker *c, uint32_t ref)
     imp_n = 0;
 }
 
-/* handle_alloc_align_attribute / handle_alloc_size_attribute for the
- * attributes among holder's children, applied to a function of type fty. */
-void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
-                              uint32_t tok)
+/* The handle_*_attribute checks of one attribute item, applied to a function
+ * of type fty (the exclusions have already dropped what conflicts). */
+static void attr_handle(Checker *c, const char *name, uint32_t item,
+                        TypeId fty, uint32_t tok)
 {
-    Kids k;
-    uint32_t j;
-    bool seen_pure = false, seen_const = false;
-    kids_get(c, holder, &k);
-    for (j = 0; j < k.n; j++) {
-        Kids it;
-        uint32_t q;
-        if (ntag(c, k.p[j]) != N_ATTRIBUTE)
-            continue;
-        kids_get(c, k.p[j], &it);
-        for (q = 0; q < it.n; q++) {
-            char name[48];
+    {
+        {
             Kids ak;
             size_t i;
-            bool align, ok = true;
-            if (ntag(c, it.p[q]) != N_ATTR_ITEM)
-                continue;
-            attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
-            align = !strcmp(name, "alloc_align");
+            bool align = !strcmp(name, "alloc_align"), ok = true;
             if ((!strcmp(name, "error") || !strcmp(name, "warning")) &&
                 type_ckind(TT, fty) == TY_FUNC && !alloc_via_ptr) {
                 /* handle_error_attribute: the message must be a string */
-                kids_get(c, it.p[q], &ak);
+                kids_get(c, item, &ak);
                 if (ak.n && ntag(c, ak.p[0]) != N_STRING)
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES,
                           "'%s' attribute ignored", name);
                 kids_free(&ak);
-                continue;
+                return;
             }
             if ((!strcmp(name, "pure") || !strcmp(name, "const")) &&
                 type_ckind(TT, fty) == TY_FUNC && !alloc_via_ptr) {
-                /* handle_pure/const_attribute; the second of the pair is
-                 * dropped by the exclusion before its handler runs */
-                bool isp = name[0] == 'p';
-                if (isp ? seen_const : seen_pure)
-                    continue;
-                if (isp)
-                    seen_pure = true;
-                else
-                    seen_const = true;
+                /* handle_pure/const_attribute; the second of the pair was
+                 * dropped by the exclusion before this runs */
                 if (type_ckind(TT, type_base(TT, fty)) == TY_VOID)
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute on "
                           "function returning 'void'", name);
-                continue;
+                return;
             }
             if ((!strcmp(name, "format") || !strcmp(name, "format_arg")) &&
                 type_ckind(TT, fty) == TY_FUNC) {
-                kids_get(c, it.p[q], &ak);
+                kids_get(c, item, &ak);
                 format_attr_check(c, name, ak.p, ak.n, fty, iloc(c, tok));
                 kids_free(&ak);
-                continue;
+                return;
             }
             if (!strncmp(name, "fd_arg", 6) && type_ckind(TT, fty) == TY_FUNC) {
                 /* handle_fd_arg_attribute: one integer parameter position */
-                kids_get(c, it.p[q], &ak);
+                kids_get(c, item, &ak);
                 if (ak.n == 1)
                     (void)positional_arg(c, name, ak.p[0], 0, fty, iloc(c, tok),
                                          PA_INT, NULL);
                 kids_free(&ak);
-                continue;
+                return;
             }
             if (!strcmp(name, "malloc") && type_ckind(TT, fty) == TY_FUNC &&
                 !alloc_via_ptr) {
                 /* handle_malloc_attribute */
                 TypeId rt = type_base(TT, fty);
-                uint32_t pr = alloc_name ? lookup_ord(c, alloc_name) : SYM_NONE;
-                bool excl = false;      /* dropped by an earlier declaration's */
-                if (pr != SYM_NONE && csym(c, pr)->kind == CS_FUNC)
-                    excl = aset_written(c, csym(c, pr)->aset, AT_NORETURN) ||
-                            cdecl_aset_has(c, csym(c, pr)->aset, AT_CONST, NULL) ||
-                            cdecl_aset_has(c, csym(c, pr)->aset, AT_PURE, NULL);
-                if (!excl && type_ckind(TT, rt) != TY_PTR &&
+                if (type_ckind(TT, rt) != TY_PTR &&
                     type_ckind(TT, rt) != TY_ERROR) {
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'malloc' attribute "
                           "ignored on functions returning %s; valid only for "
@@ -2235,23 +2219,23 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                     if (c->nign < 8)
                         c->ign[c->nign++] = AT_MALLOC;
                 }
-                continue;
+                return;
             }
             if (!strcmp(name, "access")) {
-                kids_get(c, it.p[q], &ak);
+                kids_get(c, item, &ak);
                 if (ak.n && access_check(c, ak.p, ak.n, iloc(c, tok), fty) &&
                     alloc_name && !alloc_via_ptr &&
                     type_ckind(TT, fty) == TY_FUNC) {
                     char buf[64];
                     AccSeen x;
-                    cdecl_attr_args(c, it.p[q], buf, sizeof buf);
+                    cdecl_attr_args(c, item, buf, sizeof buf);
                     if (!acc_ready)
                         acc_replay(c);
                     if (acc_parse(buf, &x))
                         acc_add(c, &x, true);
                 }
                 kids_free(&ak);
-                continue;
+                return;
             }
             if (!strcmp(name, "warn_unused_result") &&
                 type_ckind(TT, type_base(TT, fty)) == TY_VOID &&
@@ -2261,14 +2245,14 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                       "'warn_unused_result' attribute ignored");
                 if (c->nign < 8)
                     c->ign[c->nign++] = AT_WARN_UNUSED_RESULT;
-                continue;
+                return;
             }
             if (!strcmp(name, "assume_aligned")) {
-                kids_get(c, it.p[q], &ak);
+                kids_get(c, item, &ak);
                 if (ak.n && ak.n <= 2)
                     assume_aligned_check(c, ak.p, ak.n, fty, iloc(c, tok));
                 kids_free(&ak);
-                continue;
+                return;
             }
             if (!strcmp(name, "copy") &&
                 type_ckind(TT, type_base(TT, fty)) != TY_PTR &&
@@ -2276,7 +2260,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 /* the copied alloc_align / alloc_size meet the same check */
                 static const AttrId an2[] = {AT_ALLOC_ALIGN, AT_ALLOC_SIZE};
                 uint32_t s3[3], ns, m, w;
-                kids_get(c, it.p[q], &ak);
+                kids_get(c, item, &ak);
                 ns = ak.n == 1 ? cexpr_asets(c, ak.p[0], true, s3) : 0;
                 if (ns) {   /* a source that ignored them has nothing to copy */
                     TypeId st = c->ty[ak.p[0]];
@@ -2296,11 +2280,11 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                             break;
                         }
                 kids_free(&ak);
-                continue;
+                return;
             }
             if (!align && strcmp(name, "alloc_size"))
-                continue;
-            kids_get(c, it.p[q], &ak);
+                return;
+            kids_get(c, item, &ak);
             if (ak.n && (align ? ak.n == 1 : ak.n <= 2)) {
                 SrcLoc loc = iloc(c, tok);
                 TypeId rt = type_base(TT, fty);
@@ -2315,14 +2299,12 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                                             ak.n > 1 ? (int)i + 1 : 0, fty, loc,
                                             PA_INT, NULL);
                     if (ok && alloc_name && !alloc_via_ptr)
-                        alloc_redecl(c, it.p[q], align ? AT_ALLOC_ALIGN : AT_ALLOC_SIZE, loc);
+                        alloc_redecl(c, item, align ? AT_ALLOC_ALIGN : AT_ALLOC_SIZE, loc);
                 }
             }
             kids_free(&ak);
         }
-        kids_free(&it);
     }
-    kids_free(&k);
 }
 
 /* ---- attribute names ---------------------------------------------------
@@ -2690,11 +2672,17 @@ static void attrs_state_init(Checker *c, AttrState *st, uint32_t kind,
     }
 }
 
-/* c-attribs.cc handle_copy_attribute: the symbol referenced must be a
- * different declaration of the same kind as the one being declared. */
-void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
-                             uint32_t name, uint32_t tok, AttrState *st)
+/* gcc's decl_attributes for the attributes among holder's children, in source
+ * order: each is checked against the ones kept (attr_excl_generic, when st is
+ * given), then handled (attr_handle, when fty is a type to apply it to).
+ * Includes c-attribs.cc handle_copy_attribute: the symbol referenced must be
+ * a different declaration of the same kind as the one being declared. */
+void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *decl,
+                      AttrState *st)
 {
+    const uint32_t kind = decl->kind, name = decl->name, tok = decl->tok;
+    const TypeId fty = decl->fty, cty = decl->cty;
+    const unsigned ctx = decl->ctx;
     Kids k;
     uint32_t j;
     kids_get(c, holder, &k);
@@ -2712,11 +2700,19 @@ void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), an, sizeof an);
             id = attr_id_of(an);
-            if (!st->inited) {
-                attrs_state_init(c, st, kind, name);
-                c->nign = 0;
+            if (st) {
+                if (!st->inited) {
+                    attrs_state_init(c, st, kind, name);
+                    c->nign = 0;
+                }
+                if (attr_excl_generic(c, tok, id, kind, st))
+                    continue;
             }
-            if (attr_excl_generic(c, tok, id, kind, st))
+            if (fty)
+                attr_handle(c, an, it.p[q], fty, tok);
+            if (ctx)
+                attr_ctx_item(c, holder, k.p[j], it.p[q], an, cty, tok, ctx);
+            if (!st)
                 continue;
             if (kind == CS_FUNC && id == AT_ALIGNED) {
                 Kids aa;

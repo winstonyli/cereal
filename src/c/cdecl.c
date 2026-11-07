@@ -2333,6 +2333,8 @@ static void declared_visit(Checker *c, uint32_t i)
         }
     }
     attrs_unknown_emit(c, &sp.attrs, ltok);
+    TypeId apply_fty = 0;   /* what the handlers apply to; 0: none */
+    unsigned apply_ctx = 0; /* the context for the ignored-here checks; 0: none */
     if (g.what == GD_FUNC && s.kind == CS_FUNC) {
         /* the declared type keeps the typedef names of the parameters */
         TypeId aft = type_kind(TT, s.ty) == TY_FUNC ? s.ty : type_canon(TT, s.ty);
@@ -2343,17 +2345,13 @@ static void declared_visit(Checker *c, uint32_t i)
             imp_n = cparm_implied(c, pt, imp_l, 16);
             cparm_release(c, pt);
         }
-        attrs_alloc_check(c, sn, aft, ltok);
-        attrs_alloc_check(c, idecl, aft, ltok);
-        attrs_ctx_check(c, sn, s.ty, ltok, AC_FN);
-        attrs_ctx_check(c, idecl, s.ty, ltok, AC_FN);
-        alloc_name = 0;
+        apply_fty = aft;
+        apply_ctx = AC_FN;
     }
-    if (g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_FUNC) {
+    if (g.what == GD_TYPEDEF) {
         alloc_name = s.name;
-        attrs_alloc_check(c, sn, s.ty, ltok);
-        attrs_alloc_check(c, idecl, s.ty, ltok);
-        alloc_name = 0;
+        if (type_ckind(TT, s.ty) == TY_FUNC)
+            apply_fty = s.ty;
     }
     if (s.kind == CS_FUNC)
         cexpr_builtin_noproto_fmt(c, &s, tloc(c, sp.tok0));
@@ -2365,16 +2363,13 @@ static void declared_visit(Checker *c, uint32_t i)
         if (s.kind == CS_OBJ && s.sc != SC_STATIC && (file || s.sc == SC_EXTERN))
             ac |= AC_PUB;
         ctx_vname = sname(c, &s);
-        attrs_ctx_check(c, sn, s.ty, ltok, ac);
-        attrs_ctx_check(c, idecl, s.ty, ltok, ac);
+        apply_ctx = ac;
     }
     if (s.kind == CS_OBJ && type_ckind(TT, s.ty) == TY_PTR &&
         type_ckind(TT, type_base(TT, s.ty)) == TY_FUNC) {
         /* a pointer to function: the attributes describe the function */
         alloc_via_ptr = true;
-        attrs_alloc_check(c, sn, type_base(TT, s.ty), ltok);
-        attrs_alloc_check(c, idecl, type_base(TT, s.ty), ltok);
-        alloc_via_ptr = false;
+        apply_fty = type_base(TT, s.ty);
     }
     if (s.kind == CS_OBJ) {
         strict_flex_check(c, sn, false, s.ty, s.name, s.loc, sp.tok0);
@@ -2388,10 +2383,12 @@ static void declared_visit(Checker *c, uint32_t i)
               "applies to function types");
     }
     bool ign_packed = false, ign_aligned = false;
-    if (s.kind == CS_FUNC || s.kind == CS_OBJ) {
+    if (s.kind == CS_FUNC || s.kind == CS_OBJ || s.kind == CS_TYPEDEF) {
         AttrState st = {0};
+        AttrState *stp = s.kind == CS_TYPEDEF ? NULL : &st;
+        const AttrDecl ad = {s.kind, s.name, apply_fty, s.ty, apply_ctx, ltok};
         uint32_t h = idecl;
-        attrs_copy_check(c, sn, s.kind, s.name, ltok, &st);
+        attrs_apply_decl(c, sn, &ad, stp);
         for (;;) {       /* attributes after a '*' belong to the declaration */
             Kids hk;
             uint32_t m, nx = NO_NODE;
@@ -2402,10 +2399,12 @@ static void declared_visit(Checker *c, uint32_t i)
             kids_free(&hk);
             if (nx == NO_NODE)
                 break;
-            attrs_copy_check(c, nx, s.kind, s.name, ltok, &st);
+            attrs_apply_decl(c, nx, &ad, stp);
             h = nx;
         }
-        attrs_copy_check(c, idecl, s.kind, s.name, ltok, &st);
+        attrs_apply_decl(c, idecl, &ad, stp);
+        alloc_name = 0;
+        alloc_via_ptr = false;
         c->last_ualign = st.calign;
         ign_packed = st.ign_packed;
         ign_aligned = st.ign_aligned;
@@ -3352,13 +3351,13 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         imp_n = cparm_implied(c, pt, imp_l, 16);
         cparm_release(c, pt);
     }
-    attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
-                      type_canon(TT, g.s.ty), ltok);
-    attrs_ctx_check(c, fp.specs, g.s.ty, ltok, AC_FN);
-    alloc_name = 0;
     {
         AttrState st = {0};
-        attrs_copy_check(c, fp.specs, CS_FUNC, g.s.name, ltok, &st);
+        const AttrDecl ad = {CS_FUNC, g.s.name,
+                             type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
+                             type_canon(TT, g.s.ty), g.s.ty, AC_FN, ltok};
+        attrs_apply_decl(c, fp.specs, &ad, &st);
+        alloc_name = 0;
         if (st.calign > g.s.ualign)
             g.s.ualign = st.calign;
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;

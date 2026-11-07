@@ -202,6 +202,15 @@ typedef struct AttrState {
     uint32_t calign, palign;
 } AttrState;
 
+/* What attrs_apply_decl needs to know about the declaration. */
+typedef struct AttrDecl {
+    uint32_t kind, name;     /* CS_*, ident id */
+    TypeId fty;              /* the function type the handlers apply to; 0: none */
+    TypeId cty;              /* the declared type, for the ignored-here checks */
+    unsigned ctx;            /* AC_* context of those checks; 0: none */
+    uint32_t tok;            /* where warnings are located */
+} AttrDecl;
+
 void acc_chain_implied(Checker *c, uint32_t ref);
 void acc_implied(Checker *c, uint32_t ref, bool redecl, bool def);
 void acc_start(uint32_t name, SrcLoc loc);
@@ -216,10 +225,8 @@ TypeId attr_apply_type(Checker *c, TypeId t, const Attrs *a, SrcLoc at);
 void attr_collect(Checker *c, uint32_t attr, Attrs *a);
 void attr_norm(const char *s, char *out, size_t n);
 bool attr_scope_of(Checker *c, uint32_t tok);
-void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
-    uint32_t tok);
-void attrs_copy_check(Checker *c, uint32_t holder, uint32_t kind,
-    uint32_t name, uint32_t tok, AttrState *st);
+void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *d,
+    AttrState *st);
 void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
     unsigned ctx);
 bool attrs_item_named(Checker *c, uint32_t holder, const char *want);

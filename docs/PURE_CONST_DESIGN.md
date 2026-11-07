@@ -166,6 +166,14 @@ Two parked false positives, each probed against gcc 15.2, fixed with goldens wri
   gets the return-type warning instead), while `__builtin_has_attribute(f, noreturn)` is still true. The keyword's
   entry now carries the argument `ATTR_ARG_KEYWORD` and the exclusion checks (`aset_written`, the `malloc` check)
   skip it. Golden `attr_noreturn_keyword_redecl`.
+- One attribute loop (2026-11-07, user "q2-2", s1 c1 t1 v1). `attrs_alloc_check` (handlers) and `attrs_copy_check`
+  (exclusion) were two passes over the attributes, so a handler warned for an attribute the exclusion then dropped.
+  `attrs_apply_decl(c, holder, &AttrDecl, st)` now runs, per attribute in source order, `attr_excl_generic`, then
+  `attr_handle` (the old handler chain), then `attr_ctx_item` (the ignored-in-this-context check, shared with
+  `attrs_ctx_check1` for fields and parameters); one walk over `sn`, the `*` chain and `idecl` serves functions, objects
+  and typedefs. Deleted: `seen_pure`/`seen_const`, the local `malloc` exclusion, the typedef and ctx-check blocks in
+  `cdecl.c`. Golden `attr_apply_order`. The pairwise probe went from 318 to 209 differing lines; the function-pointer
+  variable family (about 163) is untouched (c1), as are `alloc_name`/`alloc_via_ptr`, which the `acc_*` code also uses.
 
 ## End-state fit
 
