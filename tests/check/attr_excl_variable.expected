@@ -23,10 +23,10 @@ attr_excl_variable.c:8:1: warning: 'hot' attribute ignored [-Wattributes]
     8 | int v4 __attribute__((cold, hot));
       | ^
 attr_excl_variable.c:9:1: warning: 'always_inline' attribute ignored [-Wattributes]
-    9 | int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written; cereal does for this order only (PARKED.md) */
+    9 | int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written */
       | ^
 attr_excl_variable.c:9:1: warning: 'noinline' attribute ignored [-Wattributes]
-    9 | int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written; cereal does for this order only (PARKED.md) */
+    9 | int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written */
       | ^
 attr_excl_variable.c:10:1: warning: 'returns_twice' attribute ignored [-Wattributes]
    10 | int v6 __attribute__((returns_twice, noreturn));
@@ -126,4 +126,10 @@ attr_excl_variable.c:29:1: warning: 'common' attribute ignored [-Wattributes]
       | ^
 attr_excl_variable.c:29:1: warning: 'nocommon' attribute ignored [-Wattributes]
    29 | void fn(int p __attribute__((common, nocommon)));
+      | ^
+attr_excl_variable.c:30:1: warning: 'noinline' attribute ignored [-Wattributes]
+   30 | int v5b __attribute__((noinline, always_inline));
+      | ^
+attr_excl_variable.c:30:1: warning: 'always_inline' attribute ignored [-Wattributes]
+   30 | int v5b __attribute__((noinline, always_inline));
       | ^

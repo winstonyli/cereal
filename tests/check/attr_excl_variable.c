@@ -6,7 +6,7 @@ int v1 __attribute__((noreturn, pure));
 int v2 __attribute__((const, noreturn));
 int v3 __attribute__((malloc, pure));
 int v4 __attribute__((cold, hot));
-int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written; cereal does for this order only (PARKED.md) */
+int v5 __attribute__((always_inline, noinline));  /* gcc orders the two "ignored" lines as written */
 int v6 __attribute__((returns_twice, noreturn));
 int v7 __attribute__((alloc_size(1), const));
 int v8 __attribute__((alloc_size(1), pure));
@@ -27,3 +27,4 @@ int v20 __attribute__((nocommon, common));
 typedef int t1 __attribute__((common, nocommon));
 struct s { int f __attribute__((common, nocommon)); };
 void fn(int p __attribute__((common, nocommon)));
+int v5b __attribute__((noinline, always_inline));
