@@ -116,10 +116,9 @@ incompleteness)/VLA/function (return, parameters, variadic, unprototyped)/
 vector/complex over their parts; typedef by name, alignment and target.
 A struct, union or enum is its identity only: the digest of (unit key, tag
 spelling or none, ordinal among the unit's records with that spelling, kind).
-The unit key defaults to a digest of the names the unit declares (so editing
-a body or a member list keeps the tag's identity; `checker_set_unit_key`
-lets P3 supply its own); a unit that declares no name uses a hash of its
-tokens.  Completing a tag in a later unit does not change its identity.
+The unit key is a digest of the names the unit declares (so editing a body or
+a member list keeps the tag's identity); a unit that declares no name uses a
+hash of its tokens.  Completing a tag in a later unit does not change its identity.
 **Layout** is a separate query: complete flag, size, alignment, flags and
 every member's name, type digest, offset, width and alignment (enums:
 underlying type and completeness).

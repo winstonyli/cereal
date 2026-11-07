@@ -70,7 +70,8 @@ typedef struct SumRead {
 
 typedef struct UnitSummary {
     uint64_t key;           /* the unit's identity (tags are identified by
-                               it); see checker_set_unit_key */
+                               it): a digest of the names the unit declares,
+                               so editing a body or a member list keeps it */
     uint64_t digest;        /* all the entries */
     uint64_t sig;           /* the entries without implicit declarations
                                made by function bodies */
@@ -81,11 +82,6 @@ typedef struct UnitSummary {
     size_t nreads;
     bool owned;             /* loaded by summary_load: free with summary_free */
 } UnitSummary;
-
-/* Sets the identity of the next unit.  The default, when none is set, is a
- * digest of the names the unit declares (so editing a body or a member
- * list keeps it).  P3 may pass its own stable unit key. */
-void checker_set_unit_key(Checker *c, uint64_t key);
 
 /* The digest of a file-scope entity in the checker's current state, in the
  * shape summary_valid wants: ns, name, key (SUM_LAYOUT), mode; 0 if absent. */

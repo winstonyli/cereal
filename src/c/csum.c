@@ -43,7 +43,6 @@ typedef struct CSum {
     uint64_t *mkey;               /* identity -> record / enum */
     uint32_t *mval;               /* index | ENUM_BIT; 0 empty */
     size_t mcap, mcount;
-    uint64_t key_override;
     uint64_t pack0;               /* #pragma pack state at unit entry */
     uint32_t rec0, enum0;         /* first record / enum of the unit */
     bool text;                    /* keep printed types in the entries */
@@ -713,10 +712,8 @@ void csum_unit_end(Checker *c)
     size_t k;
     uint64_t key, d, sig;
     c->tt.unit_rec0 = c->tt.unit_enum0 = 0;
-    /* the unit's key: the names it declares, unless the caller gave one */
-    if (cs->key_override)
-        key = cs->key_override;
-    else if (cs->touched.len) {
+    /* the unit's key: the names it declares */
+    if (cs->touched.len) {
         VEC(uint64_t) v = {0};
         for (k = 0; k < cs->touched.len; k++) {
             uint64_t t = cs->touched.data[k];
@@ -741,7 +738,6 @@ void csum_unit_end(Checker *c)
         key = nz(d);
     } else
         key = token_key(c);
-    cs->key_override = 0;
     assign_ids(cs, key);
     for (k = 0; k < cs->touched.len; k++) {
         uint64_t t = cs->touched.data[k];
@@ -812,12 +808,6 @@ void csum_unit_end(Checker *c)
     if (cs->dump)
         summary_write(cs->dump, u, cs->nunit);
     cs->nunit++;
-}
-
-void checker_set_unit_key(Checker *c, uint64_t key)
-{
-    if (c->cs)
-        c->cs->key_override = key;
 }
 
 CSum *csum_new(Checker *c)
