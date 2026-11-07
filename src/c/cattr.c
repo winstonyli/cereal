@@ -557,6 +557,19 @@ void sso_check(Checker *c, uint32_t attr)
 }
 
 /* Collects the type-affecting attributes of one ATTRIBUTE node. */
+/* The struct/union that copy((T *)0) takes attributes from; NULL for any other
+ * argument. */
+static const Record *copy_record(Checker *c, uint32_t arg)
+{
+    TypeId bt;
+    if (arg == NO_NODE || type_ckind(TT, c->ty[arg]) != TY_PTR)
+        return NULL;
+    bt = type_canon(TT, type_base(TT, type_canon(TT, c->ty[arg])));
+    if (type_ckind(TT, bt) != TY_STRUCT && type_ckind(TT, bt) != TY_UNION)
+        return NULL;
+    return type_record(TT, bt);
+}
+
 /* gcc words an over-large aligned() as the object file maximum when the
  * attribute lands on a variable with static storage or on a function, and
  * as the plain maximum on a type (typedef, tag, field, parameter, auto). */
@@ -673,10 +686,8 @@ void attr_collect(Checker *c, uint32_t attr, Attrs *a)
         } else if (!strcmp(name, "copy") && arg != NO_NODE &&
                    type_ckind(TT, c->ty[arg]) == TY_PTR) {
             /* copy((T *)0) of a packed struct/union type copies packed */
-            TypeId bt = type_canon(TT, type_base(TT, type_canon(TT, c->ty[arg])));
-            if (type_ckind(TT, bt) == TY_STRUCT ||
-                type_ckind(TT, bt) == TY_UNION) {
-                const Record *rc = type_record(TT, bt);
+            const Record *rc = copy_record(c, arg);
+            if (rc) {
                 if (rc->flags & RF_PACKED)
                     a->packed = true;
                 if ((rc->flags & RF_USER_ALIGN) && rc->align > a->aligned)
@@ -1170,45 +1181,9 @@ void attrs_unknown_emit(Checker *c, const Attrs *sa, uint32_t tok)
               "'%s' attribute directive ignored", sa->unk[k]);
 }
 
-/* Attributes that gcc's handlers drop on the wrong kind of declaration:
- * 'where' is 't' typedef, 'f' function, 'g' file-scope variable, 's' static
- * local, 'a' automatic local, 'p' parameter, 'm' field (of type fty, 0 for a
- * bit-field); local: declared in a block. */
-void attrs_misapplied(Checker *c, const Attrs *a, char where, bool local,
-                             TypeId fty, uint32_t tok)
-{
-    bool var = where == 'g' || where == 's' || where == 'a';
-    bool nofn = where != 'f';
-    SrcLoc loc = iloc(c, tok);
-    if (a->noinline && nofn)
-        cwarn(c, loc, DW_ATTRIBUTES, "'noinline' attribute ignored");
-    if (a->used && (where == 'a' || where == 'p' || where == 'm'))
-        cwarn(c, loc, DW_ATTRIBUTES, "'used' attribute ignored");
-    if (a->nonstring && where == 'f')
-        cwarn(c, loc, DW_ATTRIBUTES, "'nonstring' attribute does not apply to "
-              "functions");
-    if (a->weak && (where == 't' || where == 'p' || where == 'm'))
-        cwarn(c, loc, DW_ATTRIBUTES, "'weak' attribute ignored");
-    if (a->packed && where != 'm')
-        cwarn(c, loc, DW_ATTRIBUTES, "'packed' attribute ignored");
-    if (a->packed && where == 'm' && fty && type_align(TT, fty) == 1)
-        cwarn(c, loc, DW_ATTRIBUTES, "'packed' attribute ignored for field of "
-              "type %s", type_q(TT, fty));
-    if (a->alias && (where == 't' || where == 'p' || where == 'm' ||
-                     (local && (where == 'f' || var))))
-        cwarn(c, loc, DW_ATTRIBUTES, "'alias' attribute ignored");
-    if (a->weakref && (where == 't' || where == 'p' || where == 'm'))
-        cwarn(c, loc, DW_ATTRIBUTES, "'weakref' attribute ignored");
-    if (a->errattr && nofn)
-        cwarn(c, loc, DW_ATTRIBUTES, "'error' attribute ignored");
-    if (a->warnattr && nofn)
-        cwarn(c, loc, DW_ATTRIBUTES, "'warning' attribute ignored");
-    if (a->cleanup && (where != 'a' && !(local && where == 'g')))
-        cwarn(c, loc, DW_ATTRIBUTES, "'cleanup' attribute ignored");
-}
-
 /* handle_section_attribute for a declaration of `name` at nloc.  where is
- * attrs_misapplied's code; localvar: an automatic or block-scope extern
+ * 't' typedef, 'f' function, 'g' file-scope variable, 'p' parameter, 'm'
+ * field; localvar: an automatic or block-scope extern
  * variable (no TREE_STATIC). */
 void attrs_section_check(Checker *c, const Attrs *a, char where,
                                 bool localvar, uint32_t name, SrcLoc nloc)
@@ -1681,9 +1656,21 @@ static void attr_ctx_item(Checker *c, uint32_t holder, uint32_t attr,
     fnty = type_ckind(TT, ty) == TY_FUNC;
     {
         {
-            if (ctx == AC_FN) {         /* a function: only the AC_FN rows apply */
+            if (!strcmp(name, "copy")) {    /* a packed type's packed comes along */
+                Kids ak;
+                const Record *rc;
+                kids_get(c, item, &ak);
+                rc = ak.n ? copy_record(c, ak.p[0]) : NULL;
+                kids_free(&ak);
+                if (rc && (rc->flags & RF_PACKED))
+                    attr_ctx_item(c, holder, attr, item, "packed", oty, tok, ctx);
+            }
+            if (ctx & AC_FN) {          /* a function: only the AC_FN* rows apply */
                 ad = attr_lookup(name);
-                if (ad && (ad->ctx & AC_FN))
+                if (!strcmp(name, "nonstring"))
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'nonstring' "
+                          "attribute does not apply to functions");
+                else if (ad && (ad->ctx & ctx & (AC_FN | AC_FNL)))
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
                           "ignored", name);
                 return;
@@ -1762,15 +1749,17 @@ static void attr_ctx_item(Checker *c, uint32_t holder, uint32_t attr,
             }
             if (type_ckind(TT, ty) == TY_UNION && !strcmp(name, "transparent_union"))
                 return;
-            if (fnty) {
-                /* a decl attribute of a function: ignored on a pointer to one */
-                ad = attr_lookup(name);
-                if (ty != oty && ad && (ad->ctx & AC_FPV))
-                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
-                          "ignored", name);
+            ad = attr_lookup(name);
+            if (fnty && !(ad && (ad->ctx & AC_FPV)))
+                return;     /* the rows describe objects of other types */
+            if (!strcmp(name, "packed") && (ctx & AC_F)) {
+                /* handle_packed_attribute: a field already byte-aligned */
+                if (!(ctx & AC_BIT) && type_ckind(TT, oty) != TY_ERROR &&
+                    type_align(TT, oty) == 1)
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'packed' attribute "
+                          "ignored for field of type %s", type_q(TT, oty));
                 return;
             }
-            ad = attr_lookup(name);
             if (ad && (ad->flags & AF_FN_ONLY)) {
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute only "
                       "applies to function types", name);
@@ -1820,25 +1809,15 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
     kids_free(&k);
 }
 
-/* ... on the holder and on the attributes after its '*'s. */
-void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
-                            unsigned ctx)
+/* ... on the holder and on the attributes of every '*' of its declarator `top`. */
+void attrs_ctx_check(Checker *c, uint32_t holder, uint32_t top, TypeId ty,
+                     uint32_t tok, unsigned ctx)
 {
-    uint32_t h = holder;
+    uint32_t d;
     attrs_ctx_check1(c, holder, ty, tok, ctx);
-    for (;;) {
-        Kids hk;
-        uint32_t m, nx = NO_NODE;
-        kids_get(c, h, &hk);
-        for (m = 0; m < hk.n && nx == NO_NODE; m++)
-            if (ntag(c, hk.p[m]) == N_PTR)
-                nx = hk.p[m];
-        kids_free(&hk);
-        if (nx == NO_NODE)
-            return;
-        attrs_ctx_check1(c, nx, ty, tok, ctx);
-        h = nx;
-    }
+    for (d = top; d != NO_NODE; d = inner_decl(c, d))
+        if (ntag(c, d) == N_PTR)
+            attrs_ctx_check1(c, d, ty, tok, ctx);
 }
 
 /* "ignoring attribute 'alloc_size (2)' because it conflicts with previous

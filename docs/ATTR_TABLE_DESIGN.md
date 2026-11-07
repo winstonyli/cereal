@@ -65,7 +65,7 @@ ATTR(name, ID, flags, ctx, argc_lo, argc_hi)
   `AC_T|AC_P|AC_F|AC_E`); a named `AC_ALLE` (`AC_ALL|AC_E`) is used for the `AC_ALL` rows. `AC_ALL` itself stays 63:
   the `ctx == AC_T`-style tests in `attrs_ctx_check1` never see enumerators. The eleven names that are in
   `ignored[]` but not in `attr_ign_tab` get `AC_E` only: `alias cleanup error noinline packed used warning weak
-  weakref` (these have an `Attrs` flag and are handled in `attrs_misapplied` elsewhere) and `mode`, `nonstring`
+  weakref` (these have an `Attrs` flag; `attrs_misapplied` handled them until 2026-11-07, see `docs/PURE_CONST_DESIGN.md`) and `mode`, `nonstring`
   (handled in `attr_collect` and `cattr.c:1800`). `enumerator_attrs` tests `ctx & AC_E`.
 - `argc_lo, argc_hi`: the 11 rows of `gnu_attr_argc`'s `t[]` (`access alloc_align assume_aligned constructor copy
   destructor malloc section simd strict_flex_array zero_call_used_regs`); `AT_ARGC_ANY` (= `lo` 0, `hi`

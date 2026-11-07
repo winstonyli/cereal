@@ -2346,7 +2346,7 @@ static void declared_visit(Checker *c, uint32_t i)
             cparm_release(c, pt);
         }
         apply_fty = aft;
-        apply_ctx = AC_FN;
+        apply_ctx = AC_FN | (file ? 0 : AC_FNL);
     }
     if (g.what == GD_TYPEDEF) {
         alloc_name = s.name;
@@ -2356,7 +2356,7 @@ static void declared_visit(Checker *c, uint32_t i)
     if (s.kind == CS_FUNC)
         cexpr_builtin_noproto_fmt(c, &s, tloc(c, sp.tok0));
     if (s.kind == CS_OBJ || s.kind == CS_TYPEDEF) {
-        unsigned ac = s.kind == CS_TYPEDEF ? AC_T : file ? AC_G :
+        unsigned ac = s.kind == CS_TYPEDEF ? AC_T : kr ? AC_P : file ? AC_G :
                       s.sc == SC_STATIC ? AC_S : AC_L;
         if (sp.thread)
             ac |= AC_TLS;
@@ -2419,10 +2419,6 @@ static void declared_visit(Checker *c, uint32_t i)
     if (a.desig && !(g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_STRUCT))
         cerror(c, iloc(c, ltok), "'designated_init' attribute is only valid on "
                "'struct' type");
-    attrs_misapplied(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' :
-                     g.what == GD_FUNC ? 'f' :
-                     file ? 'g' : s.sc == SC_STATIC ? 's' :
-                     s.sc == SC_EXTERN ? 'g' : 'a', !file, 0, ltok);
     attrs_section_check(c, &a, kr ? 'p' : g.what == GD_TYPEDEF ? 't' :
                         g.what == GD_FUNC ? 'f' : 'g',
                         g.what == GD_VAR && !file && s.sc != SC_STATIC,
@@ -2645,7 +2641,7 @@ static void declared_visit(Checker *c, uint32_t i)
     attrs_names(c, idecl, &csym(c, ref)->aset);
     if (g.what == GD_FUNC && csym(c, ref)->kind == CS_FUNC)
         acc_chain_implied(c, ref);
-    if (a.packed)               /* ignored (attrs_misapplied), so not kept */
+    if (a.packed)               /* ignored (attr_ctx_item), so not kept */
         aset_drop(c, csym(c, ref)->aset, AT_PACKED);
     if (csym(c, ref)->kind == CS_TYPEDEF && csym(c, ref)->aset &&
         type_kind(TT, csym(c, ref)->ty) == TY_TYPEDEF) {
@@ -2972,9 +2968,8 @@ static void param_visit(Checker *c, uint32_t p)
     larger_than(c, s.loc, s.name, s.ty);
     attrs_unknown_emit(c, &sp.attrs, first_tok(c, p));
     attrs_merge(&a, &sp.attrs);
-    attrs_misapplied(c, &a, 'p', false, 0, first_tok(c, p));
-    attrs_ctx_check(c, sp.node, s.ty, first_tok(c, p), AC_P);
-    attrs_ctx_check(c, p, s.ty, first_tok(c, p), AC_P);
+    attrs_ctx_check(c, sp.node, NO_NODE, s.ty, first_tok(c, p), AC_P);
+    attrs_ctx_check(c, p, top, s.ty, first_tok(c, p), AC_P);
     attrs_zcur_check(c, &a, false, s.loc);
     attrs_section_check(c, &a, 'p', false, s.name, s.loc);
     if (a.unused)

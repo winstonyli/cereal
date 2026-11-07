@@ -3,7 +3,5 @@
 fn-int 9
 fn-void 10
 redecl 1
-fnptr-var 10
-var 13
 kw-redecl 9
 def 4

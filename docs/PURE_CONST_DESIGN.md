@@ -180,6 +180,13 @@ Two parked false positives, each probed against gcc 15.2, fixed with goldens wri
   that stay on such a variable, so `attr_excl_generic` lets only those conflict there. Golden `attr_fnptr_ignored`; the
   probe went 209 -> 56 differing lines (`fnptr-var` 163 -> 10, left: `noinline` order, parked). `attr_pure_const_call`'s
   golden gained the "pure ignored" line gcc prints for its `fp` declaration.
+- `attrs_misapplied` folded into the loop (2026-11-07, user "a1"): its eleven bool-driven checks (`noinline used
+  nonstring weak packed alias weakref error warning cleanup`) are now `attrs.def` ctx rows read by `attr_ctx_item`, so
+  they print in source order with the other attributes' warnings. New context bits: `AC_FNL` (a block-scope function
+  declaration, with `AC_FN`) and `AC_BIT` (a bit-field, with `AC_F`); a K&R parameter is now `AC_P`. `AC_FPV` now reads
+  "also where the type is a function or pointer to one" and gates every ctx row for such types. `nonstring` on a
+  function and `packed` on a byte-aligned field stay as two branches in `attr_ctx_item`. Golden
+  `attr_misapplied_order`; probe 56 -> 33 (`fnptr-var` and `var` now 0).
 
 ## End-state fit
 

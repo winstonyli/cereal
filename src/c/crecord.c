@@ -1330,9 +1330,9 @@ void cdecl_member_visit(Checker *c, uint32_t i)
     if (top != NO_NODE)
         ptr_type_attrs(c, top, g.ty, ltok, &a);
     attrs_merge(&a, &sp.attrs);
-    attrs_misapplied(c, &a, 'm', false, w == NO_NODE ? g.ty : 0, ltok);
-    attrs_ctx_check(c, sp.node, g.ty, ltok, AC_F);
-    attrs_ctx_check(c, i, g.ty, ltok, AC_F);
+    const unsigned fctx = w == NO_NODE ? AC_F : AC_F | AC_BIT;
+    attrs_ctx_check(c, sp.node, NO_NODE, g.ty, ltok, fctx);
+    attrs_ctx_check(c, i, top, g.ty, ltok, fctx);
     attrs_section_check(c, &a, 'm', false, g.name, g.loc);
     strict_flex_check(c, sp.node, true, g.ty, g.name, g.loc, sp.tok0);
     strict_flex_check(c, i, true, g.ty, g.name, g.loc, NO_NODE);

@@ -1,0 +1,135 @@
+attr_misapplied_order.c:2:1: warning: 'weak' attribute ignored [-Wattributes]
+    2 | typedef int T1 __attribute__((weak, noinline, aligned(4), used));
+      | ^
+attr_misapplied_order.c:2:1: warning: 'noinline' attribute ignored [-Wattributes]
+    2 | typedef int T1 __attribute__((weak, noinline, aligned(4), used));
+      | ^
+attr_misapplied_order.c:3:1: warning: 'leaf' attribute ignored [-Wattributes]
+    3 | typedef int T2 __attribute__((leaf, noinline, weak));
+      | ^
+attr_misapplied_order.c:3:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+    3 | typedef int T2 __attribute__((leaf, noinline, weak));
+      | ^
+attr_misapplied_order.c:3:1: warning: 'noinline' attribute ignored [-Wattributes]
+    3 | typedef int T2 __attribute__((leaf, noinline, weak));
+      | ^
+attr_misapplied_order.c:3:1: warning: 'weak' attribute ignored [-Wattributes]
+    3 | typedef int T2 __attribute__((leaf, noinline, weak));
+      | ^
+attr_misapplied_order.c:5:3: warning: 'used' attribute ignored [-Wattributes]
+    5 |   char a __attribute__((used, leaf, weak));
+      |   ^
+attr_misapplied_order.c:5:3: warning: 'leaf' attribute ignored [-Wattributes]
+    5 |   char a __attribute__((used, leaf, weak));
+      |   ^
+attr_misapplied_order.c:5:3: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+    5 |   char a __attribute__((used, leaf, weak));
+      |   ^
+attr_misapplied_order.c:5:3: warning: 'weak' attribute ignored [-Wattributes]
+    5 |   char a __attribute__((used, leaf, weak));
+      |   ^
+attr_misapplied_order.c:6:3: warning: 'noinline' attribute ignored [-Wattributes]
+    6 |   char b __attribute__((noinline, pure, packed));
+      |   ^
+attr_misapplied_order.c:6:3: warning: 'pure' attribute ignored [-Wattributes]
+    6 |   char b __attribute__((noinline, pure, packed));
+      |   ^
+attr_misapplied_order.c:6:3: warning: 'packed' attribute ignored for field of type 'char' [-Wattributes]
+    6 |   char b __attribute__((noinline, pure, packed));
+      |   ^
+attr_misapplied_order.c:7:3: warning: 'cleanup' attribute ignored [-Wattributes]
+    7 |   char c __attribute__((cleanup(cl), const, used));
+      |   ^
+attr_misapplied_order.c:7:3: warning: 'const' attribute ignored [-Wattributes]
+    7 |   char c __attribute__((cleanup(cl), const, used));
+      |   ^
+attr_misapplied_order.c:7:3: warning: 'used' attribute ignored [-Wattributes]
+    7 |   char c __attribute__((cleanup(cl), const, used));
+      |   ^
+attr_misapplied_order.c:9:1: warning: 'noinline' attribute ignored [-Wattributes]
+    9 | int v1 __attribute__((noinline, leaf, packed));
+      | ^
+attr_misapplied_order.c:9:1: warning: 'leaf' attribute ignored [-Wattributes]
+    9 | int v1 __attribute__((noinline, leaf, packed));
+      | ^
+attr_misapplied_order.c:9:1: warning: 'packed' attribute ignored [-Wattributes]
+    9 | int v1 __attribute__((noinline, leaf, packed));
+      | ^
+attr_misapplied_order.c:10:1: warning: 'pure' attribute ignored [-Wattributes]
+   10 | extern int v2 __attribute__((alias("v1"), pure, cleanup(cl)));
+      | ^
+attr_misapplied_order.c:10:1: warning: 'cleanup' attribute ignored [-Wattributes]
+   10 | extern int v2 __attribute__((alias("v1"), pure, cleanup(cl)));
+      | ^
+attr_misapplied_order.c:11:1: warning: 'cold' attribute ignored [-Wattributes]
+   11 | static int v3 __attribute__((cold, noinline, used, error("x")));
+      | ^
+attr_misapplied_order.c:11:1: warning: 'noinline' attribute ignored [-Wattributes]
+   11 | static int v3 __attribute__((cold, noinline, used, error("x")));
+      | ^
+attr_misapplied_order.c:11:1: warning: 'error' attribute ignored [-Wattributes]
+   11 | static int v3 __attribute__((cold, noinline, used, error("x")));
+      | ^
+attr_misapplied_order.c:12:1: warning: 'leaf' attribute ignored [-Wattributes]
+   12 | int f1(int p __attribute__((leaf, used, noinline)));
+      | ^
+attr_misapplied_order.c:12:1: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   12 | int f1(int p __attribute__((leaf, used, noinline)));
+      | ^
+attr_misapplied_order.c:12:1: warning: 'used' attribute ignored [-Wattributes]
+   12 | int f1(int p __attribute__((leaf, used, noinline)));
+      | ^
+attr_misapplied_order.c:12:1: warning: 'noinline' attribute ignored [-Wattributes]
+   12 | int f1(int p __attribute__((leaf, used, noinline)));
+      | ^
+attr_misapplied_order.c:13:1: warning: 'used' attribute ignored [-Wattributes]
+   13 | int g(int p __attribute__((used, pure, weak)))
+      | ^
+attr_misapplied_order.c:13:1: warning: 'pure' attribute ignored [-Wattributes]
+   13 | int g(int p __attribute__((used, pure, weak)))
+      | ^
+attr_misapplied_order.c:13:1: warning: 'weak' attribute ignored [-Wattributes]
+   13 | int g(int p __attribute__((used, pure, weak)))
+      | ^
+attr_misapplied_order.c:15:3: warning: 'cold' attribute ignored [-Wattributes]
+   15 |   static int s __attribute__((cold, noinline, warning("w")));
+      |   ^
+attr_misapplied_order.c:15:3: warning: 'noinline' attribute ignored [-Wattributes]
+   15 |   static int s __attribute__((cold, noinline, warning("w")));
+      |   ^
+attr_misapplied_order.c:15:3: warning: 'warning' attribute ignored [-Wattributes]
+   15 |   static int s __attribute__((cold, noinline, warning("w")));
+      |   ^
+attr_misapplied_order.c:16:3: warning: 'leaf' attribute ignored [-Wattributes]
+   16 |   auto int a __attribute__((leaf, used, packed));
+      |   ^
+attr_misapplied_order.c:16:3: warning: 'leaf' attribute has no effect on unit local functions [-Wattributes]
+   16 |   auto int a __attribute__((leaf, used, packed));
+      |   ^
+attr_misapplied_order.c:16:3: warning: 'used' attribute ignored [-Wattributes]
+   16 |   auto int a __attribute__((leaf, used, packed));
+      |   ^
+attr_misapplied_order.c:16:3: warning: 'packed' attribute ignored [-Wattributes]
+   16 |   auto int a __attribute__((leaf, used, packed));
+      |   ^
+attr_misapplied_order.c:17:3: warning: 'pure' attribute ignored [-Wattributes]
+   17 |   extern int e __attribute__((pure, used, cleanup(cl)));
+      |   ^
+attr_misapplied_order.c:17:3: warning: 'used' attribute ignored [-Wattributes]
+   17 |   extern int e __attribute__((pure, used, cleanup(cl)));
+      |   ^
+attr_misapplied_order.c:18:3: warning: 'alias' attribute ignored [-Wattributes]
+   18 |   extern int h(void) __attribute__((alias("g"), pure));
+      |   ^
+attr_misapplied_order.c:22:43: warning: 'packed' attribute ignored [-Wattributes]
+   22 | extern int cp __attribute__((copy((struct PK *)0), pure));
+      |                                           ^
+attr_misapplied_order.c:22:43: warning: 'pure' attribute ignored [-Wattributes]
+   22 | extern int cp __attribute__((copy((struct PK *)0), pure));
+      |                                           ^
+attr_misapplied_order.c:23:46: warning: 'packed' attribute ignored [-Wattributes]
+   23 | void fcopy(void) __attribute__((copy((struct PK *)0), used));
+      |                                              ^
+attr_misapplied_order.c:24:17: error: declaration of 'd' as array of voids
+   24 | struct E { void d[1] __attribute__((packed)); };
+      |                 ^

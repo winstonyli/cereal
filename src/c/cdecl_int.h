@@ -227,12 +227,10 @@ void attr_norm(const char *s, char *out, size_t n);
 bool attr_scope_of(Checker *c, uint32_t tok);
 void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *d,
     AttrState *st);
-void attrs_ctx_check(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
-    unsigned ctx);
+void attrs_ctx_check(Checker *c, uint32_t holder, uint32_t top, TypeId ty,
+    uint32_t tok, unsigned ctx);
 bool attrs_item_named(Checker *c, uint32_t holder, const char *want);
 void attrs_merge(Attrs *to, const Attrs *from);
-void attrs_misapplied(Checker *c, const Attrs *a, char where, bool local,
-    TypeId fty, uint32_t tok);
 void attrs_names(Checker *c, uint32_t holder, uint32_t *set);
 void attrs_names_ptrs(Checker *c, uint32_t h, uint32_t *set);
 void attrs_of_children(Checker *c, uint32_t i, Attrs *a);
