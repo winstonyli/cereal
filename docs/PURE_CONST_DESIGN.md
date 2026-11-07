@@ -180,6 +180,10 @@ Two parked false positives, each probed against gcc 15.2, fixed with goldens wri
   that stay on such a variable, so `attr_excl_generic` lets only those conflict there. Golden `attr_fnptr_ignored`; the
   probe went 209 -> 56 differing lines (`fnptr-var` 163 -> 10, left: `noinline` order, parked). `attr_pure_const_call`'s
   golden gained the "pure ignored" line gcc prints for its `fp` declaration.
+- Ignored attributes leave the exclusion state (2026-11-07, user "1 3"): `attr_excl_generic` runs before `attr_handle`, so an
+  attribute the handler then drops (`malloc` on a non-pointer, `alloc_size`, `alloc_align`, `warn_unused_result` on `void`;
+  recorded in `c->ign`) is withdrawn from `st->cur` in `attrs_apply_decl`, as gcc never lists it; a `noreturn` dropped by an
+  exclusion no longer sets `CSF_NORETURN` (`drop_ignored_noreturn`). Golden `attr_ignored_no_conflict`; the probe went 33 -> 0.
 - `attrs_misapplied` folded into the loop (2026-11-07, user "a1"): its eleven bool-driven checks (`noinline used
   nonstring weak packed alias weakref error warning cleanup`) are now `attrs.def` ctx rows read by `attr_ctx_item`, so
   they print in source order with the other attributes' warnings. New context bits: `AC_FNL` (a block-scope function
