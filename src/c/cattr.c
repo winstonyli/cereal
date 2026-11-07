@@ -2675,6 +2675,30 @@ static void attrs_state_init(Checker *c, AttrState *st, uint32_t kind,
     }
 }
 
+/* gcc applies the inline family by flags, so 'copy' does not bring those along. */
+static bool excl_not_copied(AttrId n)
+{
+    return n == AT_ALWAYS_INLINE || n == AT_GNU_INLINE || n == AT_NOINLINE || n == AT_NOIPA;
+}
+
+/* handle_copy_attribute: the attributes of the referenced symbol r that copy brings along (every
+ * attribute of the exclusion table except the inline family) meet the ones already kept. */
+static void attr_excl_copied(Checker *c, uint32_t tok, uint32_t kind, const CSym *r,
+                             AttrState *st)
+{
+    size_t i;
+    for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
+        const struct AttrExcl *x = &attr_excl_tab[i];
+        if (excl_not_copied(x->n) || (x->obj ? kind != CS_OBJ : kind != CS_FUNC) ||
+            !cdecl_aset_has(c, r->aset, x->n, NULL))
+            continue;
+        st->copy_set = true;
+        st->copy_loc = r->loc;
+        attr_excl_generic(c, tok, x->n, kind, false, st);
+        st->copy_set = false;
+    }
+}
+
 /* gcc's decl_attributes for the attributes among holder's children, in source
  * order: each is checked against the ones kept (attr_excl_generic, when st is
  * given), then handled (attr_handle, when fty is a type to apply it to).
@@ -2809,19 +2833,7 @@ void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *decl,
                               "declared here", cident(c, r->name),
                               cident(c, name));
                 } else {
-                    /* the referenced symbol's exclusion-bearing attributes
-                     * are copied: pure/const of a function, common/nocommon
-                     * of a variable */
-                    const AttrId cn[2] = {kind == CS_FUNC ? AT_PURE : AT_COMMON,
-                                          kind == CS_FUNC ? AT_CONST : AT_NOCOMMON};
-                    unsigned m;
-                    for (m = 0; m < 2; m++)
-                        if (cdecl_aset_has(c, r->aset, cn[m], NULL)) {
-                            st->copy_set = true;
-                            st->copy_loc = r->loc;
-                            attr_excl_generic(c, tok, cn[m], kind, false, st);
-                            st->copy_set = false;
-                        }
+                    attr_excl_copied(c, tok, kind, r, st);
                     if (kind == CS_FUNC)
                         st->nonnull |= r->nonnull;
                 }

@@ -184,6 +184,11 @@ Two parked false positives, each probed against gcc 15.2, fixed with goldens wri
   attribute the handler then drops (`malloc` on a non-pointer, `alloc_size`, `alloc_align`, `warn_unused_result` on `void`;
   recorded in `c->ign`) is withdrawn from `st->cur` in `attrs_apply_decl`, as gcc never lists it; a `noreturn` dropped by an
   exclusion no longer sets `CSF_NORETURN` (`drop_ignored_noreturn`). Golden `attr_ignored_no_conflict`; the probe went 33 -> 0.
+- Copy brings every exclusion attribute (2026-11-07, user "1 2 3"): `attr_excl_copied` replaces the hard-coded
+  `pure`/`const`/`common`/`nocommon` pair; it walks `attr_excl_tab` for the declaration's kind, skipping the inline family
+  (`excl_not_copied`: gcc applies those by flags). A 1224-case probe of copy x own attribute over 19 attributes matches gcc
+  except `aligned` copied into a declaration whose own `packed` is ignored (needs the ctx-ignored withdrawal, parked as the
+  `has_attribute` row). Golden `attr_copy_exclusion`.
 - `attrs_misapplied` folded into the loop (2026-11-07, user "a1"): its eleven bool-driven checks (`noinline used
   nonstring weak packed alias weakref error warning cleanup`) are now `attrs.def` ctx rows read by `attr_ctx_item`, so
   they print in source order with the other attributes' warnings. New context bits: `AC_FNL` (a block-scope function

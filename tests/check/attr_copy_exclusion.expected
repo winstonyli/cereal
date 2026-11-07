@@ -1,0 +1,39 @@
+attr_copy_exclusion.c:5:1: warning: ignoring attribute 'cold' because it conflicts with attribute 'hot' [-Wattributes]
+    5 | int h2(int) __attribute__((hot, copy(h1)));
+      | ^
+attr_copy_exclusion.c:4:5: note: previous declaration here
+    4 | int h1(int) __attribute__((cold));
+      |     ^
+attr_copy_exclusion.c:6:1: warning: ignoring attribute 'hot' because it conflicts with attribute 'cold' [-Wattributes]
+    6 | int h3(int) __attribute__((copy(h1), hot));
+      | ^
+attr_copy_exclusion.c:8:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'pure' [-Wattributes]
+    8 | int n2(int) __attribute__((pure, copy(n1)));
+      | ^
+attr_copy_exclusion.c:7:5: note: previous declaration here
+    7 | int n1(int) __attribute__((noreturn));
+      |     ^
+attr_copy_exclusion.c:9:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'const' [-Wattributes]
+    9 | int n3(int) __attribute__((const, copy(n1)));
+      | ^
+attr_copy_exclusion.c:7:5: note: previous declaration here
+    7 | int n1(int) __attribute__((noreturn));
+      |     ^
+attr_copy_exclusion.c:11:1: warning: ignoring attribute 'returns_twice' because it conflicts with attribute 'noreturn' [-Wattributes]
+   11 | int m2(int) __attribute__((noreturn, copy(m1)));
+      | ^
+attr_copy_exclusion.c:10:5: note: previous declaration here
+   10 | int m1(int) __attribute__((returns_twice));
+      |     ^
+attr_copy_exclusion.c:13:1: warning: ignoring attribute 'malloc' because it conflicts with attribute 'pure' [-Wattributes]
+   13 | char *q2(int) __attribute__((pure, copy(q1)));
+      | ^
+attr_copy_exclusion.c:12:7: note: previous declaration here
+   12 | char *q1(int) __attribute__((malloc));
+      |       ^
+attr_copy_exclusion.c:15:1: warning: ignoring attribute 'warn_unused_result' because it conflicts with attribute 'noreturn' [-Wattributes]
+   15 | int w2(int) __attribute__((noreturn, copy(w1)));
+      | ^
+attr_copy_exclusion.c:14:5: note: previous declaration here
+   14 | int w1(int) __attribute__((warn_unused_result));
+      |     ^
