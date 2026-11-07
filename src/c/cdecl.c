@@ -2262,6 +2262,14 @@ static unsigned fn_attr_bits(Checker *c, uint32_t sn, uint32_t idecl, bool isfun
     return bits;
 }
 
+/* An attribute noreturn that an exclusion dropped does not make the function noreturn (the
+ * _Noreturn keyword is not an attribute and stays). */
+static void drop_ignored_noreturn(Checker *c, CSym *s, bool keyword)
+{
+    if (s->kind == CS_FUNC && !keyword && attr_was_ignored(c, AT_NORETURN))
+        s->flags &= ~(unsigned)CSF_NORETURN;
+}
+
 static void declared_visit(Checker *c, uint32_t i)
 {
     uint32_t idecl = c->par[i], decl, sn, top, name_tok, end, ltok, ref;
@@ -2498,6 +2506,7 @@ static void declared_visit(Checker *c, uint32_t i)
                         (TYPE_QUALS(type_canon(TT, s.ty)) & TQ_VOLATILE))) &&
         s.kind == CS_FUNC)           /* a volatile function is noreturn */
         s.flags |= CSF_NORETURN;
+    drop_ignored_noreturn(c, &s, sp.is_noreturn);
     if (a.nonnull && (s.kind == CS_FUNC || (s.kind == CS_OBJ && file)))
         s.nonnull = a.nonnull;     /* an object: a function pointer */
     if (a.fmt && s.kind == CS_FUNC)
@@ -3355,6 +3364,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
         alloc_name = 0;
         if (st.calign > g.s.ualign)
             g.s.ualign = st.calign;
+        drop_ignored_noreturn(c, &g.s, sp.is_noreturn);
         g.s.nonnull |= st.nonnull | sp.attrs.nonnull;
         if (sp.attrs.fmt)
             g.s.fmt = sp.attrs.fmt;

@@ -2393,12 +2393,19 @@ void cdecl_attr_name(const char *s, char *out, size_t n)
     attr_norm(s, out, n);
 }
 
+bool attr_was_ignored(Checker *c, AttrId name)
+{
+    for (unsigned k = 0; k < c->nign; k++)
+        if (c->ign[k] == name)
+            return true;
+    return false;
+}
+
 void aset_add(Checker *c, uint32_t *set, AttrId name, const char *arg)
 {
     AName n;
-    for (unsigned k = 0; k < c->nign; k++)
-        if (c->ign[k] == name)
-            return;             /* dropped by an exclusion */
+    if (attr_was_ignored(c, name))
+        return;                 /* dropped by an exclusion */
     if (cdecl_aset_has(c, *set, name, arg))
         return;
     if (!*set) {
@@ -2578,6 +2585,14 @@ static const struct AttrExcl {
     {AT_NO_STACK_PROTECTOR, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, false},
 };
 
+/* gcc says it twice when noreturn meets an attribute of an earlier declaration that
+ * has a handler of its own (alloc_align, alloc_size: Wattributes-6.c; warn_unused_result) */
+static bool excl_said_twice(AttrId an, AttrId o)
+{
+    return an == AT_NORETURN && (o == AT_ALLOC_ALIGN || o == AT_ALLOC_SIZE ||
+                                 o == AT_WARN_UNUSED_RESULT);
+}
+
 /* True when attribute an conflicts with one already on this declaration or
  * on the previous one (it is then ignored, with a warning).  fnptr: the
  * declaration is a pointer-to-function variable, which keeps only the
@@ -2620,10 +2635,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
                     cnote(c, d, st->prevloc, "previous declaration here");
                 else if (d && st->copy_set)
                     cnote(c, d, st->copy_loc, "previous declaration here");
-                /* gcc 13 says it twice when noreturn meets an earlier
-                 * alloc_align or alloc_size (Wattributes-6.c) */
-                if (prev && an == AT_NORETURN &&
-                    (o == AT_ALLOC_ALIGN || o == AT_ALLOC_SIZE)) {
+                if (prev && excl_said_twice(an, o)) {
                     d = cwarn_d(c, DL_WARNING, iloc(c, tok), DW_ATTRIBUTES,
                                 "ignoring attribute '%s' because it conflicts "
                                 "with attribute '%s'", attr_name(an), attr_name(o));
@@ -2700,12 +2712,24 @@ void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *decl,
                                       st))
                     continue;
             }
+            const unsigned mark = c->nign;
             if (fty)
                 attr_handle(c, an, it.p[q], fty, tok);
             if (ctx)
                 attr_ctx_item(c, holder, k.p[j], it.p[q], an, cty, tok, ctx);
             if (!st)
                 continue;
+            /* an attribute its handler ignored is not in gcc's list, so a
+             * later one cannot conflict with it */
+            for (unsigned m = mark; m < c->nign; m++)
+                if (c->ign[m] == id)
+                    for (unsigned s = st->ncur; s-- > 0;)
+                        if (st->cur[s] == id) {
+                            memmove(st->cur + s, st->cur + s + 1,
+                                    (st->ncur - s - 1) * sizeof *st->cur);
+                            st->ncur--;
+                            break;
+                        }
             if (kind == CS_FUNC && id == AT_ALIGNED) {
                 Kids aa;
                 uint32_t na = 0;

@@ -1,7 +1,2 @@
 # attr_pairs.py ceilings: differing lines per context (lines vs gcc 15.2). A count above its ceiling fails;
 # a count below it asks for the ceiling to be lowered, so the numbers only shrink. Context absent: 0.
-fn-int 9
-fn-void 10
-redecl 1
-kw-redecl 9
-def 4

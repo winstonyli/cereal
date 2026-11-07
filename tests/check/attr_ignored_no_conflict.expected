@@ -1,0 +1,45 @@
+attr_ignored_no_conflict.c:5:1: warning: 'malloc' attribute ignored on functions returning 'int'; valid only for pointer return types [-Wattributes]
+    5 | int f1(int) __attribute__((malloc, pure));
+      | ^
+attr_ignored_no_conflict.c:6:1: warning: 'alloc_size' attribute ignored on a function returning 'int' [-Wattributes]
+    6 | int f2(int) __attribute__((alloc_size(1), const));
+      | ^
+attr_ignored_no_conflict.c:7:1: warning: 'alloc_align' attribute ignored on a function returning 'int' [-Wattributes]
+    7 | int f3(int) __attribute__((alloc_align(1), noreturn));
+      | ^
+attr_ignored_no_conflict.c:8:1: warning: 'malloc' attribute ignored on functions returning 'void'; valid only for pointer return types [-Wattributes]
+    8 | void f4(void) __attribute__((malloc, pure));
+      | ^
+attr_ignored_no_conflict.c:8:1: warning: 'pure' attribute on function returning 'void' [-Wattributes]
+    8 | void f4(void) __attribute__((malloc, pure));
+      | ^
+attr_ignored_no_conflict.c:9:1: warning: 'warn_unused_result' attribute ignored [-Wattributes]
+    9 | void f5(void) __attribute__((warn_unused_result, noreturn));
+      | ^
+attr_ignored_no_conflict.c:10:15: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+   10 | _Noreturn int f6(int);
+      |               ^
+attr_ignored_no_conflict.c:11:1: warning: 'malloc' attribute ignored on functions returning 'int'; valid only for pointer return types [-Wattributes]
+   11 | int f6(int) __attribute__((malloc, pure));
+      | ^
+attr_ignored_no_conflict.c:12:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'malloc' [-Wattributes]
+   12 | char *f7(int) __attribute__((malloc, pure));
+      | ^
+attr_ignored_no_conflict.c:15:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'pure' [-Wattributes]
+   15 | __attribute__((noreturn)) int d1(int x) { return x; }
+      | ^
+attr_ignored_no_conflict.c:14:5: note: previous declaration here
+   14 | int d1(int) __attribute__((pure));
+      |     ^
+attr_ignored_no_conflict.c:18:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'warn_unused_result' [-Wattributes]
+   18 | int w1(int) __attribute__((noreturn));
+      | ^
+attr_ignored_no_conflict.c:17:5: note: previous declaration here
+   17 | int w1(int) __attribute__((warn_unused_result));
+      |     ^
+attr_ignored_no_conflict.c:18:1: warning: ignoring attribute 'noreturn' because it conflicts with attribute 'warn_unused_result' [-Wattributes]
+   18 | int w1(int) __attribute__((noreturn));
+      | ^
+attr_ignored_no_conflict.c:17:5: note: previous declaration here
+   17 | int w1(int) __attribute__((warn_unused_result));
+      |     ^
