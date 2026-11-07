@@ -2355,7 +2355,6 @@ void e_compare(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         uint64_t va, vb;
         int r = -1;
         if (addr_val(c, a, &cba, &va) && addr_val(c, b, &cbb, &vb)) {
-            bool equal = cba == cbb && va == vb;
             if (cba == cbb) {
                 int cmp = va < vb ? -1 : va > vb;
                 r = rel_holds(op, cmp);

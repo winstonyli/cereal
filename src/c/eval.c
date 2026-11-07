@@ -1804,13 +1804,13 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         }
         if (t->pun == P_MINUS || t->pun == P_TILDE) {
             unsigned fl;
-            uint64_t r = ia_unop(t->pun, ev_iaty(&ti), a, &fl);
+            uint64_t res = ia_unop(t->pun, ev_iaty(&ti), a, &fl);
             if ((fl & IA_OVF) && !v->o.wrap) {
                 TRAP(v, "signed integer overflow");
                 return 0;
             }
             *sh = op_sh(v, t->pun == P_MINUS ? SX_NEG : SX_NOT, &ti, a, ash, 0, 0);
-            return r;
+            return res;
         }
         if (t->pun == P_PLUS) {
             *sh = ash;
