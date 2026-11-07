@@ -186,7 +186,7 @@ Two parked false positives, each probed against gcc 15.2, fixed with goldens wri
   exclusion no longer sets `CSF_NORETURN` (`drop_ignored_noreturn`). Golden `attr_ignored_no_conflict`; the probe went 33 -> 0.
 - Copy brings every exclusion attribute (2026-11-07, user "1 2 3"): `attr_excl_copied` replaces the hard-coded
   `pure`/`const`/`common`/`nocommon` pair; it walks `attr_excl_tab` for the declaration's kind, skipping the inline family
-  (`excl_not_copied`: gcc applies those by flags). A 1224-case probe of copy x own attribute over 19 attributes matches gcc
+  (row flag `EX_NOCOPY`: gcc applies those by flags). A 1224-case probe of copy x own attribute over 19 attributes matches gcc
   except `aligned` copied into a declaration whose own `packed` is ignored (fixed by the ctx-ignored withdrawal below).
   Golden `attr_copy_exclusion`.
 - Ctx-ignored attributes leave the set too (2026-11-07, user "g1"): `attr_ctx_item` records the attribute it warns "ignored"

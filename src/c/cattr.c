@@ -2568,39 +2568,46 @@ void attrs_names_ptrs(Checker *c, uint32_t h, uint32_t *set)
  * against the ones kept on this declaration, the previous declaration's and
  * the ones 'copy' brought along (attr_excl_generic); a conflict is noted at
  * the incoming attribute's origin. */
+/* Row flags: EX_OBJ the exclusion applies to variables (else to functions); EX_NOCOPY 'copy' does not
+ * bring the attribute along (gcc applies the inline family by flags); EX_TWICE gcc says a conflict
+ * between noreturn and this attribute of an earlier declaration twice (alloc_align, alloc_size:
+ * Wattributes-6.c; warn_unused_result). */
+enum { EX_OBJ = 1, EX_NOCOPY = 2, EX_TWICE = 4 };
 static const struct AttrExcl {
     AttrId n, ex[8];
-    bool obj;
+    unsigned fl;
 } attr_excl_tab[] = {
-    {AT_ALIGNED, {AT_PACKED}, false}, {AT_PACKED, {AT_ALIGNED}, false},
-    {AT_COLD, {AT_COLD, AT_HOT}, false}, {AT_HOT, {AT_COLD, AT_HOT}, false},
-    {AT_COMMON, {AT_COMMON, AT_NOCOMMON}, true},
-    {AT_NOCOMMON, {AT_COMMON, AT_NOCOMMON}, true},
-    {AT_ALWAYS_INLINE, {AT_NOINLINE, AT_NOIPA}, false},
-    {AT_GNU_INLINE, {AT_NOINLINE, AT_NOIPA}, false},
-    {AT_NOINLINE, {AT_ALWAYS_INLINE, AT_GNU_INLINE}, false},
-    {AT_NOIPA, {AT_ALWAYS_INLINE, AT_GNU_INLINE}, false},
+    {AT_ALIGNED, {AT_PACKED}, 0}, {AT_PACKED, {AT_ALIGNED}, 0},
+    {AT_COLD, {AT_COLD, AT_HOT}, 0}, {AT_HOT, {AT_COLD, AT_HOT}, 0},
+    {AT_COMMON, {AT_COMMON, AT_NOCOMMON}, EX_OBJ},
+    {AT_NOCOMMON, {AT_COMMON, AT_NOCOMMON}, EX_OBJ},
+    {AT_ALWAYS_INLINE, {AT_NOINLINE, AT_NOIPA}, EX_NOCOPY},
+    {AT_GNU_INLINE, {AT_NOINLINE, AT_NOIPA}, EX_NOCOPY},
+    {AT_NOINLINE, {AT_ALWAYS_INLINE, AT_GNU_INLINE}, EX_NOCOPY},
+    {AT_NOIPA, {AT_ALWAYS_INLINE, AT_GNU_INLINE}, EX_NOCOPY},
     {AT_NORETURN, {AT_ALLOC_ALIGN, AT_ALLOC_SIZE, AT_CONST, AT_MALLOC, AT_PURE,
-                  AT_RETURNS_TWICE, AT_WARN_UNUSED_RESULT}, false},
-    {AT_WARN_UNUSED_RESULT, {AT_NORETURN, AT_WARN_UNUSED_RESULT}, false},
-    {AT_RETURNS_TWICE, {AT_NORETURN}, false},
-    {AT_ALLOC_ALIGN, {AT_CONST, AT_NORETURN, AT_PURE}, false},
-    {AT_ALLOC_SIZE, {AT_CONST, AT_NORETURN, AT_PURE}, false},
-    {AT_MALLOC, {AT_CONST, AT_NORETURN, AT_PURE}, false},
+                  AT_RETURNS_TWICE, AT_WARN_UNUSED_RESULT}, 0},
+    {AT_WARN_UNUSED_RESULT, {AT_NORETURN, AT_WARN_UNUSED_RESULT}, EX_TWICE},
+    {AT_RETURNS_TWICE, {AT_NORETURN}, 0},
+    {AT_ALLOC_ALIGN, {AT_CONST, AT_NORETURN, AT_PURE}, EX_TWICE},
+    {AT_ALLOC_SIZE, {AT_CONST, AT_NORETURN, AT_PURE}, EX_TWICE},
+    {AT_MALLOC, {AT_CONST, AT_NORETURN, AT_PURE}, 0},
     {AT_CONST, {AT_CONST, AT_ALLOC_ALIGN, AT_ALLOC_SIZE, AT_MALLOC, AT_NORETURN,
-               AT_PURE}, false},
+               AT_PURE}, 0},
     {AT_PURE, {AT_CONST, AT_ALLOC_ALIGN, AT_ALLOC_SIZE, AT_MALLOC, AT_NORETURN,
-              AT_PURE}, false},
-    {AT_STACK_PROTECT, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, false},
-    {AT_NO_STACK_PROTECTOR, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, false},
+              AT_PURE}, 0},
+    {AT_STACK_PROTECT, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, 0},
+    {AT_NO_STACK_PROTECTOR, {AT_STACK_PROTECT, AT_NO_STACK_PROTECTOR}, 0},
 };
 
-/* gcc says it twice when noreturn meets an attribute of an earlier declaration that
- * has a handler of its own (alloc_align, alloc_size: Wattributes-6.c; warn_unused_result) */
-static bool excl_said_twice(AttrId an, AttrId o)
+/* The flags of attribute n's row (0 without one). */
+static unsigned excl_flags(AttrId n)
 {
-    return an == AT_NORETURN && (o == AT_ALLOC_ALIGN || o == AT_ALLOC_SIZE ||
-                                 o == AT_WARN_UNUSED_RESULT);
+    size_t i;
+    for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++)
+        if (attr_excl_tab[i].n == n)
+            return attr_excl_tab[i].fl;
+    return 0;
 }
 
 /* True when attribute an conflicts with one already on this declaration or
@@ -2617,9 +2624,9 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
     bool keep = !fnptr;
     for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
         const struct AttrExcl *x = &attr_excl_tab[i];
-        if (x->n != an || (x->obj ? kind != CS_OBJ : kind != CS_FUNC && !fnptr))
+        if (x->n != an || ((x->fl & EX_OBJ) ? kind != CS_OBJ : kind != CS_FUNC && !fnptr))
             continue;
-        keep = !fnptr || x->obj || (ad && (ad->flags & AF_FPKEPT));
+        keep = !fnptr || (x->fl & EX_OBJ) || (ad && (ad->flags & AF_FPKEPT));
         for (e = 0; e < 8 && x->ex[e]; e++) {
             AttrId o = x->ex[e];
             bool prev = false, hit = false;
@@ -2645,7 +2652,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
                     cnote(c, d, st->prevloc, "previous declaration here");
                 else if (d && st->copy_set)
                     cnote(c, d, st->copy_loc, "previous declaration here");
-                if (prev && excl_said_twice(an, o)) {
+                if (prev && an == AT_NORETURN && (excl_flags(o) & EX_TWICE)) {
                     d = cwarn_d(c, DL_WARNING, iloc(c, tok), DW_ATTRIBUTES,
                                 "ignoring attribute '%s' because it conflicts "
                                 "with attribute '%s'", attr_name(an), attr_name(o));
@@ -2685,12 +2692,6 @@ static void attrs_state_init(Checker *c, AttrState *st, uint32_t kind,
     }
 }
 
-/* gcc applies the inline family by flags, so 'copy' does not bring those along. */
-static bool excl_not_copied(AttrId n)
-{
-    return n == AT_ALWAYS_INLINE || n == AT_GNU_INLINE || n == AT_NOINLINE || n == AT_NOIPA;
-}
-
 /* handle_copy_attribute: the attributes of the referenced symbol r that copy brings along (every
  * attribute of the exclusion table except the inline family) meet the ones already kept. */
 static void attr_excl_copied(Checker *c, uint32_t tok, uint32_t kind, const CSym *r,
@@ -2699,7 +2700,7 @@ static void attr_excl_copied(Checker *c, uint32_t tok, uint32_t kind, const CSym
     size_t i;
     for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
         const struct AttrExcl *x = &attr_excl_tab[i];
-        if (excl_not_copied(x->n) || (x->obj ? kind != CS_OBJ : kind != CS_FUNC) ||
+        if ((x->fl & EX_NOCOPY) || ((x->fl & EX_OBJ) ? kind != CS_OBJ : kind != CS_FUNC) ||
             !cdecl_aset_has(c, r->aset, x->n, NULL))
             continue;
         st->copy_set = true;
