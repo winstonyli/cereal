@@ -816,7 +816,7 @@ bool cdecl_aset_first_arg(const Checker *c, uint32_t set, AttrId name,
                           char *out, size_t n);
 bool cdecl_aset_has(const Checker *c, uint32_t set, AttrId name,
                     const char *arg);
-bool cdecl_fn_pure(Checker *c, uint32_t ref);
+bool cdecl_fn_has(Checker *c, uint32_t ref, AttrId name);
 void cdecl_attrs_names(Checker *c, uint32_t attr, uint32_t *set);
 uint32_t cdecl_typedef_aset(const Checker *c, TypeId t);
 void cdecl_attr_args(Checker *c, uint32_t item, char *out, size_t n);

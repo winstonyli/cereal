@@ -6,6 +6,7 @@
 /* ---- attributes ---------------------------------------------------------- */
 
 static void pos_arg_str(Checker *c, uint32_t arg, char *buf, size_t n);
+static bool aset_written(const Checker *c, uint32_t set, AttrId name);
 
 /* The format types gcc's C front end knows (c-format.cc format_types, minus
  * the ones for other targets), besides printf and scanf. */
@@ -2215,7 +2216,7 @@ void attrs_alloc_check(Checker *c, uint32_t holder, TypeId fty,
                 uint32_t pr = alloc_name ? lookup_ord(c, alloc_name) : SYM_NONE;
                 bool excl = false;      /* dropped by an earlier declaration's */
                 if (pr != SYM_NONE && csym(c, pr)->kind == CS_FUNC)
-                    excl = cdecl_aset_has(c, csym(c, pr)->aset, AT_NORETURN, NULL) ||
+                    excl = aset_written(c, csym(c, pr)->aset, AT_NORETURN) ||
                             cdecl_aset_has(c, csym(c, pr)->aset, AT_CONST, NULL) ||
                             cdecl_aset_has(c, csym(c, pr)->aset, AT_PURE, NULL);
                 if (!excl && type_ckind(TT, rt) != TY_PTR &&
@@ -2353,12 +2354,23 @@ bool cdecl_aset_has(const Checker *c, uint32_t set, AttrId name,
     return false;
 }
 
-/* Whether the symbol is a function declared pure or const (its set has either). */
-bool cdecl_fn_pure(Checker *c, uint32_t ref)
+/* Whether the symbol is a function whose set has the attribute. */
+bool cdecl_fn_has(Checker *c, uint32_t ref, AttrId name)
 {
     const CSym *s = csym(c, ref);
-    return s->kind == CS_FUNC && (cdecl_aset_has(c, s->aset, AT_PURE, NULL) ||
-                                  cdecl_aset_has(c, s->aset, AT_CONST, NULL));
+    return s->kind == CS_FUNC && cdecl_aset_has(c, s->aset, name, NULL);
+}
+
+/* Whether the set has the attribute written as an attribute (not only the _Noreturn
+ * keyword): what an exclusion with a later declaration's attribute looks at. */
+static bool aset_written(const Checker *c, uint32_t set, AttrId name)
+{
+    size_t k;
+    for (k = set ? c->ahead.data[set - 1] : 0; k; k = c->anames.data[k - 1].prev)
+        if (c->anames.data[k - 1].id == name &&
+            strcmp(c->anames.data[k - 1].arg, ATTR_ARG_KEYWORD))
+            return true;
+    return false;
 }
 
 /* The attribute set written on the typedef declaration t names (0: none). */
@@ -2609,7 +2621,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
                 continue;
             for (k = 0; k < st->ncur && !hit; k++)
                 hit = st->cur[k] == o;
-            if (!hit && st->hasprev && cdecl_aset_has(c, st->pset, o, NULL))
+            if (!hit && st->hasprev && aset_written(c, st->pset, o))
                 hit = prev = true;
             if (!hit)
                 continue;

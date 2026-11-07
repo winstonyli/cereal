@@ -2658,7 +2658,7 @@ static void declared_visit(Checker *c, uint32_t i)
     c->last_ualign = 0;
     c->nign = 0;
     if (sp.is_noreturn)
-        aset_add(c, &csym(c, ref)->aset, AT_NORETURN, "");
+        aset_add(c, &csym(c, ref)->aset, AT_NORETURN, ATTR_ARG_KEYWORD);
     if (csym(c, ref)->kind == CS_FUNC && csym(c, ref)->linkage == LK_INTERNAL) {
         /* leaf only means something for external functions */
         if (attrs_item_named(c, sn, "leaf") || attrs_item_named(c, idecl, "leaf"))
@@ -3510,7 +3510,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     attrs_names(c, fp.specs, &csym(c, ref)->aset);
     acc_chain_implied(c, ref);
     if (sp.is_noreturn)
-        aset_add(c, &csym(c, ref)->aset, AT_NORETURN, "");
+        aset_add(c, &csym(c, ref)->aset, AT_NORETURN, ATTR_ARG_KEYWORD);
     dump_decl(c, csym(c, ref));
     c->func_sym = ref;
     c->kr_decls = (csym(c, ref)->flags & CSF_KR_DEF) != 0;

@@ -1,0 +1,24 @@
+attr_noreturn_keyword_redecl.c:4:15: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+    4 | _Noreturn int g(void);
+      |               ^
+attr_noreturn_keyword_redecl.c:6:15: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+    6 | _Noreturn int h(void);
+      |               ^
+attr_noreturn_keyword_redecl.c:7:1: warning: 'malloc' attribute ignored on functions returning 'int'; valid only for pointer return types [-Wattributes]
+    7 | int h(void) __attribute__((malloc));
+      | ^
+attr_noreturn_keyword_redecl.c:8:15: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+    8 | _Noreturn int k(void);
+      |               ^
+attr_noreturn_keyword_redecl.c:10:15: warning: ISO C99 does not support '_Noreturn' [-Wpedantic]
+   10 | _Noreturn int m(void) __attribute__((noreturn));
+      |               ^
+attr_noreturn_keyword_redecl.c:11:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'noreturn' [-Wattributes]
+   11 | int m(void) __attribute__((pure));
+      | ^
+attr_noreturn_keyword_redecl.c:10:15: note: previous declaration here
+   10 | _Noreturn int m(void) __attribute__((noreturn));
+      |               ^
+attr_noreturn_keyword_redecl.c:12:1: warning: ISO C99 does not support '_Static_assert' [-Wpedantic]
+   12 | _Static_assert(__builtin_has_attribute(g, noreturn), "keyword is a noreturn function");
+      | ^

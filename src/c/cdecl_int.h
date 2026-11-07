@@ -205,6 +205,9 @@ typedef struct AttrState {
 void acc_chain_implied(Checker *c, uint32_t ref);
 void acc_implied(Checker *c, uint32_t ref, bool redecl, bool def);
 void acc_start(uint32_t name, SrcLoc loc);
+/* The argument of the noreturn entry the _Noreturn keyword adds: it is a noreturn function
+ * for __builtin_has_attribute, but no attribute was written, so exclusions skip it. */
+#define ATTR_ARG_KEYWORD "_Noreturn"
 void aset_add(Checker *c, uint32_t *set, AttrId name,
     const char *arg);
 void aset_drop(Checker *c, uint32_t set, AttrId name);

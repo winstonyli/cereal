@@ -124,8 +124,8 @@ that they conflict as gcc does. cereal copies only pure/const/common/nocommon to
    kinds never reached the table.)
 2. `attr_pure_const_has`: `has_attribute` for `pure, const` (const false, pure true), after a redeclaration, and the
    `copy` cases listed under Behaviour changes. Only cases where gcc agrees.
-3. `attr_pure_const_noreturn`: `_Noreturn` + const then pure redeclaration, and `pure, const, noreturn`. Avoid
-   `_Noreturn ... const` redeclared with `const`: `main` and the prototype warn, gcc does not (pre-existing, parked).
+3. `attr_pure_const_noreturn`: `_Noreturn` + const then pure redeclaration, and `pure, const, noreturn`. (The
+   `_Noreturn ... const` redeclaration case was a false conflict, fixed 2026-11-06: see "Follow-up".)
 4. `attr_pure_const_copy`: `copy(a)` then `const` / `pure` on the declaration, `const, copy(p)`, `noreturn, copy(p)` and
    `copy(p), noreturn` (pins the merged copy loop), and copying a function whose own `pure` was excluded.
 5. `attr_pure_const_call`: calls with equal arguments (the equality warning needs the fact) after a redeclaration
@@ -153,6 +153,19 @@ the gate prints `Collected`; compare with run `ar4s2-final2` (the aset-chain wal
   with `dep_msg`; `CSF_WEAKREF` implies `CSF_WEAK` (`cdecl.c:2497`). Folding them would add a second encoding.
 - `Attrs` bools and `aset` entries are not a synced pair: `aset` is built from attribute nodes by `cdecl_attrs_names`,
   `Attrs` by `attr_collect`; `attr_ids_tombstone` pins that they differ (written versus kept).
+
+## Follow-up (2026-11-06, after v0.30.0)
+
+Two parked false positives, each probed against gcc 15.2, fixed with goldens written first (2390 -> 2392 passed):
+
+- Call equality (`f(x) == f(x)`) warned for a `pure` callee; gcc warns only for `const` (a pure call is not a
+  tautology; `ccall.c`'s no-side-effects test still takes either). `cdecl_fn_pure(c, ref)` became
+  `cdecl_fn_has(c, ref, id)`; `ccall.c` asks pure or const, `cwarn_expr.c` asks const. Golden `attr_pure_const_call`.
+- The `_Noreturn` keyword added `noreturn` to the symbol's set like the attribute, so a later declaration's `pure`,
+  `const` or `malloc` conflicted with it; gcc keeps the keyword out of the attribute list (so no conflict, and `malloc`
+  gets the return-type warning instead), while `__builtin_has_attribute(f, noreturn)` is still true. The keyword's
+  entry now carries the argument `ATTR_ARG_KEYWORD` and the exclusion checks (`aset_written`, the `malloc` check)
+  skip it. Golden `attr_noreturn_keyword_redecl`.
 
 ## End-state fit
 

@@ -902,14 +902,14 @@ bool opeq(Checker *c, uint32_t x, uint32_t y)
     case N_CAST:
         return nx >= 1 && ny >= 1 && mainv(c, c->ty[x]) == mainv(c, c->ty[y]) &&
                opeq(c, kx[nx - 1], ky[ny - 1]);
-    case N_CALL: { /* calls of a const or pure function with equal arguments */
+    case N_CALL: { /* calls of a const function (gcc: not a pure one) with equal arguments */
         uint32_t ref, j;
         if (nx < 1 || nx != ny || ntag(c, strip_paren(c, kx[0])) != N_IDENT ||
             ntag(c, strip_paren(c, ky[0])) != N_IDENT || nx > 3)
             return false;
         ref = lookup_ord(c, cnode_ident(c, strip_paren(c, kx[0])));
         if (ref == SYM_NONE || ref != lookup_ord(c, cnode_ident(c, strip_paren(c, ky[0]))) ||
-            !cdecl_fn_pure(c, ref))
+            !cdecl_fn_has(c, ref, AT_CONST))
             return false;
         for (j = 1; j < nx; j++)
             if (!opeq(c, kx[j], ky[j]))
