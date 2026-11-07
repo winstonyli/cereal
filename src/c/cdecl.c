@@ -2345,6 +2345,8 @@ static void declared_visit(Checker *c, uint32_t i)
         }
         attrs_alloc_check(c, sn, aft, ltok);
         attrs_alloc_check(c, idecl, aft, ltok);
+        attrs_ctx_check(c, sn, s.ty, ltok, AC_FN);
+        attrs_ctx_check(c, idecl, s.ty, ltok, AC_FN);
         alloc_name = 0;
     }
     if (g.what == GD_TYPEDEF && type_ckind(TT, s.ty) == TY_FUNC) {
@@ -3352,6 +3354,7 @@ static void funcdef_declared(Checker *c, uint32_t declared)
     }
     attrs_alloc_check(c, fp.specs, type_kind(TT, g.s.ty) == TY_FUNC ? g.s.ty :
                       type_canon(TT, g.s.ty), ltok);
+    attrs_ctx_check(c, fp.specs, g.s.ty, ltok, AC_FN);
     alloc_name = 0;
     {
         AttrState st = {0};

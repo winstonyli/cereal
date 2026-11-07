@@ -1667,7 +1667,8 @@ static uint32_t copy_target(Checker *c, uint32_t e)
 
 /* decl_attributes on an object, typedef, parameter or field whose type is
  * neither a function nor a pointer to one: attributes that apply only to
- * functions, and the ones ignored in this context. */
+ * functions, and the ones ignored in this context.  With ctx AC_FN (a function
+ * declaration or definition) only the attributes ignored on functions. */
 static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t tok,
                              unsigned ctx)
 {
@@ -1691,6 +1692,13 @@ static void attrs_ctx_check1(Checker *c, uint32_t holder, TypeId ty, uint32_t to
             if (ntag(c, it.p[q]) != N_ATTR_ITEM)
                 continue;
             attr_norm(tstr(c, c->nodes[it.p[q]].tok), name, sizeof name);
+            if (ctx == AC_FN) {         /* a function: only the AC_FN rows apply */
+                ad = attr_lookup(name);
+                if (ad && (ad->ctx & AC_FN))
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
+                          "ignored", name);
+                continue;
+            }
             if (!strcmp(name, "malloc")) {
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'malloc' attribute "
                       "ignored; valid only for functions");

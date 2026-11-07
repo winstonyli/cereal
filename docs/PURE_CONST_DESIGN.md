@@ -101,8 +101,8 @@ in `cdecl_int.h`; the flag enumerators in `check_int.h`; their writers in `cdecl
   set. `pure, const, noreturn` reports `noreturn` against `pure` (gcc; `main` said `const`).
 - `int w0(int) __attribute__((common, nocommon));` (a function): gcc 15.2 prints "'common' attribute ignored" and
   "'nocommon' attribute ignored"; we print one wrong conflict. The gate drops the conflict, and the prototype then prints
-  nothing: the ignored-attribute path (`attrs.def` `ctx` for `common`/`nocommon`) has no function context. Still a gap,
-  smaller than before; parked, and not pinned by a golden (a golden must match gcc).
+  nothing: the ignored-attribute path had no function context. Fixed 2026-11-06 (after v0.30.0): `AC_FN` in `attrs.def` `ctx`;
+  pinned by `tests/check/attr_common_function`.
 - Copy now goes through the whole table: `__attribute__((noreturn, copy(p))) int f(int);` with `p` pure warns "ignoring
   attribute 'pure' because it conflicts with attribute 'noreturn'" with a note at `p`, and `copy(p), noreturn` ignores
   `noreturn` (gcc 15.2 does both; cereal printed nothing).
@@ -141,7 +141,7 @@ Per-golden mutation (each reverted with `touch` + sync; plan Tasks 1-3): make th
 the function pair or drop its `AT_CONST` entry (`attr_pure_const_copy`); drop `st->nonnull |= r->nonnull` (`attr_copy_excl`
 line 27); drop the `copy_set` note branch (`attr_copy_excl` lines 11-12); re-add a `CSF_PURE` enumerator with a
 `__attribute__((pure))` comment (the guard). The `obj` rows applied to functions too survive by design: that half
-(`common`/`nocommon` on a function) has no pinning golden, the stated cost of the parked gap. The suite passes unchanged
+(`common`/`nocommon` on a function) was unpinned until the 2026-11-06 `AC_FN` fix. The suite passes unchanged
 apart from the new files and the two `attr_copy_excl.expected` hunks; asan is the gate's `san` stage; gate green. Callgrind:
 the gate prints `Collected`; compare with run `ar4s2-final2` (the aset-chain walk in call equality is the expected cost).
 

@@ -11,7 +11,8 @@
  * field), plus AC_E for an enumerator (AC_ALL does not include it: no object context sees one). */
 enum { AC_T = 1, AC_G = 2, AC_L = 4, AC_S = 8, AC_P = 16, AC_F = 32, AC_ALL = 63,
        AC_TLS = 64, AC_PUB = 128,    /* the object has thread storage duration / is externally visible */
-       AC_E = 256, AC_ALLE = AC_ALL | AC_E };
+       AC_E = 256, AC_ALLE = AC_ALL | AC_E,
+       AC_FN = 512 };                /* a function declaration or definition (in no AC_ALL*) */
 
 enum { AF_KNOWN = 1, AF_STD = 2, AF_FN_ONLY = 4, AF_EXPR_ARGS = 8, AF_COPY_EXCL = 16 };
 

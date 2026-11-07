@@ -1,0 +1,36 @@
+attr_common_function.c:4:1: warning: 'common' attribute ignored [-Wattributes]
+    4 | int c1(void) __attribute__((common));
+      | ^
+attr_common_function.c:5:1: warning: 'nocommon' attribute ignored [-Wattributes]
+    5 | int c2(void) __attribute__((nocommon));
+      | ^
+attr_common_function.c:6:1: warning: 'common' attribute ignored [-Wattributes]
+    6 | int c3(void) __attribute__((common, nocommon));
+      | ^
+attr_common_function.c:6:1: warning: 'nocommon' attribute ignored [-Wattributes]
+    6 | int c3(void) __attribute__((common, nocommon));
+      | ^
+attr_common_function.c:8:1: warning: 'common' attribute ignored [-Wattributes]
+    8 | int c4(void) __attribute__((common));
+      | ^
+attr_common_function.c:9:1: warning: 'common' attribute ignored [-Wattributes]
+    9 | int c5(void) __attribute__((common));
+      | ^
+attr_common_function.c:11:1: warning: 'nocommon' attribute ignored [-Wattributes]
+   11 | __attribute__((nocommon)) int c6(void) { return 0; }
+      | ^
+attr_common_function.c:12:1: warning: 'common' attribute ignored [-Wattributes]
+   12 | int c7(int) __attribute__((const, common));
+      | ^
+attr_common_function.c:13:1: warning: 'pure' attribute on function returning 'void' [-Wattributes]
+   13 | void c8(void) __attribute__((pure, common));
+      | ^
+attr_common_function.c:13:1: warning: 'common' attribute ignored [-Wattributes]
+   13 | void c8(void) __attribute__((pure, common));
+      | ^
+attr_common_function.c:14:1: warning: 'common' attribute ignored [-Wattributes]
+   14 | char *c9(void) __attribute__((common)) __attribute__((nocommon));
+      | ^
+attr_common_function.c:14:1: warning: 'nocommon' attribute ignored [-Wattributes]
+   14 | char *c9(void) __attribute__((common)) __attribute__((nocommon));
+      | ^
