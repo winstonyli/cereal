@@ -288,7 +288,7 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 
 ## Attribute exclusion gaps left by AR4 stage 3 (docs/PURE_CONST_DESIGN.md; 2026-11-06)
 
-Evidence for each row was probed against gcc 15.2 on 2026-11-06 unless a golden is named.
+Evidence for each row was probed against gcc 15.2 on 2026-11-06 unless a golden is named. Corpus check 2026-11-06 (run `2026-11-06-attr-gaps-corpus`, `corp.sh` against gcc-13, `-Wall -Wextra`): Lua 5.3/5.4/5.5, libuv `src/unix`, zstd `lib` (146 files) gave 0 differing files, so no row below has fired there; those sources write `pure`, `const`, `noreturn` and `malloc` attributes only a handful of times (6 in all), so this is weak evidence.
 
 | What | Why parked | Status |
 |---|---|---|
