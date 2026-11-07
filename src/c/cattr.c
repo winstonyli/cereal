@@ -1644,6 +1644,13 @@ static uint32_t copy_target(Checker *c, uint32_t e)
  * neither a function nor a pointer to one: attributes that apply only to
  * functions, and the ones ignored in this context.  With ctx AC_FN (a function
  * declaration or definition) only the attributes ignored on functions. */
+/* The declaration being checked lost attribute id (aset_add then skips it). */
+static void attr_note_ignored(Checker *c, AttrId id)
+{
+    if (c->nign < 8)
+        c->ign[c->nign++] = id;
+}
+
 static void attr_ctx_item(Checker *c, uint32_t holder, uint32_t attr,
                           uint32_t item, const char *name, TypeId oty,
                           uint32_t tok, unsigned ctx)
@@ -1670,9 +1677,11 @@ static void attr_ctx_item(Checker *c, uint32_t holder, uint32_t attr,
                 if (!strcmp(name, "nonstring"))
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'nonstring' "
                           "attribute does not apply to functions");
-                else if (ad && (ad->ctx & ctx & (AC_FN | AC_FNL)))
+                else if (ad && (ad->ctx & ctx & (AC_FN | AC_FNL))) {
                     cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
                           "ignored", name);
+                    attr_note_ignored(c, ad->id);
+                }
                 return;
             }
             if (!strcmp(name, "malloc")) {
@@ -1780,6 +1789,7 @@ static void attr_ctx_item(Checker *c, uint32_t holder, uint32_t attr,
                 }
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
                       "ignored", name);
+                attr_note_ignored(c, ad->id);
             }
         }
     }

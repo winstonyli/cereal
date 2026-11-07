@@ -44,7 +44,7 @@ in [ROADMAP.md](ROADMAP.md).
   line and column); 2 differ.
 - c-c++-common: 637 of 638 identical; 1 differs (636 before pr57653 and pr57653-2 stopped being skipped, Round 210).
 - gcc.dg/cpp (preprocessor tests, now in verify.sh): 289 of 289 identical (285 before the four `missing-*` -MD tests, Round 209). A baseline, not yet a target; see HISTORY Rounds 142, 146 to 150, 157 to 164.
-- 2404 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/; a new LSP session adds two); the sanitizer build is clean on 628 files.
+- 2406 golden tests pass (the count grows by one per new source file: the dogfood and parse cases walk src/; a new LSP session adds two); the sanitizer build is clean on 628 files.
 - uvloop's `loop.c` checks in about 3.89 G instructions (callgrind).
 - The LSP server covers macros and C names: definition, declaration,
   type definition, references, highlight, hover, rename, document

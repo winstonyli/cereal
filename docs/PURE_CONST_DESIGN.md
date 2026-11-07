@@ -187,8 +187,13 @@ Two parked false positives, each probed against gcc 15.2, fixed with goldens wri
 - Copy brings every exclusion attribute (2026-11-07, user "1 2 3"): `attr_excl_copied` replaces the hard-coded
   `pure`/`const`/`common`/`nocommon` pair; it walks `attr_excl_tab` for the declaration's kind, skipping the inline family
   (`excl_not_copied`: gcc applies those by flags). A 1224-case probe of copy x own attribute over 19 attributes matches gcc
-  except `aligned` copied into a declaration whose own `packed` is ignored (needs the ctx-ignored withdrawal, parked as the
-  `has_attribute` row). Golden `attr_copy_exclusion`.
+  except `aligned` copied into a declaration whose own `packed` is ignored (fixed by the ctx-ignored withdrawal below).
+  Golden `attr_copy_exclusion`.
+- Ctx-ignored attributes leave the set too (2026-11-07, user "g1"): `attr_ctx_item` records the attribute it warns "ignored"
+  about in `c->ign` (`attr_note_ignored`), the list `aset_add` and `given_noinline` already read; so
+  `__builtin_has_attribute(v, pure)` is false for `int v __attribute__((pure))` and `aligned` copied past an ignored
+  `packed` no longer conflicts. Goldens `attr_ignored_has_attribute`, `attr_ids_tombstone` (c1 now 1, as gcc). Limit: `c->ign`
+  holds 8 entries per declaration.
 - `attrs_misapplied` folded into the loop (2026-11-07, user "a1"): its eleven bool-driven checks (`noinline used
   nonstring weak packed alias weakref error warning cleanup`) are now `attrs.def` ctx rows read by `attr_ctx_item`, so
   they print in source order with the other attributes' warnings. New context bits: `AC_FNL` (a block-scope function
