@@ -173,7 +173,13 @@ Two parked false positives, each probed against gcc 15.2, fixed with goldens wri
   `attrs_ctx_check1` for fields and parameters); one walk over `sn`, the `*` chain and `idecl` serves functions, objects
   and typedefs. Deleted: `seen_pure`/`seen_const`, the local `malloc` exclusion, the typedef and ctx-check blocks in
   `cdecl.c`. Golden `attr_apply_order`. The pairwise probe went from 318 to 209 differing lines; the function-pointer
-  variable family (about 163) is untouched (c1), as are `alloc_name`/`alloc_via_ptr`, which the `acc_*` code also uses.
+  variable family (about 163) was untouched (c1), as are `alloc_name`/`alloc_via_ptr`, which the `acc_*` code also uses.
+- Function-pointer variables (2026-11-07, user "y1"): `AC_FPV` (a row bit in `attrs.def` `ctx`) makes `pure`, `cold`,
+  `hot`, `always_inline`, `returns_twice` and `nothrow` print "'X' attribute ignored" on a pointer-to-function object
+  (`attr_ctx_item`; the old function-type early return skipped it); `AF_FPKEPT` (`const`, `noreturn`) marks the two
+  that stay on such a variable, so `attr_excl_generic` lets only those conflict there. Golden `attr_fnptr_ignored`; the
+  probe went 209 -> 56 differing lines (`fnptr-var` 163 -> 10, left: `noinline` order, parked). `attr_pure_const_call`'s
+  golden gained the "pure ignored" line gcc prints for its `fp` declaration.
 
 ## End-state fit
 

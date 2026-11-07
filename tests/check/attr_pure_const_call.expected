@@ -4,6 +4,9 @@ attr_pure_const_call.c:12:1: warning: ignoring attribute 'pure' because it confl
 attr_pure_const_call.c:19:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
    19 | int p5(int) __attribute__((pure, const));      /* const ignored, pure kept */
       | ^
+attr_pure_const_call.c:22:1: warning: 'pure' attribute ignored [-Wattributes]
+   22 | int (*fp)(int) __attribute__((pure));
+      | ^
 attr_pure_const_call.c:26:16: warning: self-comparison always evaluates to true [-Wtautological-compare]
    26 |     r += c1(x) == c1(x);
       |                ^

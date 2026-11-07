@@ -1,0 +1,45 @@
+attr_fnptr_ignored.c:2:1: warning: 'pure' attribute ignored [-Wattributes]
+    2 | int (*v1)(int) __attribute__((pure));
+      | ^
+attr_fnptr_ignored.c:3:1: warning: 'cold' attribute ignored [-Wattributes]
+    3 | int (*v2)(int) __attribute__((cold));
+      | ^
+attr_fnptr_ignored.c:4:1: warning: 'hot' attribute ignored [-Wattributes]
+    4 | int (*v3)(int) __attribute__((hot));
+      | ^
+attr_fnptr_ignored.c:5:1: warning: 'noinline' attribute ignored [-Wattributes]
+    5 | int (*v4)(int) __attribute__((noinline));
+      | ^
+attr_fnptr_ignored.c:6:1: warning: 'always_inline' attribute ignored [-Wattributes]
+    6 | int (*v5)(int) __attribute__((always_inline));
+      | ^
+attr_fnptr_ignored.c:7:1: warning: 'returns_twice' attribute ignored [-Wattributes]
+    7 | int (*v6)(int) __attribute__((returns_twice));
+      | ^
+attr_fnptr_ignored.c:8:1: warning: 'nothrow' attribute ignored [-Wattributes]
+    8 | int (*v7)(int) __attribute__((nothrow));
+      | ^
+attr_fnptr_ignored.c:11:1: warning: 'pure' attribute ignored [-Wattributes]
+   11 | int (*v10)(int) __attribute__((pure, cold));
+      | ^
+attr_fnptr_ignored.c:11:1: warning: 'cold' attribute ignored [-Wattributes]
+   11 | int (*v10)(int) __attribute__((pure, cold));
+      | ^
+attr_fnptr_ignored.c:12:1: warning: ignoring attribute 'pure' because it conflicts with attribute 'const' [-Wattributes]
+   12 | int (*v11)(int) __attribute__((const, pure));
+      | ^
+attr_fnptr_ignored.c:13:1: warning: 'pure' attribute ignored [-Wattributes]
+   13 | typedef int (*T1)(int) __attribute__((pure));
+      | ^
+attr_fnptr_ignored.c:14:8: warning: 'hot' attribute ignored [-Wattributes]
+   14 | struct S { int (*f)(int) __attribute__((hot)); };
+      |        ^
+attr_fnptr_ignored.c:15:1: warning: 'cold' attribute ignored [-Wattributes]
+   15 | void g(int (*p)(int) __attribute__((cold)));
+      | ^
+attr_fnptr_ignored.c:16:1: warning: 'nothrow' attribute ignored [-Wattributes]
+   16 | static int (*v12)(int) __attribute__((nothrow));
+      | ^
+attr_fnptr_ignored.c:17:1: warning: 'pure' attribute ignored [-Wattributes]
+   17 | void h(void) { int (*l)(int) __attribute__((pure)); (void)l; }
+      | ^

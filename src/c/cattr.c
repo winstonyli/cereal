@@ -1762,8 +1762,14 @@ static void attr_ctx_item(Checker *c, uint32_t holder, uint32_t attr,
             }
             if (type_ckind(TT, ty) == TY_UNION && !strcmp(name, "transparent_union"))
                 return;
-            if (fnty)
+            if (fnty) {
+                /* a decl attribute of a function: ignored on a pointer to one */
+                ad = attr_lookup(name);
+                if (ty != oty && ad && (ad->ctx & AC_FPV))
+                    cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute "
+                          "ignored", name);
                 return;
+            }
             ad = attr_lookup(name);
             if (ad && (ad->flags & AF_FN_ONLY)) {
                 cwarn(c, iloc(c, tok), DW_ATTRIBUTES, "'%s' attribute only "
@@ -2594,16 +2600,22 @@ static const struct AttrExcl {
 };
 
 /* True when attribute an conflicts with one already on this declaration or
- * on the previous one (it is then ignored, with a warning). */
+ * on the previous one (it is then ignored, with a warning).  fnptr: the
+ * declaration is a pointer-to-function variable, which keeps only the
+ * AF_FPKEPT attributes among the function ones (gcc ignores the others there),
+ * so only those can conflict with a later attribute. */
 static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
-                              uint32_t kind, AttrState *st)
+                              uint32_t kind, bool fnptr, AttrState *st)
 {
     size_t i, e;
     unsigned k;
+    const AttrDesc *ad = attr_by_id(an);
+    bool keep = !fnptr;
     for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
         const struct AttrExcl *x = &attr_excl_tab[i];
-        if (x->n != an || (x->obj ? kind != CS_OBJ : kind != CS_FUNC))
+        if (x->n != an || (x->obj ? kind != CS_OBJ : kind != CS_FUNC && !fnptr))
             continue;
+        keep = !fnptr || x->obj || (ad && (ad->flags & AF_FPKEPT));
         for (e = 0; e < 8 && x->ex[e]; e++) {
             AttrId o = x->ex[e];
             bool prev = false, hit = false;
@@ -2651,7 +2663,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
         }
         break;
     }
-    if (st->ncur < 24)
+    if (keep && st->ncur < 24)
         st->cur[st->ncur++] = an;
     return false;
 }
@@ -2705,7 +2717,8 @@ void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *decl,
                     attrs_state_init(c, st, kind, name);
                     c->nign = 0;
                 }
-                if (attr_excl_generic(c, tok, id, kind, st))
+                if (attr_excl_generic(c, tok, id, kind, kind == CS_OBJ && fty,
+                                      st))
                     continue;
             }
             if (fty)
@@ -2803,7 +2816,7 @@ void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *decl,
                         if (cdecl_aset_has(c, r->aset, cn[m], NULL)) {
                             st->copy_set = true;
                             st->copy_loc = r->loc;
-                            attr_excl_generic(c, tok, cn[m], kind, st);
+                            attr_excl_generic(c, tok, cn[m], kind, false, st);
                             st->copy_set = false;
                         }
                     if (kind == CS_FUNC)
