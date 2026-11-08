@@ -194,8 +194,7 @@ typedef struct AttrState {
     uint32_t pset;           /* the previous declaration's attribute names */
     bool hasprev;
     SrcLoc prevloc;
-    AttrId cur[24];          /* the attributes this declaration kept so far */
-    unsigned ncur;
+    uint8_t kept[AT_UNKNOWN + 1]; /* per attribute, how many this declaration kept so far */
     bool ign_packed, ign_aligned;
     bool copy_set;           /* the attribute being checked comes from copy */
     SrcLoc copy_loc;

@@ -2619,7 +2619,6 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
                               uint32_t kind, bool fnptr, AttrState *st)
 {
     size_t i, e;
-    unsigned k;
     const AttrDesc *ad = attr_by_id(an);
     bool keep = !fnptr;
     for (i = 0; i < sizeof attr_excl_tab / sizeof *attr_excl_tab; i++) {
@@ -2632,8 +2631,7 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
             bool prev = false, hit = false;
             if (o == an)
                 continue;
-            for (k = 0; k < st->ncur && !hit; k++)
-                hit = st->cur[k] == o;
+            hit = st->kept[o];
             if (!hit && st->hasprev && aset_written(c, st->pset, o))
                 hit = prev = true;
             if (!hit)
@@ -2671,8 +2669,8 @@ static bool attr_excl_generic(Checker *c, uint32_t tok, AttrId an,
         }
         break;
     }
-    if (keep && st->ncur < 24)
-        st->cur[st->ncur++] = an;
+    if (keep && st->kept[an] < UINT8_MAX)
+        st->kept[an]++;
     return false;
 }
 
@@ -2757,14 +2755,8 @@ void attrs_apply_decl(Checker *c, uint32_t holder, const AttrDecl *decl,
             /* an attribute its handler ignored is not in gcc's list, so a
              * later one cannot conflict with it */
             for (unsigned m = mark; m < c->nign; m++)
-                if (c->ign[m] == id)
-                    for (unsigned s = st->ncur; s-- > 0;)
-                        if (st->cur[s] == id) {
-                            memmove(st->cur + s, st->cur + s + 1,
-                                    (st->ncur - s - 1) * sizeof *st->cur);
-                            st->ncur--;
-                            break;
-                        }
+                if (c->ign[m] == id && st->kept[id])
+                    st->kept[id]--;
             if (kind == CS_FUNC && id == AT_ALIGNED) {
                 Kids aa;
                 uint32_t na = 0;

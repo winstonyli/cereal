@@ -45,7 +45,7 @@ in `cdecl_int.h`; the flag enumerators in `check_int.h`; their writers in `cdecl
    (`st->prevloc`) when the conflict is with it, else the `copy` source (`copy_set`/`copy_loc`), and nothing for an
    attribute written on this declaration. That is gcc's rule for every pair, including pure/const (gcc 13.4 and 15.2
    agree on 20 probe lines, reviewer run 2026-11-06). Only `attr_excl` differed, noting the *kept* attribute's origin.
-   Going generic needs no per-entry origin: `AttrState.cur[]` stays `AttrId[24]`.
+   Going generic needs no per-entry origin: `AttrState.cur[]` stays `AttrId[24]` (since replaced by per-id counts, `kept[]`).
 3. **Copy.** The function branch of `attrs_copy_check` is the object branch with a different id pair: one loop over a
    per-kind pair (function: `AT_PURE`, `AT_CONST`; object: `AT_COMMON`, `AT_NOCOMMON`) using
    `cdecl_aset_has(c, r->aset, id, NULL)`, `copy_set`/`copy_loc` and `attr_excl_generic`; `st->nonnull |= r->nonnull`
@@ -93,8 +93,8 @@ in `cdecl_int.h`; the flag enumerators in `check_int.h`; their writers in `cdecl
   `malloc,pure`, `gnu_inline,noinline` on a function pointer gcc prints only "attribute ignored", while `main` prints a
   conflict plus another warning, so the gate would improve those. Unpinned by any listed golden.
 - **Away from gcc (new, not pinned):** `copy(fp)` of a function-pointer variable into a function carries `pure` into the
-  function's set through `aset_copy`, so call equality warns where gcc is silent. A `pure`/`const` conflict past the
-  24-attribute `cur[]` cap is lost (`attr_excl` tracked the pair outside `cur[]`). Both parked.
+  function's set through `aset_copy`, so call equality warns where gcc is silent. Parked. (The 24-attribute `cur[]`
+  cap that lost a conflict past 24 attributes is gone: `AttrState.kept[]` counts per `AttrId`, 2026-11-07.)
 - Copy now enters the exclusion state, so `has_attribute` follows gcc on `copy(p), copy(q)` (const false), `copy(p), const`
   (const false), `const, copy(p)` (pure false), and on `copy(t)` of a `pure, const` function (const false); the old note
   at `p` for `copy(p), const` is gone (gcc prints none). A redeclaration `pure` then `const` makes `const` false in the

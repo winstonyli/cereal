@@ -1,0 +1,6 @@
+attr_many_conflict.c:3:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    3 | int f(void) __attribute__((unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, pure, const));
+      | ^
+attr_many_conflict.c:4:1: warning: ignoring attribute 'const' because it conflicts with attribute 'pure' [-Wattributes]
+    4 | int g(void) __attribute__((pure, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, unused, const));
+      | ^
