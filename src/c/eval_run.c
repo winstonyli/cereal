@@ -83,8 +83,9 @@ static uint64_t rnd(uint64_t *s)
 }
 
 /* A random value of a scalar type, as a slot; once the dictionary is on (what the program compared
- * its inputs with), a third of the integers are one of its entries, or one either side. */
-static uint64_t sweep_arg(Ev *v, const Ti *ti, uint64_t *rs)
+ * its inputs with), a third of the integers are one of its entries, or one either side.  A field of a lazy blob
+ * (`field`) is mostly kept small: a drawn size that pairs with a lazy array is scanned up to the array's end. */
+static uint64_t sweep_arg(Ev *v, const Ti *ti, uint64_t *rs, bool field)
 {
     if (ti->flt) {
         static const double pick[] = {0.0, 1.0, -1.0, 0.5, -2.5, 3.25, 7.0, 100.0, -1e3, 1e-3};
@@ -105,6 +106,8 @@ static uint64_t sweep_arg(Ev *v, const Ti *ti, uint64_t *rs)
         int64_t x = (int64_t)(rnd(rs) % 13) - 6;
         return ev_canon(ti, ti->sg || x >= 0 ? (uint64_t)x : (uint64_t)(x + 6));
     }
+    if (field && rnd(rs) % 16)
+        return ev_canon(ti, rnd(rs) % 4096);
     return ev_canon(ti, rnd(rs));
 }
 
@@ -973,7 +976,7 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         }
         return true;
     }
-    x = sweep_arg(v, ti, z->rs);
+    x = sweep_arg(v, ti, z->rs, true);
     for (i = 0; i < ti->bytes; i++)
         raw[i] = (uint8_t)(x >> (8 * i));
     for (i = 0; i < ti->bytes; i++)
@@ -1097,7 +1100,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     for (k = 0; k < f->np && !v->res.status; k++) {
         const SArg *a = &s->a[k];
         if (a->kind == SA_SCALAR) {
-            uint64_t raw = sweep_arg(v, &a->ti, rs), drawn = 0;
+            uint64_t raw = sweep_arg(v, &a->ti, rs, false), drawn = 0;
             uint32_t sh = 0;
             for (i = 0; i < a->ti.bytes; i++) {
                 LKey key = lz_key(lz_key(LZ_PARAM, k), i);
