@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Lazy blobs: moving the call's NULL on a NULL-operand trap
@@ -89,3 +89,20 @@ cell key at fill time instead). Removed: nothing from options 1–3; option 4 is
 - Sweep: `sweep_meas.sh` seed 1234 `LINK=1` N=24: edges at least 6541 (size share), seconds not above 1896 by more than
   10%, solver-first edges not below 1968; replay (`CEREAL_LAZY_REPLAY=1`) and the gate green.
 - Exit: if the sweep does not beat 6541 by more than the seed pair's noise, record it and revert to `22ac39a`.
+
+## 5. Result (spike, 2026-11-09): decided against
+
+Throwaway build of `cc9a666` with `CEREAL_SPIKE=1..4` (options 1-4; 0 = today), `luaD_reallocstack`, 24 calls, seed 1234,
+`--eval-link` on the Lua 5.4 sources. Final stops of all generator runs (88 per mode):
+
+| mode | finished | subtraction | blob budget | other traps |
+|---|---|---|---|---|
+| 0 today | 1 | 47 | 36 | 5 |
+| 1 next unreached draw | 1 | 23 | 52 | 13 |
+| 2 one draw later | 1 | 37 | 38 | 13 |
+| 3 no NULL | 1 | 36 | 50 | 2 |
+| 4 OUT hint on the NULL cell | 1 | 36 | 45 | 7 |
+
+No option finishes more than 1 of 24 (the exit bar above). Option 1 removes half the subtraction stops, but the freed
+calls run on into the budget or a NULL dereference; the lists have no end without the NULL. Nothing was built; the spike
+tree and outputs were deleted. Parked: `PARKED.md` row 248.
