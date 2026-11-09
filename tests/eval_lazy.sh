@@ -49,7 +49,7 @@ echo "eval_lazy: parameter alias ok"
 # (hints per cell stop at the fifth element: 17 of 200 calls finish without the class hint).
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_list.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_list.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=200,1234 "$D/cfg_lazy/lazy_list.c" 2>/dev/null </dev/null | grep -ac '^call ll_run .* =>')
-if [ "$n" -lt 80 ]; then
+if [ "$n" -lt 180 ]; then
     echo "eval_lazy: lazy_list.c: only $n of 200 calls of ll_run finished (the class hint)"
     exit 1
 fi
