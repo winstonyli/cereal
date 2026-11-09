@@ -105,8 +105,8 @@ removed by the size key. Nothing else removable.
   offset class needs one per field.
 - Sweep: `sweep_meas.sh` seeds 1234 and 7, `LINK=1`, N=24: edges at least the base (6553; seed 7 needs a
   `~/cereal-base` run `base-link24-s7`), seconds within +10% of 1619, solver half no lower.
-- Replay: `CEREAL_LAZY_REPLAY=1` over `tests/eval_lazy.sh` and `tests/eval_sweep.sh`; gate green, goldens
-  regenerated and diffed (only calls that stopped before may change).
+- Replay: `CEREAL_LAZY_REPLAY=1` over `tests/eval_lazy.sh` and `tests/eval_sweep.sh`; gate green; sweep `call` lines before and after diffed
+  over `tests/cfg_lazy/lazy_*.c` and `tests/eval/*.c` (only calls that stopped on a subtraction may change; there are no goldens).
 - Exit: if the sweep gain is under the noise of the seed pair or time rises more than 10%, record the result in
   `PARKED.md` row 248 and undo the size-change commits (`git checkout c2bbf16 -- src tests`: the offset-class state, where the fixture passes).
 - Docs: `PARKED.md` row 248 is corrected (`e1d0bc7`); when this lands or is shelved, add the size-share result to it.
