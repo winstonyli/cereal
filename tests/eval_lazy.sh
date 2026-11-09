@@ -54,6 +54,15 @@ if [ "$n" -lt 180 ]; then
     exit 1
 fi
 echo "eval_lazy: class hint ok"
+# Ten fields of one pointee size subtracted from an eleventh: one hint for the size makes them all share (a hint per cell or per offset
+# stops at the ninth).  Calls whose one NULL lands on a pointer cell stop for good, so the count stays under 200.
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_size.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_size.c differs from gcc"; exit 1; }
+n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=200,1234 "$D/cfg_lazy/lazy_size.c" 2>/dev/null </dev/null | grep -ac '^call sz_run .* =>')
+if [ "$n" -lt 150 ]; then
+    echo "eval_lazy: lazy_size.c: only $n of 200 calls of sz_run finished (the size hint)"
+    exit 1
+fi
+echo "eval_lazy: size hint ok"
 # A cell drawn to share its own object (a pointer read as an int): the retry redraws the cell as a new blob (958 of 1000 finish without it).
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_selfptr.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_selfptr.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=1000,1234 "$D/cfg_lazy/lazy_selfptr.c" 2>/dev/null </dev/null | grep -ac '^call sp_run .* =>')
