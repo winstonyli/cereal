@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Lazy blobs: sharing by element size
