@@ -88,3 +88,10 @@ If Task 2 Step 5 fails twice, or Task 3's acceptance fails: `git checkout c2bbf1
 ## Parked on completion
 
 Lists whose end is not a drawn NULL (the 507-edge `lazy blob budget` stop), solver reruns not seeing the size entry, same-size unrelated types sharing: already in the spec's "Cannot cover" and rulings; Task 3 adds them to `PARKED.md` row 248 if the measurement shows they still cost edges.
+
+## Result (Tasks 1-2 built, Task 3 sweep 1234 only, 2026-11-09)
+
+- Fixtures: `lazy_size.c` 26 -> 165 of 200 calls finish; `lazy_list.c` 203; `eval_lazy.sh`, `eval_sweep.sh` and both replay runs pass; the before/after sweep diff changes only those two fixtures.
+- Probe `luaD_reallocstack` (24 calls, `--eval-link`, seed 1234): 1 finishes (offset class: 0, or 1 with `LMAXHINT` 24).
+- Sweep, run `2026-11-09-sizeshare-link24` (836573e) against `2026-11-08-classshare-link24` and `2026-11-08-fieldsmall-link24`: edges 6541 (class 6581, base 6553) of 9599; solver-first 1968 (2092, 2102); seconds 1896 (2154, 1619). The subtraction stop is 15 edges and the `lazy blob budget` stop 531 (507 with the class, 25 at base).
+- Acceptance fails: edges under the 6553 base, solver half lower, seconds +17% over 1619. Seed 7 and the gate were not run. The exit rule applies; the revert (`git checkout c2bbf16 -- src tests`) waits for the user.
