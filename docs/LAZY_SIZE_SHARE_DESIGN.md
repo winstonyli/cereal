@@ -37,12 +37,13 @@ is 1 for void and function pointees and has no 4096 cap. No type text, no hash, 
 `lazy_call1` clears `sub_sz` with `sub_a`, `sub_b` and `pun_obj`.
 
 **Hint.** `lazy_redraw` writes, beside the cell pair it writes today, one entry `lz_key(LZ_SZ, sz)` = the earlier
-blob's key, when `sub_sz != 0` (tag `LZ_SZ` replaces `LZ_CLS`; the hint array is three entries, or two for a
-parameter blob's `LZ_ALIAS` hint, which writes no size entry). The entry means "share this blob"; it has no
+blob's key, when `sub_sz != 0` (tag `LZ_SZ` replaces `LZ_CLS`; the hint array is three entries for a pointer cell, one
+for a parameter blob's `LZ_ALIAS` hint (no size entry), up to two for the `pun_obj` hints; `LEnt hint[4]` at
+`lazy_redraw`, `lazy_call1`, `sweep_call` and the "at most four" comment shrink to 3). The entry means "share this blob"; it has no
 OUT half. In `lazy_fill`, once per pointer cell with `Ti.psz != 0`: look up the entry for `psz` in `z->force`;
 resolve its key to a blob index (none: no share); and if the draw is not the NULL draw, pass `lazy_draw` the
-fallback values OUT = 1 and TGT = that key through `alt` (now a pair of values, not a key). `lazy_draw` uses them
-only when the cell has no forced entry of its own, and logs the value under the cell key. `lz_cls`, `LZ_CLS` and
+fallback values OUT = 1 and TGT = that key through `alt` (now a pointer to a pair of values, NULL for none, not a key; a key of 0 is never
+"none"). `lazy_draw` uses them only when the cell has no forced entry of its own, and logs the value under the cell key. `lz_cls`, `LZ_CLS` and
 the offset class are deleted. The size entry lives only in `sweep_call`'s `cur`; `rec`, seeds and replay hold
 cell keys only.
 
@@ -68,7 +69,7 @@ the fixture tests it.)
 
 **Cannot cover.** Subtractions between cells of different pointee sizes (a `char *` against a `TValue *`, which
 is a different-object trap anyway); a list whose end is a NULL the call does not draw (`nullat`: half of the
-calls have none, the walk stops at `LMAXBL`: the 507 edges); a pointer reached only through a cast.
+calls have none, the walk stops at `LMAXBL`: the 507 edges); a pointer reached only through a cast; a comparison whose operand 0 is a `void *` (`sub_sz` 0: cell pair only).
 
 ## 3. Decide
 
@@ -80,13 +81,14 @@ calls have none, the walk stops at `LMAXBL`: the 507 edges); a pointer reached o
     - Con: same-size unrelated types share (coverage cost only); `char *` (size 1) is the likeliest collision.
 - **2 Pointee type text:** the earlier draft, a printed canonical type hashed to a key.
     - Pro: finer than size.
-    - Con: adds `Ti.pte`, `LBlob.cls`, a print and hash per cell; the trap's operand type is not available to
-      key the hint without them.
+    - Con: adds `Ti.pte`, `LBlob.cls`, a print and hash per cell to compare with the trap's type.
 - **3 Keep the offset class** with `LMAXHINT` raised.
     - Pro: nothing to build.
     - Con: 10 to 14 classes in Lua against a cap of 8; the trace says it cannot reach the wall.
 
-Searched: the size entry as an OUT/TGT pair (one value suffices: it always means "share"); dropping the cell pair (a solver rerun logs every cell, so only the cell key reaches the trapped cell); a size computed in `lazy_redraw` from the creating cell (no `psz` on `LBlob`); a class from the cell's path fails (the path grows along a list); a class from the type of the *blob*
+Searched: the size entry as an OUT/TGT pair (removed: one value suffices, it always means "share"); dropping
+the cell pair (kept: a solver rerun logs every cell, so only the cell key reaches the trapped cell); a size
+computed in `lazy_redraw` from the creating cell (rejected: no `psz` on `LBlob`); a class from the cell's path fails (the path grows along a list); a class from the type of the *blob*
 has no type on parameter blobs; inferring the share in `lazy_fill` with no stop to learn from changes every draw
 and the goldens; the type text, `Ti.pte`, `LBlob.cls`, and the random-target fallback were each tried and
 removed by the size key. Nothing else removable.
@@ -106,6 +108,5 @@ removed by the size key. Nothing else removable.
 - Replay: `CEREAL_LAZY_REPLAY=1` over `tests/eval_lazy.sh` and `tests/eval_sweep.sh`; gate green, goldens
   regenerated and diffed (only calls that stopped before may change).
 - Exit: if the sweep gain is under the noise of the seed pair or time rises more than 10%, record the result in
-  `PARKED.md` row 248 and revert the size change to the offset-class state (`c2bbf16`; the offset class stays, the fixture passes there).
-- Docs: `PARKED.md` row 248 still says the wall is the `CallInfo` list; correct it (upvalue list first, link this
-  spec, new numbers) when this lands or is shelved.
+  `PARKED.md` row 248 and undo the size-change commits (`git checkout c2bbf16 -- src tests`: the offset-class state, where the fixture passes).
+- Docs: `PARKED.md` row 248 is corrected (`e1d0bc7`); when this lands or is shelved, add the size-share result to it.
