@@ -45,6 +45,15 @@ if [ "$n" -lt 24 ]; then
     exit 1
 fi
 echo "eval_lazy: parameter alias ok"
+# A walk over six list elements, each subtracted from one field of the head: one hint for the cell's class makes them all share
+# (hints per cell stop at the fifth element: 17 of 200 calls finish without the class hint).
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_list.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_list.c differs from gcc"; exit 1; }
+n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=200,1234 "$D/cfg_lazy/lazy_list.c" 2>/dev/null </dev/null | grep -ac '^call ll_run .* =>')
+if [ "$n" -lt 80 ]; then
+    echo "eval_lazy: lazy_list.c: only $n of 200 calls of ll_run finished (the class hint)"
+    exit 1
+fi
+echo "eval_lazy: class hint ok"
 # A cell drawn to share its own object (a pointer read as an int): the retry redraws the cell as a new blob (958 of 1000 finish without it).
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_selfptr.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_selfptr.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=1000,1234 "$D/cfg_lazy/lazy_selfptr.c" 2>/dev/null </dev/null | grep -ac '^call sp_run .* =>')
