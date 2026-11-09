@@ -42,8 +42,8 @@ upvalue's `v` is class (16, 56); every later one is (16, 24), because their blob
 `ck = lz_key(LZ_CLS, lz_key(off, creator poff))` (`LZ_CLS` is a new tag, 7 << 56; offsets are the stored
 ones, `LHEAD` included, a parameter blob's `poff` is its parameter number, so classes of the two never
 collide), and the class entries are the pair `lz_key(ck, LZ_OUT)`, `lz_key(ck, LZ_TGT)`; `lazy_redraw`
-computes `ck` from `h->poff` and `bl[h->par].poff`, `lazy_fill` from `off` and `bl[bi].poff`. `lazy_redraw`'s share hint is written under the class key of
-the later operand's creating cell instead of the cell key (`hint_put`, `asked`, `nh` and the retry loop
+computes `ck` from `h->poff` and `bl[h->par].poff`, `lazy_fill` from `off` and `bl[bi].poff`. `lazy_redraw`'s share hint is written under the cell key as today and under the class key of
+the later operand's creating cell (four entries, `hint[4]`; `hint_put`, `asked`, `nh` and the retry loop
 are unchanged). `lazy_draw` takes an `alt` key (0: none): when the call's forced map has no entry for the cell key it
 looks `alt` up, and the value used is logged under the cell key as always, so the call's log (`rec`), the
 solver's `force`/`syms` and the gcc-side graph rebuild (`sw_load` replays the link table only) see
@@ -62,8 +62,10 @@ class (16, 56), class (16, 24). The `CallInfo` walk adds its own classes. `LMAXH
 - *Cell entries win.* A cell with its own forced entry (a seed's log, the solver's override, a `LZ_ALIAS` or
   `pun_obj` hint) keeps it; a class entry fills only cells without one. Consequence: a solver rerun of a
   trapped seed, whose log holds an entry for every cell it drew, does not get the class hint for those
-  cells; each costs a retry as today. Accepted: the sweep's generator path is where the gain is; the check
-  in section 4 measures the solver half separately.
+  cells. The cell half of the hint (written as today, overwriting the seed's entry) still fixes the cell
+  that trapped, so a trapped seed loses nothing; only the other cells of the class go unhelped. (Writing the
+  class entry alone would have lost the fix: the retry would see the cell's entry win, trap again and stop.)
+  The check in section 4 measures the solver half separately.
 - *Draw stream.* A class hint that turns a "new" cell into a share adds two `rnd` calls (`lazy_fill`
   draws target and offset only on outcome 1) and shifts later unforced draws of that rerun. The log holds
   everything the final run drew, so replay is unchanged; the sentence in `LAZY_BLOBS_SOLVER_PLAN.md`
@@ -106,7 +108,7 @@ per-sweep scope of the first draft. Nothing else removable.
 ## 4. End-state fit and checks
 
 - **Where:** `lazy_draw`/`lazy_fill`/`lazy_redraw` in `src/c/eval_run.c`; no other file.
-- **Replaces:** the cell key of the share hint (a class key). **Deletes:** nothing else; `hint_put`, `LZ_ALIAS`
+- **Replaces:** nothing; the share hint gains a class pair beside its cell pair. **Deletes:** nothing; `hint_put`, `LZ_ALIAS`
   and the `pun_obj` hints stay (they name parameters and a blob, not a class). Retry accounting
   (`nh`, `LMAXHINT`) covers all hints.
 - Probe: `--eval-only=luaD_reallocstack` finishes some of its 24 calls (today none); the same for the
