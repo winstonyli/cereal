@@ -90,3 +90,13 @@ the offset hint, the `lazy_redraw` branch, the trap record, the freed print rule
 - Sweep: `sweep_meas.sh` seeds 1234 and 7: Lua edges at least the size-share numbers (6541 / 6526), zstd edges up; replay
   (`CEREAL_LAZY_REPLAY=1`) and the gate green.
 - Exit: if the zstd edges do not rise by more than 20 over base, revert and record it in `PARKED.md` row 248.
+
+## 5. Spike result (2026-11-09, evaluator side only)
+
+`h_free` returns early for a lazy object (throwaway build of `b520f83`). Probe `ZSTD_freeCCtxParams`, 24 calls, seed 1234,
+`--eval-link`: finished 88 of 88 runs, base 0 (all 88 stopped on "free of a pointer that malloc did not return"). Full sweep, seed
+1234, Lua + zstd linked, 24 calls (`2026-11-09-heapspike-link24` against the size-share run `2026-11-09-sizeshare-link24`, same
+generator code): edges taken 6583 (+42), solver-first 1987 (+19), untaken zstd 1146 -> 1131 (-15), Lua 1719 -> 1685 (-34),
+"function never finished" Lua 237 -> 116, zstd 737 -> 706; seconds 2659 against 1896 (machine at 80-95% CPU from other work; not a
+timing). Realloc stops left: 9 edges. The exit bar above (zstd edges up by more than 20) is not met by zstd alone (+15); the total is +42.
+The gcc side is not built; the spike tree is deleted.
