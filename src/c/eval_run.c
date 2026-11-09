@@ -706,7 +706,7 @@ typedef struct LOpt {
 #define LZ_TGT ((uint64_t)4 << 56)
 #define LZ_TOFF ((uint64_t)5 << 56)
 #define LZ_FN ((uint64_t)6 << 56)
-#define LZ_CLS ((uint64_t)7 << 56)        /* the class of a pointer cell (lz_cls): the key its shared hints are put under */
+#define LZ_SZ ((uint64_t)7 << 56)         /* the pointee size of a pointer cell: the key of the hint shared by every cell of that size */
 #define LFN 0x80000000u         /* LLink.tb1: the link names a function (index in Ev.fn), not a blob */
 #define LMAXFN (1u << 16)       /* functions the gcc side can address (sw_fn) */
 
@@ -757,13 +757,6 @@ typedef struct Lazy {
     LKeys syms;                 /* tracking: the draw of each solver symbol, by id (dense, by first use) */
 } Lazy;
 
-/* The class of the pointer cell at `off` of blob `bi`: its offset and the offset of the cell that made the blob (a
- * parameter's number for a parameter's blob).  The cells of a linked list (every later element's `v`, made by `next`) share one. */
-static LKey lz_cls(const Lazy *z, int bi, uint64_t off)
-{
-    return lz_key(LZ_CLS, lz_key(off, z->bl.data[bi].poff));
-}
-
 /* A symbol for the byte drawn under `key`: ids are dense, so the solver's model maps back to keys. */
 static uint32_t lazy_sym(Ev *v, Lazy *z, LKey key, bool out)
 {
@@ -775,7 +768,7 @@ static uint32_t lazy_sym(Ev *v, Lazy *z, LKey key, bool out)
 /* How far a pointer offset the solver picks may go: the first elements of the blob, as the draws stay near its start. */
 #define LOFFMAX (LHEAD + 4096)
 
-static uint64_t lazy_draw(Lazy *z, LKey key, LKey alt, uint64_t drawn);
+static uint64_t lazy_draw(Lazy *z, LKey key, const uint64_t *alt, uint64_t drawn);
 
 /* An offset into the blob `id`, drawn as three bytes (keys derived from `key`) so that the solver can choose it.  With
  * tracking, *wsh is the pointer word (id, offset) as an expression over those bytes, and the offset's range (from LHEAD
@@ -786,7 +779,7 @@ static uint32_t lazy_off(Ev *v, Lazy *z, LKey key, uint64_t drawn, uint32_t id, 
     unsigned i;
     for (i = 0; i < 3; i++) {
         LKey k = lz_key(key, i);
-        off |= (uint32_t)(lazy_draw(z, k, 0, drawn >> (8 * i) & 255) & 255) << (8 * i);
+        off |= (uint32_t)(lazy_draw(z, k, NULL, drawn >> (8 * i) & 255) & 255) << (8 * i);
         if (v->track) {
             uint32_t b = lazy_sym(v, z, k, false);
             sh = i ? sx_join(&v->sx, b, sh) : b;
@@ -808,14 +801,14 @@ static uint32_t lazy_off(Ev *v, Lazy *z, LKey key, uint64_t drawn, uint32_t id, 
 
 /* The one place a value is drawn: the caller has drawn `drawn` from the PRNG (always, so the stream
  * is the same with or without a forced value); the forced value wins, and the value used is logged.  A cell with no forced
- * entry of its own takes that of its class `alt` (0: none), logged under `key` like any other. */
-static uint64_t lazy_draw(Lazy *z, LKey key, LKey alt, uint64_t drawn)
+ * entry of its own takes `*alt` (NULL: none), logged under `key` like any other. */
+static uint64_t lazy_draw(Lazy *z, LKey key, const uint64_t *alt, uint64_t drawn)
 {
     LEnt e = {key, drawn}, *f = llog_at(z->force, key);
-    if (!f && alt)
-        f = llog_at(z->force, alt);
     if (f)
         e.val = f->val;
+    else if (alt)
+        e.val = *alt;
     vec_push(&z->rec, e);
     return e.val;
 }
@@ -825,6 +818,16 @@ static int lazy_index(const Lazy *z, uint32_t id)
     size_t i;
     for (i = 0; i < z->bl.len; i++)
         if (z->bl.data[i].id == id)
+            return (int)i;
+    return -1;
+}
+
+/* The index of the blob with draw key `key`, or -1. */
+static int lazy_blob_key(const Lazy *z, LKey key)
+{
+    size_t i;
+    for (i = 0; i < z->bl.len; i++)
+        if (z->bl.data[i].key == key)
             return (int)i;
     return -1;
 }
@@ -888,7 +891,7 @@ static long lazy_fn(Ev *v, Lazy *z, LKey ck, TypeId fty)
         sb_free(&have);
     }
     if (cand.len) {
-        g = lazy_draw(z, lz_key(ck, LZ_FN), 0, cand.data[rnd(z->rs) % cand.len]);
+        g = lazy_draw(z, lz_key(ck, LZ_FN), NULL, cand.data[rnd(z->rs) % cand.len]);
         for (k = 0; k < cand.len; k++)          /* a forced function that is no candidate here: the first */
             if (cand.data[k] == g)
                 break;
@@ -905,7 +908,7 @@ static void lazy_byte(Ev *v, Lazy *z, int bi, uint64_t off, uint8_t dflt, bool s
 {
     Obj *o = &v->obj.data[z->bl.data[bi].id - 1];
     LKey key = lz_key(z->bl.data[bi].key, off);
-    uint8_t b = (uint8_t)lazy_draw(z, key, 0, dflt);
+    uint8_t b = (uint8_t)lazy_draw(z, key, NULL, dflt);
     o->b[off] = b;
     o->init[off] = 1;
     if (v->track && sym) {
@@ -935,13 +938,19 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         unsigned d = z->ndraw++;
         uint64_t r = d == z->nullat ? 0 : 1 + rnd(z->rs) % 7;
         LLink l = {(uint32_t)bi, (uint32_t)off, 0, 0};
-        LKey ck = lz_key(z->bl.data[bi].key, off), cls = lz_cls(z, bi, off);
+        LKey ck = lz_key(z->bl.data[bi].key, off);
+        /* The hint of the cell's pointee size (lazy_redraw): share the blob it names, if the call has made it (the first cell of the size
+         * is read before that blob exists, and a share of the unmade blob would be of its own); the call's one NULL keeps to its draw. */
+        const LEnt *se = ti->psz && d != z->nullat ? llog_at(z->force, lz_key(LZ_SZ, ti->psz)) : NULL;
+        uint64_t one = 1;
         uint32_t psh = 0;              /* the pointer word as an expression, when its offset is the solver's */
         uint32_t osh;                   /* the draw of the outcome (0 NULL, else not), when tracking */
         if (un != ti->bytes)
             return false;               /* half a pointer was written: not a pointer to draw */
-        /* 0 NULL, 1 share, 2 new; the call's one NULL keeps to its draw, or a class forced to share would never end a list */
-        r = lazy_draw(z, lz_key(ck, LZ_OUT), d == z->nullat ? 0 : lz_key(cls, LZ_OUT), r > 2 ? 2 : r);
+        if (se && lazy_blob_key(z, se->val) < 0)
+            se = NULL;
+        /* 0 NULL, 1 share, 2 new */
+        r = lazy_draw(z, lz_key(ck, LZ_OUT), se ? &one : NULL, r > 2 ? 2 : r);
         osh = v->track ? sx_ext(&v->sx, lazy_sym(v, z, lz_key(ck, LZ_OUT), true), 1, false, false) : 0;
         long fi = r && ti->fty ? lazy_fn(v, z, ck, ti->fty) : -1;   /* a function pointer is NULL or a function */
         if (r == 0) {
@@ -953,11 +962,11 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
         } else if (r == 1) {
             int t = (int)(rnd(z->rs) % z->bl.len);
             uint64_t tk, to = LHEAD + (rnd(z->rs) % 9) * (ti->psz > 8 ? ti->psz : 8);   /* whole elements of the pointee: two such pointers subtract */
-            size_t b;
-            tk = lazy_draw(z, lz_key(ck, LZ_TGT), lz_key(cls, LZ_TGT), z->bl.data[t].key);
-            for (b = 0; b < z->bl.len; b++)         /* a forced target the call has no blob for: the drawn one */
-                if (z->bl.data[b].key == tk)
-                    t = (int)b;
+            int b;
+            tk = lazy_draw(z, lz_key(ck, LZ_TGT), se ? &se->val : NULL, z->bl.data[t].key);
+            b = lazy_blob_key(z, tk);               /* a forced target the call has no blob for: the drawn one */
+            if (b >= 0)
+                t = b;
             to = lazy_off(v, z, lz_key(ck, LZ_TOFF), to, z->bl.data[t].id, ti->psz ? (uint32_t)ti->psz : 1, &psh);
             l.tb1 = (uint32_t)t + 1;
             l.toff = (uint32_t)to;
@@ -1055,11 +1064,11 @@ static void lazy_where(Ev *v, const Lazy *z)
         snprintf(p + n, left - (size_t)n, " (+%d)", (int)v->f_off);
 }
 
-/* The draws that would make the stopped call go further, at most four: what the sweep forces on a rerun.
+/* The draws that would make the stopped call go further, at most three: what the sweep forces on a rerun.
  * Each rule reads the stop and names the cells whose draw was wrong, and what to draw there instead.  A cell is
- * named twice, by itself (a rerun of a seed holds an entry per cell) and by its class (the cells made likewise,
- * such as the later elements of a list, take the draw without a retry each). */
-static unsigned lazy_redraw(const Ev *v, const Lazy *z, LEnt hint[4])
+ * named twice, by itself (a rerun of a seed holds an entry per cell) and by its pointee size (every cell of that size, such as
+ * the later elements of a list or the fields of a stack, takes the share without a retry each). */
+static unsigned lazy_redraw(const Ev *v, const Lazy *z, LEnt hint[3])
 {
     unsigned n = 0;
     size_t j;
@@ -1070,10 +1079,11 @@ static unsigned lazy_redraw(const Ev *v, const Lazy *z, LEnt hint[4])
             if (h->par >= 0) {
                 hint[0] = (LEnt){lz_key(h->key, LZ_OUT), 1};
                 hint[1] = (LEnt){lz_key(h->key, LZ_TGT), z->bl.data[lo].key};
-                LKey cls = lz_cls(z, h->par, h->poff);
-                hint[2] = (LEnt){lz_key(cls, LZ_OUT), 1};
-                hint[3] = (LEnt){lz_key(cls, LZ_TGT), z->bl.data[lo].key};
-                n = 4;
+                n = 2;
+                if (v->sub_sz) {
+                    hint[2] = (LEnt){lz_key(LZ_SZ, v->sub_sz), z->bl.data[lo].key};
+                    n = 3;
+                }
             } else if (z->bl.data[lo].par < 0) {
                 hint[0] = (LEnt){lz_key(h->key, LZ_ALIAS), (uint64_t)(z->bl.data[lo].poff + 1)};
                 n = 1;
@@ -1094,7 +1104,7 @@ static unsigned lazy_redraw(const Ev *v, const Lazy *z, LEnt hint[4])
 /* One call of the sweep: the scalars are drawn from *rs,
  * the pointer parameters are empty objects, and the line is printed from what the call made. */
 static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const SFn *s, bool show_stop,
-                      bool *bad, uint64_t *rs, bool may_retry, LEnt hint[4], unsigned *nhint, bool *retry,
+                      bool *bad, uint64_t *rs, bool may_retry, LEnt hint[3], unsigned *nhint, bool *retry,
                       const LOpt *op)
 {
     Lazy z = {0};
@@ -1121,7 +1131,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
             uint32_t sh = 0;
             for (i = 0; i < a->ti.bytes; i++) {
                 LKey key = lz_key(lz_key(LZ_PARAM, k), i);
-                drawn |= (lazy_draw(&z, key, 0, raw >> (8 * i) & 255) & 255) << (8 * i);
+                drawn |= (lazy_draw(&z, key, NULL, raw >> (8 * i) & 255) & 255) << (8 * i);
                 if (v->track && !a->ti.flt) {   /* the scalar is an input: its bytes' symbols, joined (see sweep_track) */
                     uint32_t b = lazy_sym(v, &z, key, false);
                     sh = i ? sx_join(&v->sx, b, sh) : b;
@@ -1155,7 +1165,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
                         doff = LHEAD + (rnd(rs) % 9) * 8;
                     }
                 }
-                al = lazy_draw(&z, lz_key(lz_key(LZ_PARAM, k), LZ_ALIAS), 0, al);
+                al = lazy_draw(&z, lz_key(lz_key(LZ_PARAM, k), LZ_ALIAS), NULL, al);
                 j = (size_t)(al & 0xffff);
                 if (j >= 1 && j <= k && s->a[j - 1].kind == SA_PTR) {
                     bi = lazy_index(&z, pid(slot[j - 1]));
@@ -1180,7 +1190,7 @@ static int lazy_call1(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
     } else {
         v->ld_obj = 0;
         z.nullat = rnd(rs) & 1 ? ~0u : (unsigned)(rnd(rs) % 32);
-        v->sub_a = v->sub_b = v->pun_obj = 0;
+        v->sub_a = v->sub_b = v->sub_sz = v->pun_obj = 0;
         v->ash = v->track ? ash : NULL;
         r = ev_call(v, f->fsym, slot, f->np, &x);
         v->ash = NULL;
@@ -1311,7 +1321,7 @@ static void hint_put(LLog *log, LEnt e)
 }
 
 /* The call, rerun each time it stops on a subtraction of pointers of two blobs with the
- * later blob's pointer cell, and the cells of its class, forced to share the earlier blob (the program meant them as one object, such as
+ * later blob's pointer cell, and the cells of its pointee size, forced to share the earlier blob (the program meant them as one object, such as
  * a saved pc and the code it points into): the same draws, so the rerun differs only there.  *rec gets what
  * the final run drew (unsorted); with `force` (sorted) the call takes those values instead of drawing them,
  * and the hints are put over them (a forced call that already shares as asked is not retried). */
@@ -1327,7 +1337,7 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
         for (i = 0; i < op->force->len; i++)
             vec_push(&cur, op->force->data[i]);
     for (;;) {
-        LEnt hint[4];
+        LEnt hint[3];
         unsigned nhint, k;
         bool retry, asked = true;
         int st;

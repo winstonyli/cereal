@@ -627,12 +627,14 @@ static void ev_note(Ev *v, uint64_t x)
 
 /* A difference or an order of two pointers is defined only within one object (== and != are defined
  * anywhere); the sweep retries a call that stops here with the two objects made one (sub_a, sub_b). */
-static bool same_object(Ev *v, uint64_t a, uint64_t b, const char *what)
+static bool same_object(Ev *v, TypeId ty, uint64_t a, uint64_t b, const char *what)
 {
+    Ti ti;
     if (pid(a) == pid(b))
         return true;
     v->sub_a = pid(a);
     v->sub_b = pid(b);
+    v->sub_sz = ev_tinfo(v, ty, &ti) ? ti.psz : 0;
     TRAP(v, "%s of pointers into different objects", what);
     return false;
 }
@@ -646,7 +648,7 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
     sg = ti.sg;
     ev_note(v, a);
     ev_note(v, b);
-    if (ti.ptr && p != P_EQEQ && p != P_NE && pid(a) && pid(b) && !same_object(v, a, b, "comparison"))
+    if (ti.ptr && p != P_EQEQ && p != P_NE && pid(a) && pid(b) && !same_object(v, ot, a, b, "comparison"))
         return 0;
     if (ti.ptr && pid(a) && pid(a) == pid(b)) {     /* within one object the offsets order, below its start too */
         a = (uint64_t)(int64_t)poff(a);
@@ -1925,7 +1927,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         bsh = v->sh;
         if (v->res.status)
             return 0;
-        if (!same_object(v, a, b, "subtraction"))
+        if (!same_object(v, NODE(r, KID(r, n, 0))->ty, a, b, "subtraction"))
             return 0;
         if (v->track && (strip_sh(v, ash) || strip_sh(v, bsh)))
             *sh = sx_op(&v->sx, SX_SDIV, sx_op(&v->sx, SX_SUB, ptr_off_sh(v, a, ash), ptr_off_sh(v, b, bsh)),

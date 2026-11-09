@@ -45,20 +45,20 @@ if [ "$n" -lt 24 ]; then
     exit 1
 fi
 echo "eval_lazy: parameter alias ok"
-# A walk over six list elements, each subtracted from one field of the head: one hint for the cell's class makes them all share
-# (hints per cell stop at the fifth element: 17 of 200 calls finish without the class hint).
+# A walk over six list elements, each subtracted from one field of the head: one hint for the pointee size makes them all share
+# (hints per cell stop at the fifth element: 17 of 200 calls finish without a hint for the size).
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_list.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_list.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=200,1234 "$D/cfg_lazy/lazy_list.c" 2>/dev/null </dev/null | grep -ac '^call ll_run .* =>')
 if [ "$n" -lt 180 ]; then
-    echo "eval_lazy: lazy_list.c: only $n of 200 calls of ll_run finished (the class hint)"
+    echo "eval_lazy: lazy_list.c: only $n of 200 calls of ll_run finished (the size hint)"
     exit 1
 fi
-echo "eval_lazy: class hint ok"
+echo "eval_lazy: size hint ok (list)"
 # Ten fields of one pointee size subtracted from an eleventh: one hint for the size makes them all share (a hint per cell or per offset
 # stops at the ninth).  Calls whose one NULL lands on a pointer cell stop for good, so the count stays under 200.
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_size.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_size.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=200,1234 "$D/cfg_lazy/lazy_size.c" 2>/dev/null </dev/null | grep -ac '^call sz_run .* =>')
-if [ "$n" -lt 150 ]; then
+if [ "$n" -lt 155 ]; then
     echo "eval_lazy: lazy_size.c: only $n of 200 calls of sz_run finished (the size hint)"
     exit 1
 fi

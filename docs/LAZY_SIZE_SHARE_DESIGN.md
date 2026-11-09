@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # Lazy blobs: sharing by element size
