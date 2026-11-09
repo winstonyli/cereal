@@ -78,3 +78,10 @@ Builds and gates in WSL: `bash ~/cereal-s1/.sync.sh` (syncs and rebuilds `~/cere
 ## Parked on completion
 
 Different link offsets walked in turn, element 1 versus the rest as two classes, and solver reruns not getting the class hint (a seed's log holds an entry per cell): already stated in the spec's "Cannot cover"; Task 3 adds them to `PARKED.md` row 248 if the measurement shows they still cost edges.
+
+## Result (Task 3, partial, 2026-11-08)
+
+- Fixture `lazy_list.c`: 17 -> 194 of 200 calls finish; replay and `eval_lazy.sh` pass.
+- Probe `luaD_reallocstack` (seed 1234, 24 calls, `--eval-link`): 0 finish at `LMAXHINT` 8 (baseline 0); 1 finishes at 24. The stops move on: `lazy blob budget`, null and uninitialized reads appear.
+- Sweep, run `2026-11-08-classshare-link24` against `2026-11-08-fieldsmall-link24`: edges 6553 -> 6581 of 9599 (+28), solver-first edges 2102 -> 2092, seconds 1619 -> 2154 (+33%). The 536-edge subtraction stop is now 18; a 507-edge `lazy blob budget` stop (`correctstack`, `luaD_reallocstack`'s callers) replaces it: the shared lists have no end, because half the calls have no NULL and the others place it by one uniform draw, and the walk then fills the 32-blob budget.
+- Not run: seed 7, the gate. The decision on whether to keep, extend (give the list an end) or revert is the user's.
