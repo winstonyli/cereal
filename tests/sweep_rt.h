@@ -27,8 +27,9 @@
  * driver fills (sw_fp_N, from the "fp" lines of the sweep); weak, so the drivers of all files share one table */
 __attribute__((weak)) void *sw_fn[1 << 16];
 
-/* the live call's arena: all its blobs are in it, so the driver's `-Wl,--wrap=free` (__wrap_free in drvmain.c) can ignore a free of a pointer into one
- * (a lazy blob is never freed, on either side: docs/LAZY_HEAP_DESIGN.md) and pass the function's own frees on */
+/* the live call's arena: all its blobs are in it, so the driver's `-Wl,--wrap=free` and `--wrap=realloc` (__wrap_free, __wrap_realloc in drvmain.c) can ignore a free of a pointer into one
+ * and return a realloc of one unchanged (a lazy blob is never freed and stays where it is, on either side: docs/LAZY_HEAP_DESIGN.md,
+ * docs/LAZY_REALLOC_DESIGN.md) and pass the function's own frees and reallocs on */
 __attribute__((weak)) unsigned char *sw_alo, *sw_ahi;
 
 typedef struct SwG {
