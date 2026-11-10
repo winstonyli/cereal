@@ -132,3 +132,26 @@ done
 echo "eval_lazy: lazy realloc ok"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_realloc.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_realloc.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy realloc agrees with gcc"
+# A pointer into a lazy blob read as an integer has a fixed address on both sides (docs/LAZY_ADDR_DESIGN.md): the calls finish.
+# An integer turned back into a pointer and dereferenced stops (a NULL draw still finishes, so la_ctl is the count to stay under).
+la_n() { "$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_addr.c" 2>/dev/null </dev/null | grep -ac "^call $1 .* =>"; }
+for fn in la_align la_diff la_hash la_ctl; do
+    n=$(la_n $fn)
+    if [ "$n" -lt 24 ]; then
+        echo "eval_lazy: lazy_addr.c: only $n of 24 calls of $fn finished (address as an integer)"
+        exit 1
+    fi
+done
+for fn in la_back la_pun; do
+    n=$(la_n $fn)
+    if [ "$n" -ge 24 ]; then
+        echo "eval_lazy: lazy_addr.c: $fn ran past a model address used as a pointer"
+        exit 1
+    fi
+done
+n=$(la_n la_own)
+if [ "$n" -ne 0 ]; then
+    echo "eval_lazy: lazy_addr.c: la_own finished $n calls (address of the function's own block as an integer)"
+    exit 1
+fi
+echo "eval_lazy: lazy address ok"

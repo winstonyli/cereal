@@ -11,6 +11,7 @@
  * float and pointer subset).
  * No mutable globals: the state is the Ev. */
 #include "c/eval_int.h"
+#include "c/sw_addr.h"
 #include "fparith.h"
 #include "intarith.h"
 #include "c/cintrin.h"
@@ -185,6 +186,10 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
 {
     Obj *o;
     int64_t off = poff(p);
+    if (p >= SW_BASE && p < SW_END) {   /* a lazy blob's address as an integer came back as a pointer: gcc has the real blob there, the evaluator does not */
+        UNSUP(v, "%s through a model address", what);
+        return NULL;
+    }
     if (pid(p) == 0) {
         TRAP(v, "%s through a null pointer", what);
         return NULL;
@@ -542,7 +547,9 @@ static uint64_t convert(Ev *v, const Ti *to, const Ti *from, uint64_t a)
 {
     if (!from->flt && !to->flt) {
         if (from->ptr && !to->ptr && !to->boolean && a && v->lazy_fill) {
-            UNSUP(v, "address as an integer");     /* the sweep's addresses are not gcc's: a result built from one differs */
+            if (pid(a) && pid(a) <= v->obj.len && v->obj.data[pid(a) - 1].lazy)     /* a lazy blob has the same address on both sides (sw_addr.h) */
+                return ev_canon(to, SW_ADDR(v->obj.data[pid(a) - 1].lazy - 1, poff(a)));
+            UNSUP(v, "address as an integer");     /* any other address is not gcc's: a result built from one differs */
             return 0;
         }
         return ev_canon(to, a);

@@ -48,9 +48,10 @@ typedef struct Obj {
     bool heap;                  /* made by malloc and friends: free may end it */
     uint8_t kind;               /* OK_*: what the object stands for, for an address constant */
     bool stub;                  /* a static object with no definition here: only its address is usable */
-    bool lazy;                  /* a sweep blob made on demand (docs/LAZY_BLOBS_DESIGN.md): it grows to what is accessed
-                                   and its first read of a byte asks Ev.lazy_fill for the value */
-    uint32_t ref, fname;        /* OK_STATIC: the symbol ref, and the function it is local to (name id) */
+    uint32_t lazy;              /* a sweep blob made on demand (docs/LAZY_BLOBS_DESIGN.md): its index + 1 (0: not one); it grows to what
+                                   is accessed and its first read of a byte asks Ev.lazy_fill for the value; the index is its model address
+                                   (sw_addr.h) */
+    uint32_t ref, fname;       /* OK_STATIC: the symbol ref, and the function it is local to (name id) */
     uint32_t sd1;               /* a static object not yet initialized: its Sd index + 1 */
 } Obj;
 

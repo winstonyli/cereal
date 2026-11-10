@@ -848,8 +848,8 @@ static int lazy_new(Ev *v, Lazy *z, uint64_t size, int par, uint32_t poff)
     b.id = ev_new_obj(v, size, false);
     if (!b.id)
         return -1;
-    v->obj.data[b.id - 1].lazy = true;
     vec_push(&z->bl, b);
+    v->obj.data[b.id - 1].lazy = (uint32_t)z->bl.len;
     return (int)z->bl.len - 1;
 }
 
