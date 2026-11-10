@@ -28,7 +28,7 @@ Review rounds: 2 (fewer-concepts reviewer, adversarial reviewer); both found the
 
 ## 2. Design (a0: a fixed address model for lazy blobs, shared by both sides)
 
-1. **Model.** `addr(k, off) = SW_BASE + k * SW_STRIDE + off`, `k` the blob's index in the call line. `SW_BASE`, `SW_STRIDE` (16 MiB: a power
+1. **Model.** `addr(k, off) = SW_BASE + k * SW_STRIDE + off`, `k` the blob's index in the call line. `SW_BASE` (0x200000000, §5), `SW_STRIDE` (16 MiB: a power
    of two far above `EV_LAZY_CAP + SW_SLACK + 16`, so `p & mask` agrees for every mask below it) live in one header, `src/c/sw_addr.h`,
    included by `eval.c` and `tests/sweep_rt.h`. Reservation: 32 x 16 MiB = 512 MiB virtual, nothing touched.
 2. **Evaluator.** `lazy_new` stores the blob index in the `Obj` (a field, `lidx`). `convert`: a pointer into a lazy object becomes
@@ -87,3 +87,19 @@ address is compared byte for byte already).
   cast-back stop); otherwise report and ask.
 - Gate, `lib_oracle.sh zstd 8` (0 differ, 0 gcc crashed; new differences from integers used as indices are findings, not noise), replay,
   `asm_exec.py` links, a second call in one non-fork process (the `munmap`).
+
+## 5. Survey results (2026-11-10, read-only, for the j choice)
+
+- **Cast-back sites** (clang AST of the sweep's Lua 5.4 and zstd 1.5.7 sources): 2 integer-to-pointer casts in all of it. Lua `lapi.c:478` is a C
+  function pointer (never a lazy blob); zstd `zstd_cwksp.h:541` has no caller. The other pointer-to-integer sites are alignment/mask tests
+  (zstd, 12, all feeding `ptr + add` / `ptr - rem` on the original pointer) and hashes (Lua, 4: `luaS_new`, `hashpointer`). So i2 buys about
+  nothing on these two projects (inference from source; `memcpy`/union punning not scanned). Of the +129 at seed 1234, 97 edges are in the
+  functions the baseline names under this stop (Lua 43: `lua_pushstring`, `auxgetstr`, `luaL_newstate`; zstd 54: `HIST_count_wksp`,
+  `HUF_alignUpWorkspace`, `HUF_*CTable_wksp`); the rest is downstream, unverified.
+- **Address space** (WSL2 kernel 6.18, `MAP_FIXED_NOREPLACE` works): the driver links PIE. A non-PIE heap start lands in `[0x10000000, 0x30000000)`
+  in about half of 300 runs, so `SW_BASE = 0x10000000` is unsafe; **`SW_BASE = 0x200000000`** is free in both layouts. `ulimit -S -v` counts
+  `MAP_NORESERVE`: 512 MiB mapped fine under the `lib_oracle.sh` limit and cost 512 MiB of it, 128 GiB failed (p2 is out).
+- **Solver terms:** symbolic pointers use the same `pid << 32 | off` form (`eval.c:1567`, `eval_run.c:798`, `:989`); the converted integer must stay
+  concrete at those sites. Not checked: qsort/bsearch handlers inside the swept library code.
+- **`Obj.lidx`:** no blob-index field exists; `Lazy.bl` is file-static in `eval_run.c`. By hand count `Obj` is 68 bytes in 72, so a `uint32_t`
+  should fit the tail padding (compile `sizeof(Obj)` to confirm). The alternative is a callback through the existing `lazy_fill` hook.
