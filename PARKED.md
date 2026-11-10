@@ -203,7 +203,7 @@ lua54 has 2 distinct unsupported units and libuv 6; each needs its own mechanism
 | What | Why parked / trigger | Evidence | Status |
 |---|---|---|---|
 | Differential sweep (`tests/eval_sweep.sh`) over aggregates, pointers and indirect calls (2026-10-21) | The evaluator has byte memory, floats, bit-fields and punning; the sweep drives only functions with scalar parameters and result, over `tests/cfg_exec/*.c` (UB-free). Trigger: a lowering bug in aggregates, pointers between calls or indirect calls that the verifier and corpus gate missed; then write a UB-free unit or give the sweep pointer and struct arguments. | `eval_sweep` in `src/c/eval.c`; `tests/eval_sweep.sh` header | parked |
-| Optimization, SSA, ABI classification of calls, lowering of initializers and `local` into stores, `setjmp`/`longjmp` edges | Out of scope of T8 by decision: `reg` is a mutable variable; a later pass builds SSA. Trigger: the back end (Track D) starts. | `docs/TAST_T8_PLAN.md` section 7 | parked |
+| Optimization, SSA and register allocation, `setjmp`/`longjmp` edges (ABI classification of calls and lowering of initializers are done in `cgx86.c`, checked 2026-11-10 by `tests/asm_exec/abi.c` and the e2e links) | Out of scope of T8 by decision: `reg` is a mutable variable; a later pass builds SSA. Trigger: speed matters (the row on Lua being 3.0x slower than gcc -O0 below). | `docs/TAST_T8_PLAN.md` section 7 | parked |
 
 ## x86-64 back end leftovers (src/c/cgx86.c, mir_elf.c; verified 2026-10-19)
 
