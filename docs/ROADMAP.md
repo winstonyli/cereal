@@ -191,7 +191,7 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   Decided 2026-10-18: the emitter stays pluggable (several back ends can
   consume the same lowered graph: QBE text, assembly, LLVM IR, C), leaning
   toward direct object/machine code with no external assembler step; QBE is
-  one candidate, not the commitment (est. 8 to 12+ weeks, high risk; started: TAST_DESIGN.md T1 to T10 are done (`status: done`) and an x86-64 emitter for an integer, pointer, aggregate and
+  one candidate, not the commitment (est. 8 to 12+ weeks, high risk; started: TAST_DESIGN.md (`status: active`) T1 to T9 are built (TAST_T9_PLAN.md is done) and an x86-64 emitter for an integer, pointer, aggregate and
   vector subset links Lua, libuv and zstd (`cgx86.c`, `mir_elf.c`; STATUS.md); open items are the "x86-64 back end leftovers" rows of PARKED.md).
 - Macro-aware project index and refactoring (wanted; collects what B5 parked;
   no estimate yet). Today the project index and rename deal with macros by
