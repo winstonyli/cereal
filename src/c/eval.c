@@ -186,7 +186,8 @@ Obj *ev_access(Ev *v, uint64_t p, uint64_t n, const char *what)
 {
     Obj *o;
     int64_t off = poff(p);
-    if (p >= SW_BASE && p < SW_END) {   /* a lazy blob's address as an integer came back as a pointer: gcc has the real blob there, the evaluator does not */
+    if (MODEL_ADDR(p)) {   /* a lazy blob's address as an integer came back as a pointer: gcc has the real blob there, the evaluator does not
+                            * (also a constant that happens to be in the range: gcc would fault, this reports it as unsupported) */
         UNSUP(v, "%s through a model address", what);
         return NULL;
     }
@@ -655,6 +656,10 @@ static uint64_t compare(Ev *v, int p, TypeId ot, uint64_t a, uint64_t b)
     sg = ti.sg;
     ev_note(v, a);
     ev_note(v, b);
+    if (ti.ptr && ((MODEL_ADDR(a) && pid(b)) || (MODEL_ADDR(b) && pid(a)))) {     /* an integer made from a lazy blob's address, against a pointer: gcc compares the real ones */
+        UNSUP(v, "comparison of a model address and a pointer");
+        return 0;
+    }
     if (ti.ptr && p != P_EQEQ && p != P_NE && pid(a) && pid(b) && !same_object(v, ot, a, b, "comparison"))
         return 0;
     if (ti.ptr && pid(a) && pid(a) == pid(b)) {     /* within one object the offsets order, below its start too */

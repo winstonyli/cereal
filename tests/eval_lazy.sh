@@ -142,16 +142,19 @@ for fn in la_align la_diff la_hash la_ctl; do
         exit 1
     fi
 done
-for fn in la_back la_pun; do
+la_stops() { "$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_addr.c" 2>/dev/null </dev/null | grep -ac "^call $1 .* unsupported $2"; }
+for fn in la_back la_pun la_eq; do
     n=$(la_n $fn)
-    if [ "$n" -ge 24 ]; then
-        echo "eval_lazy: lazy_addr.c: $fn ran past a model address used as a pointer"
+    s=$(la_stops $fn "[a-z ]*model address")
+    if [ "$n" -ge 24 ] || [ "$s" -lt 1 ]; then
+        echo "eval_lazy: lazy_addr.c: $fn finished $n calls and stopped $s on a model address (want a stop on one, and fewer than 24 finished)"
         exit 1
     fi
 done
 n=$(la_n la_own)
-if [ "$n" -ne 0 ]; then
-    echo "eval_lazy: lazy_addr.c: la_own finished $n calls (address of the function's own block as an integer)"
+s=$(la_stops la_own "address as an integer")
+if [ "$n" -ne 0 ] || [ "$s" -lt 1 ]; then
+    echo "eval_lazy: lazy_addr.c: la_own finished $n calls and stopped $s on an address as an integer (the function own block stays unsupported)"
     exit 1
 fi
 echo "eval_lazy: lazy address ok"

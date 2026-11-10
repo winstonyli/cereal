@@ -8,4 +8,5 @@
 #define SW_BASE 0x80000000ull
 #define SW_STRIDE 0x1000000ull
 #define SW_END (SW_BASE + 32 * SW_STRIDE)     /* 32 = LMAXBL, the most lazy blobs of a call */
+#define MODEL_ADDR(p) ((p) >= SW_BASE && (p) < SW_END)
 #define SW_ADDR(k, off) (SW_BASE + (unsigned long long)(k) * SW_STRIDE + (unsigned long long)(long long)(off))

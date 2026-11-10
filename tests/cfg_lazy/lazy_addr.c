@@ -1,6 +1,6 @@
 /* Functions that turn a drawn pointer into an integer (docs/LAZY_ADDR_DESIGN.md): a lazy blob has a fixed address on both sides, so the
  * integer is the same.  la_ctl is the control (no integer); la_back and la_pun turn the integer back into a pointer and dereference it,
- * which the evaluator stops on; la_own converts a pointer into the function's own block, which stays unsupported. */
+ * which the evaluator stops on, as it does on comparing that pointer with a real one (la_eq); la_own converts a pointer into the function's own block, which stays unsupported. */
 void *malloc(unsigned long);
 
 struct LA { char *a; char *b; unsigned long v; };
@@ -49,4 +49,12 @@ unsigned long la_own(struct LA *s)
 {
     char *p = malloc(8);
     return (unsigned long)p;
+}
+
+/* a model address compared with the pointer it came from: gcc says equal, so the evaluator stops rather than compare raw words */
+int la_eq(struct LA *s)
+{
+    if (!s->a)
+        return 0;
+    return (char *)(unsigned long)s->a == s->a;
 }
