@@ -31,15 +31,17 @@ Review rounds: 2 (fewer-concepts reviewer, adversarial reviewer); both found the
 1. **Model.** `addr(k, off) = SW_BASE + k * SW_STRIDE + off`, `k` the blob's index in the call line. `SW_BASE` (0x200000000, §5), `SW_STRIDE` (16 MiB: a power
    of two far above `EV_LAZY_CAP + SW_SLACK + 16`, so `p & mask` agrees for every mask below it) live in one header, `src/c/sw_addr.h`,
    included by `eval.c` and `tests/sweep_rt.h`. Reservation: 32 x 16 MiB = 512 MiB virtual, nothing touched.
-2. **Evaluator.** `lazy_new` stores the blob index in the `Obj` (a field, `lidx`). `convert`: a pointer into a lazy object becomes
+2. **Evaluator.** `Obj.lazy` (9 uses) changes from `bool` to `uint32_t` holding the blob index + 1 (0: not lazy), set in `lazy_new`: one field, no
+   second one, no churn at the other uses. `convert`: a pointer into a lazy object becomes
    `addr(lidx, off)`; a pointer into any other object keeps the `UNSUP`. The integer is concrete (no shadow, no solver term).
 3. **gcc side.** `sw_load` maps one range `[SW_BASE, SW_BASE + n * SW_STRIDE)` with `MAP_FIXED_NOREPLACE | MAP_ANONYMOUS | MAP_PRIVATE | MAP_NORESERVE`,
    checks that `mmap` returned exactly `SW_BASE` (older kernels treat the flag as a hint), and puts blob `i` at `SW_BASE + i * SW_STRIDE`.
    `sw_alo`/`sw_ahi` are the range (the free/realloc wrappers keep working). `sw_out` `munmap`s the range instead of `free(g->arena)`. `SW_SLACK`
-   stays (it bounds what `sw_tag` accepts); the arena's per-blob padding goes. A taken range reports the call under a token the sweep
-   comparison already skips (chosen in the plan, checked against `sweep_rt.h:193`, where `!` means crashed and must not be reused).
-4. **An integer cast back to a pointer** (`(T *)((uintptr_t)p & ~63)`, `(T *)(a + n)`) would reach the "pointer of other bytes" paths
-   (`eval.c:188-195`) and TRAP where gcc succeeds: a false difference. See Decide (i).
+   stays (it bounds what `sw_tag` accepts); the arena's per-blob padding goes. A taken range `abort()`s: that is `!` (crashed)
+   in library mode and a visible failure otherwise, caught by the "0 gcc crashed" bar; no new skip token (with a PIE driver at `0x200000000`, §5, it should not happen).
+4. **An integer cast back to a pointer** (`(T *)((uintptr_t)p & ~63)`, `(T *)(a + n)`): a model address has `pid() == 2` (`0x2_0000_0000 >> 32`), so
+   it would silently name object 2, not trap. Under i1, `convert` from a non-pointer to a pointer type stops (`UNSUP`) when the value is in
+   `[SW_BASE, SW_BASE + 32 * SW_STRIDE)`. Punning through memory (`memcpy`, a union) bypasses it (not scanned in the corpus, §5). See Decide (i).
 5. **No format change.** Call line, draws and trap records are untouched, so recorded replays stay valid. Calls that used to stop on
    `UNSUP` now run, so their *results* in a replay differ, their draws do not.
 
