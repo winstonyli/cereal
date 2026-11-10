@@ -115,6 +115,7 @@ run_group() {
             print "#include \"" rt "\"" > mn
             print "long time(long *t) { if (t) *t = 0; return 0; }\nlong clock(void) { return 0; }" > mn
             print "void __real_free(void *);\nvoid __wrap_free(void *p)\n{\n    if ((unsigned char *)p >= sw_alo && (unsigned char *)p < sw_ahi)\n        return;\n    __real_free(p);\n}" > mn
+            print "void *__real_realloc(void *, unsigned long);\nvoid *__wrap_realloc(void *p, unsigned long n)\n{\n    if ((unsigned char *)p >= sw_alo && (unsigned char *)p < sw_ahi)\n        return p;\n    return __real_realloc(p, n);\n}" > mn
             for (i = 1; i <= nfiles; i++) {
                 if (!started[i]) continue
                 print i, src[i] > (W "/srcs.txt")
@@ -165,7 +166,7 @@ run_group() {
         # shellcheck disable=SC2086
         gcc -O0 -fwrapv -w $gccx -c -o "$W/drvmain.o" "$W/drvmain.c" 2>>"$W/gcc.err" || fail=1
         # shellcheck disable=SC2086
-        [ -z "$fail" ] && ! gcc -Wl,--wrap=free -o "$W/drv" $objs "$W/drvmain.o" -lm 2>>"$W/gcc.err" && fail=1
+        [ -z "$fail" ] && ! gcc -Wl,--wrap=free -Wl,--wrap=realloc -o "$W/drv" $objs "$W/drvmain.o" -lm 2>>"$W/gcc.err" && fail=1
         if [ -n "$fail" ]; then
             echo "$f: gcc failed"; head -5 "$W/gcc.err"
             bad=$((bad + 1)); return

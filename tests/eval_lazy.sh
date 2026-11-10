@@ -130,3 +130,5 @@ for fn in lr_grow lr_twice lr_own; do
     fi
 done
 echo "eval_lazy: lazy realloc ok"
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_realloc.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_realloc.c differs from gcc"; exit 1; }
+echo "eval_lazy: lazy realloc agrees with gcc"
