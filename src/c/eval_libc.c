@@ -483,11 +483,16 @@ static Obj *heap_obj(Ev *v, uint64_t p, const char *who)
     return o;
 }
 
+static bool lazy_ptr(Ev *v, uint64_t p)
+{
+    return pid(p) && pid(p) <= v->obj.len && v->obj.data[pid(p) - 1].lazy;
+}
+
 static uint64_t h_free(Ev *v, const HArg *a, unsigned na)
 {
     Obj *o;
     NEED(1);
-    if (pid(a[0].x) && pid(a[0].x) <= v->obj.len && v->obj.data[pid(a[0].x) - 1].lazy)
+    if (lazy_ptr(v, a[0].x))
         return 0;                       /* a lazy blob is never freed (docs/LAZY_HEAP_DESIGN.md) */
     o = heap_obj(v, a[0].x, "free");
     if (o)
@@ -503,6 +508,13 @@ static uint64_t h_realloc(Ev *v, const HArg *a, unsigned na)
     NEED(2);
     if (pid(a[0].x) == 0)
         return h_malloc(v, a + 1, 1);
+    if (lazy_ptr(v, a[0].x)) {          /* a lazy blob stays where it is and grows in place (docs/LAZY_REALLOC_DESIGN.md) */
+        if (a[1].x == 0) {
+            UNSUP(v, "realloc to size zero");
+            return 0;
+        }
+        return ev_access(v, a[0].x, a[1].x, "realloc") ? a[0].x : 0;
+    }
     o = heap_obj(v, a[0].x, "realloc");
     if (!o)
         return 0;

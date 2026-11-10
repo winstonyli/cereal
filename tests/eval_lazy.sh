@@ -121,3 +121,12 @@ done
 echo "eval_lazy: lazy free ok"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_free.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_free.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy free agrees with gcc"
+# A function that reallocs what the sweep drew (a lazy blob grows in place and the pointer stays, on either side): every call finishes.
+for fn in lr_grow lr_twice lr_own; do
+    n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_realloc.c" 2>/dev/null </dev/null | grep -ac "^call $fn .* =>")
+    if [ "$n" -lt 24 ]; then
+        echo "eval_lazy: lazy_realloc.c: only $n of 24 calls of $fn finished (realloc of a lazy blob)"
+        exit 1
+    fi
+done
+echo "eval_lazy: lazy realloc ok"
