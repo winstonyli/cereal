@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include "../src/c/sw_addr.h"
 #ifdef SW_FORK
 #include <signal.h>
 #include <sys/wait.h>
@@ -17,8 +19,8 @@
 /* The call line carries the graph of objects the call made (docs/LAZY_BLOBS_DESIGN.md):
  *   u32 n; u32 size[n]; the arguments; u32 nlinks, {blob, off, target + 1, target off}[];
  *   u32 nzero, {blob, off}[]; the initial bytes of each blob.
- * sw_load rebuilds it (one arena, each blob SW_SLACK + 16 bytes longer, so a one-past-the-end pointer is not the next
- * blob's start) and returns the arguments; sw_out appends the final bytes of every blob, with the
+ * sw_load rebuilds it (one mapping, blob i at SW_ADDR(i, 0) of src/c/sw_addr.h: a stride far above a blob and its SW_SLACK, so a
+ * one-past-the-end pointer is not the next blob's start) and returns the arguments; sw_out appends the final bytes of every blob, with the
  * link and zero cells zeroed (pointer values differ between the two sides), and frees the graph. */
 /* a returned pointer may point this far past a blob (64 + LHEAD of src/c/eval_run.c) and still be tagged */
 #define SW_SLACK 192
@@ -49,7 +51,6 @@ static unsigned sw_u32(const unsigned char *p)
 static const unsigned char *sw_load(SwG *g, const unsigned char *in, unsigned argbytes)
 {
     unsigned i;
-    size_t total = 0;
     const unsigned char *p = in + 4, *args, *ini;
     g->n = sw_u32(in);
     g->b = malloc((g->n + 1) * sizeof *g->b);
@@ -65,15 +66,15 @@ static const unsigned char *sw_load(SwG *g, const unsigned char *in, unsigned ar
     g->nz = sw_u32(p);
     g->zc = p + 4;
     ini = p + 4 + 8 * g->nz;
-    for (i = 0; i < g->n; i++)
-        total += (g->size[i] + SW_SLACK + 16 + 15) & ~15u;
-    g->arena = calloc(total + 16, 1);
+    /* blob i at its model address (src/c/sw_addr.h): an integer made of a blob's address is the evaluator's; untouched pages cost nothing */
+    g->arena = !g->n ? NULL : mmap((void *)SW_BASE, g->n * SW_STRIDE, PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE | MAP_NORESERVE, -1, 0);
+    if (g->n && g->arena != (unsigned char *)SW_BASE)     /* an older kernel takes the address as a hint */
+        abort();
     sw_alo = g->arena;
-    sw_ahi = g->arena + total;
-    total = 0;
+    sw_ahi = g->arena + g->n * SW_STRIDE;
     for (i = 0; i < g->n; i++) {
-        g->b[i] = g->arena + total;
-        total += (g->size[i] + SW_SLACK + 16 + 15) & ~15u;
+        g->b[i] = g->arena + i * SW_STRIDE;
         memcpy(g->b[i], ini, g->size[i]);
         ini += g->size[i];
     }
@@ -125,7 +126,8 @@ static unsigned sw_out(SwG *g, unsigned char *out, unsigned o)
     for (i = 0; i < g->nz; i++)
         memset(out + base[sw_u32(g->zc + 8 * i)] + sw_u32(g->zc + 8 * i + 4), 0, 8);
     sw_alo = sw_ahi = 0;
-    free(g->arena);
+    if (g->n)
+        munmap(g->arena, g->n * SW_STRIDE);
     free(g->b);
     free(g->size);
     return o;
