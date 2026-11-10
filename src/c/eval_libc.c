@@ -487,6 +487,8 @@ static uint64_t h_free(Ev *v, const HArg *a, unsigned na)
 {
     Obj *o;
     NEED(1);
+    if (pid(a[0].x) && pid(a[0].x) <= v->obj.len && v->obj.data[pid(a[0].x) - 1].lazy)
+        return 0;                       /* a lazy blob is never freed (docs/LAZY_HEAP_DESIGN.md) */
     o = heap_obj(v, a[0].x, "free");
     if (o)
         ev_kill_obj(v, pid(a[0].x));

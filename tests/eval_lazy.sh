@@ -110,3 +110,12 @@ if command -v z3 >/dev/null 2>&1; then
     done
     echo "eval_lazy: pointer null ok"
 fi
+# A function that frees what the sweep drew (a lazy blob is never freed, on either side): every call finishes.
+for fn in lf_run lf_twice lf_own; do
+    n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_free.c" 2>/dev/null </dev/null | grep -ac "^call $fn .* =>")
+    if [ "$n" -lt 20 ]; then
+        echo "eval_lazy: lazy_free.c: only $n of 24 calls of $fn finished (free of a lazy blob)"
+        exit 1
+    fi
+done
+echo "eval_lazy: lazy free ok"
