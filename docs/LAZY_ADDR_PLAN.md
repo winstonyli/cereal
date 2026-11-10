@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Lazy blobs: a pointer read as an integer — implementation plan
@@ -15,7 +15,7 @@ status: draft
 ## Global Constraints
 
 - No draw, hint, trap-record or call-line change: recorded sweeps and `CEREAL_LAZY_REPLAY` stay valid.
-- `SW_BASE` = `0x400000000000` (pid field 16384, 47 bits: mmap-able, below the PIE image at `0x55..`; replaces the spec's `0x200000000`, whose pid field 2 would name a real object: ruling from the plan review), `SW_STRIDE` = `0x1000000` (16 MiB), at most `LMAXBL` = 32 blobs (512 MiB virtual, `MAP_NORESERVE`).
+- `SW_BASE` = `0x80000000` (below 4 GiB: pid field 0, no real pointer shares it; the plan review had `0x400000000000`, which lost 82 Lua edges because object id 16384 exists: spec §6), `SW_STRIDE` = `0x1000000` (16 MiB), at most `LMAXBL` = 32 blobs (512 MiB virtual, `MAP_NORESERVE`).
 - Only pointers into lazy objects get a model address; every other pointer-to-integer conversion keeps its `UNSUP`.
 - `tests/asm_exec.py` includes `sweep_rt.h` and links with plain `gcc`: it must still build.
 - Tests run in WSL (`wsl -e bash -lc`, tree `~/cereal-s1`, `bash ~/cereal-s1/.sync.sh`, `make -j4`); runs over a minute go through `run.ps1` (RUNS.md). Do not push or tag.
@@ -50,7 +50,7 @@ Evaluator: `convert` and `ev_access` in `src/c/eval.c`, `Obj.lazy` in `eval_int.
   `int la_pun(struct LA *s)`: `if (!s->a) return 0; s->v = (unsigned long)s->a; return **(char **)&s->v;`;
   `unsigned long la_own(struct LA *s)`: `char *p = malloc(8); return (unsigned long)p;` (declare `void *malloc(unsigned long);`).
 - [ ] **Step 2: test (red).** Append to `tests/eval_lazy.sh`: for `la_align la_diff la_hash`, `grep -ac "^call NAME .* =>"` of `--eval-sweep=24,1234` must be 24 (message `eval_lazy: lazy_addr.c: only $n of 24 calls of NAME finished (address as an integer)`); `la_ctl` must finish 24; `la_back` and `la_pun` must each finish fewer than `la_ctl` (message `eval_lazy: lazy_addr.c: NAME ran past a model address used as a pointer`); `la_own` must finish 0; then `echo "eval_lazy: lazy address ok"`. Run `sh tests/eval_lazy.sh ~/cereal-s1/cereal`. Expected: FAIL on `la_align` with n below 24 (stop "address as an integer").
-- [ ] **Step 3: implement.** `sw_addr.h`: `#define SW_BASE 0x400000000000ull`, `#define SW_STRIDE 0x1000000ull`, `#define SW_END (SW_BASE + 32 * SW_STRIDE)`, `#define SW_ADDR(k, off) (SW_BASE + (unsigned long long)(k) * SW_STRIDE + (unsigned long long)(long long)(off))` (plain types, no `<stdint.h>`; the offset is signed), one comment pointing to the spec. `Obj.lazy` becomes `uint32_t`; `lazy_new` sets `= (uint32_t)z->bl.len` (after `vec_push`, index + 1). `convert`: a pointer into an object with `lazy != 0` gives `SW_ADDR(lazy - 1, poff(a))` (`poff` is signed: do not cast it unsigned); other objects keep the `UNSUP`. The one stop for the way back is in `ev_access`: before the `pid(p) == 0` test, `p >= SW_BASE && p < SW_END` raises `UNSUP "a model address used as a pointer"` and returns NULL (this replaces the earlier idea of a check in `convert`, and covers casts, unions and memory round trips). The integer carries no shadow. Check that `ev_new_obj` zero-initializes `lazy` for a reused slot; add the reset if not.
+- [ ] **Step 3: implement.** `sw_addr.h`: `#define SW_BASE 0x80000000ull`, `#define SW_STRIDE 0x1000000ull`, `#define SW_END (SW_BASE + 32 * SW_STRIDE)`, `#define SW_ADDR(k, off) (SW_BASE + (unsigned long long)(k) * SW_STRIDE + (unsigned long long)(long long)(off))` (plain types, no `<stdint.h>`; the offset is signed), one comment pointing to the spec. `Obj.lazy` becomes `uint32_t`; `lazy_new` sets `= (uint32_t)z->bl.len` (after `vec_push`, index + 1). `convert`: a pointer into an object with `lazy != 0` gives `SW_ADDR(lazy - 1, poff(a))` (`poff` is signed: do not cast it unsigned); other objects keep the `UNSUP`. The one stop for the way back is in `ev_access`: before the `pid(p) == 0` test, `p >= SW_BASE && p < SW_END` raises `UNSUP "a model address used as a pointer"` and returns NULL (this replaces the earlier idea of a check in `convert`, and covers casts, unions and memory round trips). The integer carries no shadow. Check that `ev_new_obj` zero-initializes `lazy` for a reused slot; add the reset if not.
 - [ ] **Step 4: test (green).** Sync, `make -j4`, rerun `eval_lazy.sh`. Expected: `eval_lazy: lazy address ok`, earlier sections ok. `la_own` (a pointer into the function's own block) still stops.
 - [ ] **Step 5: commit** the files above: "Lazy blobs: a pointer into a lazy blob converts to a model address in the evaluator".
 

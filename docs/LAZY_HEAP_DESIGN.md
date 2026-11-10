@@ -14,7 +14,7 @@ Mechanism: `h_free` in `eval_libc.c`; the gcc side `tests/sweep_rt.h` (`sw_load`
 - Untaken edges behind these traps, seed 7, Lua + zstd linked, 24 calls, base `3b5a09e` (run `2026-11-09-seed7-base-link24`,
   `out.log` lines 15, 16, 22): free 117 (`ZSTD_freeCCtxParams` and callers) + 2 (`utf8esc`), realloc 21 (`luaM_realloc_` and
   callers), of 2888 untaken (1753 Lua + 1135 zstd). An upper bound: an edge behind a freed blob is reached only if the rest of the
-  function runs. The larger walls are `luaV_execute` 471 (write through a null pointer) and `HUF_*` 81 (address as an integer).
+  function runs. The larger walls are `luaV_execute` 471 (write through a null pointer) and `HUF_*` 81 (address as an integer; lazy pointers since 2026-11-10 get a model address, `docs/LAZY_ADDR_DESIGN.md`).
 - `heap_obj` accepts only `Obj.heap` objects at offset 0. A lazy blob has `heap` false and every pointer to one starts
   `LHEAD` (128) bytes in, so `free(p)` fails twice.
 - The offset of a pointer to a lazy blob is drawn for only some pointers: a cell's only on the share path (`lazy_fill`

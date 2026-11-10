@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Lazy blobs: a pointer read as an integer
@@ -28,7 +28,7 @@ Review rounds: 2 (fewer-concepts reviewer, adversarial reviewer); both found the
 
 ## 2. Design (a0: a fixed address model for lazy blobs, shared by both sides)
 
-1. **Model.** `addr(k, off) = SW_BASE + k * SW_STRIDE + off`, `k` the blob's index in the call line. `SW_BASE` (0x400000000000: pid field 16384, so a stray model address is "no object", not a real one; §5 and the plan review), `SW_STRIDE` (16 MiB: a power
+1. **Model.** `addr(k, off) = SW_BASE + k * SW_STRIDE + off`, `k` the blob's index in the call line. `SW_BASE` (0x80000000, 2 GiB: below 4 GiB the pid field is 0, which no evaluator pointer has, so the range is told apart exactly; see §6 for the two bases tried before), `SW_STRIDE` (16 MiB: a power
    of two far above `EV_LAZY_CAP + SW_SLACK + 16`, so `p & mask` agrees for every mask below it) live in one header, `src/c/sw_addr.h`,
    included by `eval.c` and `tests/sweep_rt.h`. Reservation: 32 x 16 MiB = 512 MiB virtual, nothing touched.
 2. **Evaluator.** `Obj.lazy` (9 uses) changes from `bool` to `uint32_t` holding the blob index + 1 (0: not lazy), set in `lazy_new`: one field, no
@@ -38,8 +38,8 @@ Review rounds: 2 (fewer-concepts reviewer, adversarial reviewer); both found the
    checks that `mmap` returned exactly `SW_BASE` (older kernels treat the flag as a hint), and puts blob `i` at `SW_BASE + i * SW_STRIDE`.
    `sw_alo`/`sw_ahi` are the range (the free/realloc wrappers keep working). `sw_out` `munmap`s the range instead of `free(g->arena)`. `SW_SLACK`
    stays (it bounds what `sw_tag` accepts); the arena's per-blob padding goes. A taken range `abort()`s: that is `!` (crashed)
-   in library mode and a visible failure otherwise, caught by the "0 gcc crashed" bar; no new skip token (with a PIE driver at `0x200000000`, §5, it should not happen).
-4. **An integer cast back to a pointer** (`(T *)((uintptr_t)p & ~63)`, `(T *)(a + n)`): a model address at the earlier `0x200000000` had `pid() == 2`, so
+   in library mode and a visible failure otherwise, caught by the "0 gcc crashed" bar; no new skip token (a PIE driver has nothing there, §5; the non-PIE heap starts below 0x3f8ee000).
+4. **An integer cast back to a pointer** (`(T *)((uintptr_t)p & ~63)`, `(T *)(a + n)`): a model address with a nonzero pid field (the first two bases, §6) would name a real object, so
    it would silently name object 2, not trap. Under i1, `ev_access` stops (`UNSUP`) on a pointer value in
    `[SW_BASE, SW_BASE + 32 * SW_STRIDE)`. Punning through memory (`memcpy`, a union) bypasses it (not scanned in the corpus, §5). See Decide (i).
 5. **No format change.** Call line, draws and trap records are untouched, so recorded replays stay valid. Calls that used to stop on
@@ -105,3 +105,20 @@ address is compared byte for byte already).
   concrete at those sites. Not checked: qsort/bsearch handlers inside the swept library code.
 - **`Obj.lidx`:** no blob-index field exists; `Lazy.bl` is file-static in `eval_run.c`. By hand count `Obj` is 68 bytes in 72, so a `uint32_t`
   should fit the tail padding (compile `sizeof(Obj)` to confirm). The alternative is a callback through the existing `lazy_fill` hook.
+
+## 6. Result (2026-11-10, built: l1 = p1 + i1; plan `docs/LAZY_ADDR_PLAN.md`)
+
+Built as specified except the base, which took three tries: `0x200000000` (spec: pid field 2 names a real object), `0x400000000000` (plan review: pid field 16384;
+sweep `2026-11-10-addr-s1234`: 6633 edges, +32, and 82 Lua edges lost to "read/write through a model address" because a real object has id 16384 in a call
+that makes thousands of objects), then **`0x80000000`**: below 4 GiB the pid field is 0, which no evaluator pointer has, so `MODEL_ADDR(p)` (`sw_addr.h`) tells
+the range apart exactly. `Obj.lazy` is a `uint32_t` (blob index + 1); `ev_access` stops on a model address used as a pointer; `compare` stops on a model address
+against a real pointer (final review, found by reading); `sw_load` maps the range with `MAP_FIXED_NOREPLACE` and aborts if it does not get it.
+
+Lua + zstd linked, 24 calls: seed 1234 6601 -> 6702 (+101, run `2026-11-10-addr2-s1234`), seed 7 6575 -> 6669 (+94, `2026-11-10-addr2-s7`); the exit bar (+60 each) held. The
+"address as an integer" stop is down to Lua 11 edges (`luaL_newstate`, `lua_resume`, `luaT_init`) and zstd 8 (`ZSTD_createCDict`, a pointer into the function's own block).
+Replay equal (`CEREAL_LAZY_REPLAY=1` over `eval_lazy.sh`); gate 2406 passed (`2026-11-10-addr2-gate`); `lib_oracle.sh zstd 8` (`2026-11-10-addr3-liboracle`): 46317 calls
+finished, 46317 equal, 0 differ, 0 gcc crashed (45321 before). The two seed sweeps ran before the `compare` stop; the gate and `lib_oracle` ran after it.
+
+Not covered: a model address passed to `free`/`realloc` (the evaluator traps, gcc's wrapper ignores it); a model address reaching a pointer through a path that skips
+`ev_access`, `compare` and pointer subtraction (none found by reading); a `MAP_FIXED_NOREPLACE` macro on a gcc without it (the driver is built with gnu99 or later);
+addresses of non-lazy objects; map-back of an integer to a pointer (i2: Lua and zstd have no such cast on a path the sweep reaches, §5).
