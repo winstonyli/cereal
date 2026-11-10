@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Lazy blobs that a function reallocs
@@ -82,4 +82,12 @@ deleted). Seed 1234, Lua + zstd linked, 24 calls, run `2026-11-09-reallocspike` 
 6583 -> 6601 (+18, bar: more than 5); the "realloc of a pointer that malloc did not return" line is gone (it named 9 edges); zstd untaken
 1131 -> 1108 (-23), Lua unchanged at 1685 (the 9 edges were in zstd's callers as well, not only Lua's); the subtraction stop of
 `luaD_reallocstack` 15 -> 12 edges; solver-first 1987 -> 1986; seconds 2156 -> 2251 (machine load from other work; not a timing). The gcc side
-(`__wrap_realloc`, `-Wl,--wrap=realloc`), the fixture, seed 7, replay and the gate are not done.
+(`__wrap_realloc`, `-Wl,--wrap=realloc`), the fixture, seed 7, replay and the gate were not done at spike time (see §6).
+
+## 6. Result (2026-11-10, built: `lazy_ptr`, `h_realloc` grow in place, `__wrap_realloc`)
+
+Plan `docs/LAZY_REALLOC_PLAN.md`; fixture `tests/cfg_lazy/lazy_realloc.c` (`lr_grow`, `lr_twice`, `lr_own`: all 24 calls finish and agree with gcc; valgrind on the
+driver: 0 errors). Lua + zstd linked, 24 calls: seed 1234 edges 6583 -> 6601 (+18, run `2026-11-09-realloc-s1234`), seed 7 6541 -> 6575 (+34, run
+`2026-11-09-realloc-s7`; Lua untaken 1722, `luaD_reallocstack` subtraction stop still 13 edges). Replay equal (`eval_lazy.sh`, `cfg_exec` under
+`CEREAL_LAZY_REPLAY=1`); gate 2406 passed (run `2026-11-10-realloc-gate`); `lib_oracle.sh zstd 8`: 45321 calls finished, 0 differ, 0 gcc crashed. The exit bar
+held on both seeds. Not covered: the moved-pointer branches, a grow past `EV_LAZY_CAP`, size zero.

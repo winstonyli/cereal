@@ -44,7 +44,7 @@ Mechanism: `h_free` in `eval_libc.c`; the gcc side `tests/sweep_rt.h` (`sw_load`
 4. **Check that must hold:** the evaluator prints no extra stop for a call that frees and then returns, and `plain`/`drv`
    outputs are byte-equal on the fixture (Checks).
 
-**Cannot cover.** `realloc` of a lazy blob (a no-op cannot grow it; Decide a3); a free reached through a drawn function pointer
+**Cannot cover.** `realloc` of a lazy blob (built later: `docs/LAZY_REALLOC_DESIGN.md`); a free reached through a drawn function pointer
 (`customFree` drawn non-NULL: the call goes to that function, as today); use-after-free and double-free detection on lazy blobs
 (lost by design: a sweep compares the evaluator with gcc, it does not hunt for undefined behaviour); a blob whose bytes
 the function overwrites after freeing it (UB in gcc, defined as the same bytes here, so the comparison is still valid).
@@ -108,4 +108,4 @@ against the size-share runs (same generator): seed 1234 edges 6541 -> 6583 (+42;
 `2026-11-09-heap-s1234`, 2156 s); seed 7 6526 -> 6541 (+15; zstd untaken 1151 -> 1168, Lua 1758 -> 1722; run `2026-11-09-heap-s7`, 2109 s).
 Replay equal; gate 2405 passed; `lib_oracle.sh zstd 8`: 45321 calls finished, 0 differ, 0 gcc crashed. The exit bar (zstd +20) is met by neither seed;
 the user kept the change for the Lua gain, which holds on both seeds (-34, -36), and the "function never finished" count roughly halving. The zstd
-loss at seed 7 is unexplained (no third seed). Not covered: realloc of a lazy blob (a3), parked in `PARKED.md` row 248.
+loss at seed 7 is unexplained (no third seed). Realloc of a lazy blob: built 2026-11-10 (`docs/LAZY_REALLOC_DESIGN.md`).
