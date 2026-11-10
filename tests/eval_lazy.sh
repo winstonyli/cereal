@@ -119,3 +119,5 @@ for fn in lf_run lf_twice lf_own; do
     fi
 done
 echo "eval_lazy: lazy free ok"
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_free.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_free.c differs from gcc"; exit 1; }
+echo "eval_lazy: lazy free agrees with gcc"

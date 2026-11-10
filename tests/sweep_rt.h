@@ -17,7 +17,7 @@
 /* The call line carries the graph of objects the call made (docs/LAZY_BLOBS_DESIGN.md):
  *   u32 n; u32 size[n]; the arguments; u32 nlinks, {blob, off, target + 1, target off}[];
  *   u32 nzero, {blob, off}[]; the initial bytes of each blob.
- * sw_load rebuilds it (each blob SW_SLACK + 16 bytes longer, so a one-past-the-end pointer is not the next
+ * sw_load rebuilds it (one arena, each blob SW_SLACK + 16 bytes longer, so a one-past-the-end pointer is not the next
  * blob's start) and returns the arguments; sw_out appends the final bytes of every blob, with the
  * link and zero cells zeroed (pointer values differ between the two sides), and frees the graph. */
 /* a returned pointer may point this far past a blob (64 + LHEAD of src/c/eval_run.c) and still be tagged */
@@ -27,9 +27,13 @@
  * driver fills (sw_fp_N, from the "fp" lines of the sweep); weak, so the drivers of all files share one table */
 __attribute__((weak)) void *sw_fn[1 << 16];
 
+/* the live call's arena: all its blobs are in it, so the driver's `-Wl,--wrap=free` (__wrap_free in drvmain.c) can ignore a free of a pointer into one
+ * (a lazy blob is never freed, on either side: docs/LAZY_HEAP_DESIGN.md) and pass the function's own frees on */
+__attribute__((weak)) unsigned char *sw_alo, *sw_ahi;
+
 typedef struct SwG {
     unsigned n, nl, nz;
-    unsigned char **b;
+    unsigned char *arena, **b;
     unsigned *size;
     const unsigned char *lk, *zc;
 } SwG;
@@ -44,6 +48,7 @@ static unsigned sw_u32(const unsigned char *p)
 static const unsigned char *sw_load(SwG *g, const unsigned char *in, unsigned argbytes)
 {
     unsigned i;
+    size_t total = 0;
     const unsigned char *p = in + 4, *args, *ini;
     g->n = sw_u32(in);
     g->b = malloc((g->n + 1) * sizeof *g->b);
@@ -59,8 +64,15 @@ static const unsigned char *sw_load(SwG *g, const unsigned char *in, unsigned ar
     g->nz = sw_u32(p);
     g->zc = p + 4;
     ini = p + 4 + 8 * g->nz;
+    for (i = 0; i < g->n; i++)
+        total += (g->size[i] + SW_SLACK + 16 + 15) & ~15u;
+    g->arena = calloc(total + 16, 1);
+    sw_alo = g->arena;
+    sw_ahi = g->arena + total;
+    total = 0;
     for (i = 0; i < g->n; i++) {
-        g->b[i] = calloc(g->size[i] + SW_SLACK + 16, 1);
+        g->b[i] = g->arena + total;
+        total += (g->size[i] + SW_SLACK + 16 + 15) & ~15u;
         memcpy(g->b[i], ini, g->size[i]);
         ini += g->size[i];
     }
@@ -111,8 +123,8 @@ static unsigned sw_out(SwG *g, unsigned char *out, unsigned o)
         memset(out + base[sw_u32(g->lk + 16 * i)] + sw_u32(g->lk + 16 * i + 4), 0, 8);
     for (i = 0; i < g->nz; i++)
         memset(out + base[sw_u32(g->zc + 8 * i)] + sw_u32(g->zc + 8 * i + 4), 0, 8);
-    for (i = 0; i < g->n; i++)
-        free(g->b[i]);
+    sw_alo = sw_ahi = 0;
+    free(g->arena);
     free(g->b);
     free(g->size);
     return o;
