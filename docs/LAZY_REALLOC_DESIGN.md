@@ -74,3 +74,12 @@ the in-place shape; x2 and x3 stay listed.
 - Fixture `tests/cfg_lazy/lazy_realloc.c`: a function that `realloc`s a drawn pointer to a larger size, writes the new tail, reads a
   field of the old part, and returns it; `eval_lazy.sh` (all 24 calls finish) and `eval_sweep.sh` (agrees with gcc).
 - Sweep seeds 1234 and 7, replay (`CEREAL_LAZY_REPLAY=1`), `lib_oracle.sh zstd 8` (0 differ, 0 gcc crashed), the gate.
+
+## 5. Spike result (2026-11-09, evaluator side only, x1)
+
+`h_realloc` grows a lazy blob in place with `ev_access` and returns the same pointer (throwaway build of the tree at the spec's commit, tree
+deleted). Seed 1234, Lua + zstd linked, 24 calls, run `2026-11-09-reallocspike` against `2026-11-09-heap-s1234` (same generator): edges taken
+6583 -> 6601 (+18, bar: more than 5); the "realloc of a pointer that malloc did not return" line is gone (it named 9 edges); zstd untaken
+1131 -> 1108 (-23), Lua unchanged at 1685 (the 9 edges were in zstd's callers as well, not only Lua's); the subtraction stop of
+`luaD_reallocstack` 15 -> 12 edges; solver-first 1987 -> 1986; seconds 2156 -> 2251 (machine load from other work; not a timing). The gcc side
+(`__wrap_realloc`, `-Wl,--wrap=realloc`), the fixture, seed 7, replay and the gate are not done.
