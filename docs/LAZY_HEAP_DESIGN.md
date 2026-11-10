@@ -1,11 +1,11 @@
 ---
-status: draft
+status: done
 ---
 
 # Lazy blobs that a function frees (and reallocs)
 
 Goal: a sweep call that passes a lazy blob to `free` runs on instead of stopping, and the gcc side agrees.
-Today both stop with "free/realloc of a pointer that malloc did not return" (`heap_obj`, `src/c/eval_libc.c:469-483`,
+Before 2026-11-09 free stopped (and realloc still stops) with "free/realloc of a pointer that malloc did not return" (`heap_obj`, `src/c/eval_libc.c:469-483`,
 trap text at 477; `h_free` 486, `h_realloc` 496).
 Mechanism: `h_free` in `eval_libc.c`; the gcc side `tests/sweep_rt.h` (`sw_load`, `sw_out`) and the driver link in `tests/eval_sweep.sh`.
 
@@ -89,7 +89,7 @@ the offset hint, the `lazy_redraw` branch, the trap record, the freed print rule
   before the free; `eval_sweep.sh` (gcc comparison) must pass and `eval_lazy.sh` must see the calls finish.
 - Sweep: `sweep_meas.sh` seeds 1234 and 7: Lua edges at least the size-share numbers (6541 / 6526), zstd edges up; replay
   (`CEREAL_LAZY_REPLAY=1`) and the gate green.
-- Exit: if the zstd edges do not rise by more than 20 over base, revert and record it in `PARKED.md` row 248.
+- Exit (as written): if the zstd edges do not rise by more than 20 over base, revert and record it in `PARKED.md` row 248. Kept anyway on 2026-11-09 by the user (§6).
 
 ## 5. Spike result (2026-11-09, evaluator side only)
 
@@ -100,3 +100,12 @@ generator code): edges taken 6583 (+42), solver-first 1987 (+19), untaken zstd 1
 "function never finished" Lua 237 -> 116, zstd 737 -> 706; seconds 2659 against 1896 (machine at 80-95% CPU from other work; not a
 timing). Realloc stops left: 9 edges. The exit bar above (zstd edges up by more than 20) is not met by zstd alone (+15); the total is +42.
 The gcc side is not built; the spike tree is deleted.
+
+## 6. Result (2026-11-09, built: `h_free` no-op, sweep arena and `--wrap=free`)
+
+Plan `docs/LAZY_HEAP_PLAN.md`; fixture `tests/cfg_lazy/lazy_free.c` (all three functions finish and agree with gcc). Lua + zstd linked, 24 calls,
+against the size-share runs (same generator): seed 1234 edges 6541 -> 6583 (+42; zstd untaken 1146 -> 1131, Lua 1719 -> 1685; run
+`2026-11-09-heap-s1234`, 2156 s); seed 7 6526 -> 6541 (+15; zstd untaken 1151 -> 1168, Lua 1758 -> 1722; run `2026-11-09-heap-s7`, 2109 s).
+Replay equal; gate 2405 passed; `lib_oracle.sh zstd 8`: 45321 calls finished, 0 differ, 0 gcc crashed. The exit bar (zstd +20) is met by neither seed;
+the user kept the change for the Lua gain, which holds on both seeds (-34, -36), and the "function never finished" count roughly halving. The zstd
+loss at seed 7 is unexplained (no third seed). Not covered: realloc of a lazy blob (a3), parked in `PARKED.md` row 248.

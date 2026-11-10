@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 ---
 
 # Lazy blobs: free as a no-op on both sides — implementation plan
@@ -37,15 +37,15 @@ Evaluator: `h_free` (`src/c/eval_libc.c`). gcc side: `SwG`/`sw_load`/`sw_out` an
 
 **Interfaces:** Consumes `Obj.lazy` (`eval_int.h:51`), `pid()`, `v->obj`. Produces: fixture functions `lf_run`, `lf_twice`, `lf_own` that Task 2 compares with gcc.
 
-- [ ] **Step 1: fixture.** `tests/cfg_lazy/lazy_free.c` (declares `void *malloc(unsigned long); void free(void *);`, no includes):
+- [x] **Step 1: fixture.** `tests/cfg_lazy/lazy_free.c` (declares `void *malloc(unsigned long); void free(void *);`, no includes):
   `struct LF { char *buf; int v; };`
   `int lf_run(struct LF *s)` reads `r = s->v`, `free(s->buf)`, `free(s)`, returns `r`.
   `int lf_twice(struct LF *s)` frees `s->buf`, frees it again, frees `s->buf + 1` only when `s->buf` is non-NULL (NULL + 1 is a bad pointer to gcc and not a trap here), then returns `s->v + (s->buf ? s->buf[0] : 0)` (read after free).
   `int lf_own(struct LF *s)` mallocs 8 bytes, stores `s->v`, reads it back, `free(NULL)`, frees the malloc'd block and `s->buf`, returns the read-back.
-- [ ] **Step 2: test (red).** Append to `tests/eval_lazy.sh`, after the size-hint section, a loop over `lf_run lf_twice lf_own`: count `^call NAME .* =>` lines from `--eval-sweep=24,1234` on the fixture; fail with `eval_lazy: lazy_free.c: only $n of 24 calls of NAME finished (free of a lazy blob)` when `$n -lt 20`; then `echo "eval_lazy: lazy free ok"`. Run `sh tests/eval_lazy.sh ~/cereal-s1/cereal` in WSL. Expected: FAIL on `lf_run` with n = 0 ("free of a pointer that malloc did not return").
-- [ ] **Step 3: implement.** At the top of `h_free` after `NEED(1)`: if `pid(a[0].x)` is nonzero, within `v->obj.len` and `v->obj.data[pid(a[0].x) - 1].lazy`, return 0 (comment: a lazy blob is never freed, `docs/LAZY_HEAP_DESIGN.md`).
-- [ ] **Step 4: test (green).** Rebuild (sync + `make -j4`), rerun `eval_lazy.sh`. Expected: `eval_lazy: lazy free ok`, earlier sections still ok.
-- [ ] **Step 5: commit** `git add src/c/eval_libc.c tests/cfg_lazy/lazy_free.c tests/eval_lazy.sh`; message "Lazy blobs: free of a lazy pointer is a no-op in the evaluator".
+- [x] **Step 2: test (red).** Append to `tests/eval_lazy.sh`, after the size-hint section, a loop over `lf_run lf_twice lf_own`: count `^call NAME .* =>` lines from `--eval-sweep=24,1234` on the fixture; fail with `eval_lazy: lazy_free.c: only $n of 24 calls of NAME finished (free of a lazy blob)` when `$n -lt 20`; then `echo "eval_lazy: lazy free ok"`. Run `sh tests/eval_lazy.sh ~/cereal-s1/cereal` in WSL. Expected: FAIL on `lf_run` with n = 0 ("free of a pointer that malloc did not return").
+- [x] **Step 3: implement.** At the top of `h_free` after `NEED(1)`: if `pid(a[0].x)` is nonzero, within `v->obj.len` and `v->obj.data[pid(a[0].x) - 1].lazy`, return 0 (comment: a lazy blob is never freed, `docs/LAZY_HEAP_DESIGN.md`).
+- [x] **Step 4: test (green).** Rebuild (sync + `make -j4`), rerun `eval_lazy.sh`. Expected: `eval_lazy: lazy free ok`, earlier sections still ok.
+- [x] **Step 5: commit** `git add src/c/eval_libc.c tests/cfg_lazy/lazy_free.c tests/eval_lazy.sh`; message "Lazy blobs: free of a lazy pointer is a no-op in the evaluator".
 
 ### Task 2: gcc side — arena and `__wrap_free`
 
@@ -53,21 +53,21 @@ Evaluator: `h_free` (`src/c/eval_libc.c`). gcc side: `SwG`/`sw_load`/`sw_out` an
 
 **Interfaces:** Consumes Task 1's fixture. Produces: `sw_alo`, `sw_ahi` (weak `unsigned char *`, the live arena), `SwG.arena`, `__wrap_free` in `drvmain.c`.
 
-- [ ] **Step 1: test (red).** In `tests/eval_lazy.sh` extend the stop-fixtures style loop: `sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_free.c"` must exit 0 (message `eval_lazy: lazy_free.c differs from gcc`). Run. Expected: FAIL, gcc side aborts on `free` of an interior pointer ("the gcc build ran badly").
-- [ ] **Step 2: `sweep_rt.h`.** Add `__attribute__((weak)) unsigned char *sw_alo, *sw_ahi;` beside `sw_fn`, field `unsigned char *arena` in `SwG`. In `sw_load` replace the per-blob `calloc` by one `calloc` of the sum of `(size + SW_SLACK + 16 + 15) & ~15` per blob, `b[i]` consecutive in it, `sw_alo`/`sw_ahi` set to its bounds. In `sw_out` replace the per-blob `free` by `sw_alo = sw_ahi = 0; free(g->arena);`. Update the header comment (blobs share an arena; a free of an arena pointer is ignored by the wrapper).
-- [ ] **Step 3: `eval_sweep.sh`.** In the awk END block that writes `drvmain.c`, after its `#include rt` line, print into `drvmain.c`: `void __real_free(void *);` and `void __wrap_free(void *p) { if ((unsigned char *)p >= sw_alo && (unsigned char *)p < sw_ahi) return; __real_free(p); }`. Add `-Wl,--wrap=free` to the final `gcc -o "$W/drv"` link (line 167).
-- [ ] **Step 4: green + regressions.** `eval_lazy.sh` fully; `(cd tests/cfg_exec && sh ../eval_sweep.sh $C *.c)`, the `cfg_link` and `cfg_state` runs and `python3 -P ../asm_exec.py $C *.c ../asm_exec/*.c` exactly as `tests/run.sh` sections 13e-13f call them (Task 3 runs the whole gate); valgrind once on `drv` for `lazy_free.c` (no leaks, no invalid free). Expected: all pass.
-- [ ] **Step 5: library mode.** `bench/tools/lib_oracle.sh ~/cereal-s1/cereal zstd 8`: expected "calls finished by the evaluator" ≥ the base run, `gcc crashed` not higher.
-- [ ] **Step 6: commit** `git add tests/sweep_rt.h tests/eval_sweep.sh tests/eval_lazy.sh`; message "Sweep runtime: blobs from one arena, free of an arena pointer ignored".
+- [x] **Step 1: test (red).** In `tests/eval_lazy.sh` extend the stop-fixtures style loop: `sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_free.c"` must exit 0 (message `eval_lazy: lazy_free.c differs from gcc`). Run. Expected: FAIL, gcc side aborts on `free` of an interior pointer ("the gcc build ran badly").
+- [x] **Step 2: `sweep_rt.h`.** Add `__attribute__((weak)) unsigned char *sw_alo, *sw_ahi;` beside `sw_fn`, field `unsigned char *arena` in `SwG`. In `sw_load` replace the per-blob `calloc` by one `calloc` of the sum of `(size + SW_SLACK + 16 + 15) & ~15` per blob, `b[i]` consecutive in it, `sw_alo`/`sw_ahi` set to its bounds. In `sw_out` replace the per-blob `free` by `sw_alo = sw_ahi = 0; free(g->arena);`. Update the header comment (blobs share an arena; a free of an arena pointer is ignored by the wrapper).
+- [x] **Step 3: `eval_sweep.sh`.** In the awk END block that writes `drvmain.c`, after its `#include rt` line, print into `drvmain.c`: `void __real_free(void *);` and `void __wrap_free(void *p) { if ((unsigned char *)p >= sw_alo && (unsigned char *)p < sw_ahi) return; __real_free(p); }`. Add `-Wl,--wrap=free` to the final `gcc -o "$W/drv"` link (line 167).
+- [x] **Step 4: green + regressions.** `eval_lazy.sh` fully; `(cd tests/cfg_exec && sh ../eval_sweep.sh $C *.c)`, the `cfg_link` and `cfg_state` runs and `python3 -P ../asm_exec.py $C *.c ../asm_exec/*.c` exactly as `tests/run.sh` sections 13e-13f call them (Task 3 runs the whole gate); valgrind once on `drv` for `lazy_free.c` (no leaks, no invalid free). Expected: all pass.
+- [x] **Step 5: library mode.** `bench/tools/lib_oracle.sh ~/cereal-s1/cereal zstd 8`: expected "calls finished by the evaluator" ≥ the base run, `gcc crashed` not higher.
+- [x] **Step 6: commit** `git add tests/sweep_rt.h tests/eval_sweep.sh tests/eval_lazy.sh`; message "Sweep runtime: blobs from one arena, free of an arena pointer ignored".
 
 ### Task 3: measure and close
 
 **Files:** Modify `docs/LAZY_HEAP_DESIGN.md` (status, exit bar, §6 result), `PARKED.md` row 248, `docs/runs.md` (wrapper rows).
 
-- [ ] **Step 1: sweeps.** `run.ps1 -Kind bench -Name heap-s1234 -Detach` and `-Name heap-s7` with `LINK=1` (and `SEED=7`), `sweep_meas.sh … 24`, watcher per RUNS.md. Expected vs size-share runs: seed 1234 edges ≥ 6583, seed 7 ≥ 6526 and zstd untaken not above base 1146 / seed-7 base.
-- [ ] **Step 2: replay and gate.** `CEREAL_LAZY_REPLAY=1` on the seed-1234 recordings; `wsl -e bash /home/winstonyli/rungate.sh` as `-Kind gate`. Expected: replay equal, gate green (2405 passed or more).
-- [ ] **Step 3: docs.** Spec: `status: done`, exit bar line rewritten to the bar used, §6 result with run ids; `PARKED.md` row 248: heap free landed, realloc of a lazy blob remains (trigger: 9 realloc edges, `luaD_reallocstack`); grep docs for "malloc did not return" / old row wording and fix. This plan: `status: done`.
-- [ ] **Step 4: commit** (docs and runs rows). No push.
+- [x] **Step 1: sweeps.** `run.ps1 -Kind bench -Name heap-s1234 -Detach` and `-Name heap-s7` with `LINK=1` (and `SEED=7`), `sweep_meas.sh … 24`, watcher per RUNS.md. Expected vs size-share runs: seed 1234 edges ≥ 6583, seed 7 ≥ 6526 and zstd untaken not above base 1146 / seed-7 base.
+- [x] **Step 2: replay and gate.** `CEREAL_LAZY_REPLAY=1` on the seed-1234 recordings; `wsl -e bash /home/winstonyli/rungate.sh` as `-Kind gate`. Expected: replay equal, gate green (2405 passed or more).
+- [x] **Step 3: docs.** Spec: `status: done`, exit bar line rewritten to the bar used, §6 result with run ids; `PARKED.md` row 248: heap free landed, realloc of a lazy blob remains (trigger: 9 realloc edges, `luaD_reallocstack`); grep docs for "malloc did not return" / old row wording and fix. This plan: `status: done`.
+- [x] **Step 4: commit** (docs and runs rows). No push.
 
 ## Self-review
 
