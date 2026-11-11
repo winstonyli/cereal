@@ -670,6 +670,7 @@ static void track_begin(Ev *v)
 #define LMAXBL 32               /* lazy objects per call */
 #define LMAXBY 32768            /* bytes of lazy objects per call */
 #define LHEAD 128               /* a pointer to a lazy object starts this far in: the program may look before it (container_of, p[-1]) */
+#define LCHAIN 8                /* a pointer cell that continues a chain of this many self-links is NULL (lazy_chain); 4 ended the six-element walk of lazy_list.c */
 
 /* Draw keys (docs/LAZY_BLOBS_SOLVER_PLAN.md): every value the call draws has a 64-bit key that does not
  * depend on the order of the draws: a parameter's is its number, a lazy blob's is the hash of the key
@@ -919,9 +920,22 @@ static void lazy_byte(Ev *v, Lazy *z, int bi, uint64_t off, uint8_t dflt, bool s
     lazy_record(&z->bl.data[bi], off, 1, &b);
 }
 
+/* How many blobs in a row, ending at blob bi, were made by a pointer at offset off of their parent: the length of a chain of
+ * self-links (next, prev, previous) that a pointer cell at off of bi would extend.  Keyed by the creation path, so it does not depend on the draw order. */
+static unsigned lazy_chain(const Lazy *z, int bi, uint64_t off)
+{
+    unsigned depth = 0;
+    while (z->bl.data[bi].par >= 0 && z->bl.data[bi].poff == off) {
+        depth++;
+        bi = z->bl.data[bi].par;
+    }
+    return depth;
+}
+
 /* Ev.lazy_fill: the typed load of ti->bytes bytes at off of lazy object id finds some uninitialized.
- * Scalars are drawn as the generator draws them; a pointer cell is NULL only at the one draw a call picks
- * (z->nullat; half of the calls have none), else shares an existing blob (1 in 7) or is a new one. */
+ * Scalars are drawn as the generator draws them; a pointer cell is NULL at the one draw a call picks
+ * (z->nullat; half of the calls have none) and where it would be the LCHAIN-th link of a chain of self-links
+ * (a walk down one then ends before the blob budget), else shares an existing blob (1 in 7) or is a new one. */
 static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
 {
     Lazy *z = v->lazy_ud;
@@ -937,6 +951,8 @@ static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
     if (ti->ptr) {
         unsigned d = z->ndraw++;
         uint64_t r = d == z->nullat ? 0 : 1 + rnd(z->rs) % 7;
+        if (lazy_chain(z, bi, off) >= LCHAIN)
+            r = 0;
         LLink l = {(uint32_t)bi, (uint32_t)off, 0, 0};
         LKey ck = lz_key(z->bl.data[bi].key, off);
         /* The hint of the cell's pointee size (lazy_redraw): share the blob it names, if the call has made it (the first cell of the size
