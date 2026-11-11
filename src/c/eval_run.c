@@ -670,7 +670,7 @@ static void track_begin(Ev *v)
 #define LMAXBL 32               /* lazy objects per call */
 #define LMAXBY 32768            /* bytes of lazy objects per call */
 #define LHEAD 128               /* a pointer to a lazy object starts this far in: the program may look before it (container_of, p[-1]) */
-#define LCHAIN 8                /* a pointer cell that continues a chain of this many self-links is NULL (lazy_chain); 4 ended the six-element walk of lazy_list.c */
+#define LCHAIN 8                /* a pointer cell that extends a chain of this many self-links (the root plus this many blobs) is NULL (lazy_chain); 4 ended the six-element walk of lazy_list.c */
 
 /* Draw keys (docs/LAZY_BLOBS_SOLVER_PLAN.md): every value the call draws has a 64-bit key that does not
  * depend on the order of the draws: a parameter's is its number, a lazy blob's is the hash of the key
@@ -934,7 +934,7 @@ static unsigned lazy_chain(const Lazy *z, int bi, uint64_t off)
 
 /* Ev.lazy_fill: the typed load of ti->bytes bytes at off of lazy object id finds some uninitialized.
  * Scalars are drawn as the generator draws them; a pointer cell is NULL at the one draw a call picks
- * (z->nullat; half of the calls have none) and where it would be the LCHAIN-th link of a chain of self-links
+ * (z->nullat; half of the calls have none) and where it would extend a chain of LCHAIN self-links (the root plus LCHAIN blobs)
  * (a walk down one then ends before the blob budget), else shares an existing blob (1 in 7) or is a new one. */
 static bool lazy_fill(Ev *v, uint32_t id, uint64_t off, const Ti *ti)
 {

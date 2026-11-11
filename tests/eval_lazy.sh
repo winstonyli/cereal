@@ -170,11 +170,14 @@ echo "eval_lazy: lazy address agrees with gcc"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_uninit.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_uninit.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy uninit agrees with gcc"
 # a chain of self-links ends at a fixed depth (LCHAIN in src/c/eval_run.c): an unbounded walk down it finishes, and agrees with gcc
-# (8 of 24 finished without the rule, 18 with it; the other 6 are share draws that close the chain into a cycle: the step limit)
-n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_chain.c" 2>/dev/null </dev/null | grep -ac '^call lc_up .* =>')
-if [ "$n" -lt 16 ]; then
-    echo "eval_lazy: lazy_chain.c: only $n of 24 calls of lc_up finished (the chain of self-links must end)"
-    exit 1
-fi
+# (seed 1234: 8 of 24 finished without the rule, 18 with it; seeds 1 and 7 gave 17 and 16; the rest are share draws that close the
+# chain into a cycle: the step limit.  The bound 14 leaves slack for a draw-stream change; it does not pin LCHAIN.)
+for s in 1234 1 7; do
+    n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,$s "$D/cfg_lazy/lazy_chain.c" 2>/dev/null </dev/null | grep -ac '^call lc_up .* =>')
+    if [ "$n" -lt 14 ]; then
+        echo "eval_lazy: lazy_chain.c: only $n of 24 calls of lc_up finished on seed $s (the chain of self-links must end)"
+        exit 1
+    fi
+done
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_chain.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_chain.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy chain ok"
