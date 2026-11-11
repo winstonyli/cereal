@@ -155,9 +155,10 @@ run_group() {
         # each file's driver is compiled with that file's directory on the include path
         objs=
         fail=
+        # gcc zero-initialises its locals, as the evaluator does (docs/LAZY_ADDR_DESIGN.md 6.1); heap and padding are not covered, see PARKED.md
         while read -r i g; do
             # shellcheck disable=SC2086
-            gcc -O0 -fwrapv -w $CEREAL_FLAGS $gccx -I "$(dirname "$g")" -c -o "$W/drv$i.o" "$W/drv$i.c" 2>>"$W/gcc.err" || fail=1
+            gcc -O0 -fwrapv -w -ftrivial-auto-var-init=zero $CEREAL_FLAGS $gccx -I "$(dirname "$g")" -c -o "$W/drv$i.o" "$W/drv$i.c" 2>>"$W/gcc.err" || fail=1
             objs="$objs $W/drv$i.o"
         done <"$W/srcs.txt"
         # the files without a swept function are linked as they are (their main, if any, renamed)
@@ -166,7 +167,7 @@ run_group() {
             i=$((i + 1))
             grep -q " $g\$" "$W/srcs.txt" && continue
             # shellcheck disable=SC2086
-            gcc -O0 -fwrapv -w $CEREAL_FLAGS -Dmain=sweep_orig_main_x$i -c -o "$W/plain$i.o" "$g" 2>>"$W/gcc.err" || fail=1
+            gcc -O0 -fwrapv -w -ftrivial-auto-var-init=zero $CEREAL_FLAGS -Dmain=sweep_orig_main_x$i -c -o "$W/plain$i.o" "$g" 2>>"$W/gcc.err" || fail=1
             objs="$objs $W/plain$i.o"
         done
         # shellcheck disable=SC2086

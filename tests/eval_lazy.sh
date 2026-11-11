@@ -166,3 +166,6 @@ fi
 echo "eval_lazy: lazy address ok"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_addr.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_addr.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy address agrees with gcc"
+# uninitialised bytes copied into the state: both sides see zero (the gcc driver zero-initialises its stack)
+sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_uninit.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_uninit.c differs from gcc"; exit 1; }
+echo "eval_lazy: lazy uninit agrees with gcc"
