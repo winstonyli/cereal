@@ -1404,9 +1404,15 @@ typedef struct SolveStat {
     unsigned long trapped;          /* tracked runs of trapped calls (the queue of their own) */
 } SolveStat;
 
+/* What came of asking the solver for an edge (--eval-miss reports the edges still untaken by it). */
+enum { AK_NEVER, AK_UNKNOWN, AK_UNSAT, AK_TRAP, AK_STOP, AK_MISS, AK_N };
+static const char *const ask_name[AK_N] = { "never asked", "unknown", "unsat", "sat, run trapped",
+    "sat, run stopped", "sat, run finished without it" };
+
 typedef struct STried {
     const Blk *blk;
     uint32_t edge;
+    uint8_t ask;                        /* AK_* of the one query */
 } STried;
 
 typedef VEC(STried) STriedVec;
@@ -1461,11 +1467,11 @@ static void seed_free(SSeed *sd)
     vec_free(&sd->log);
 }
 
-/* What a solved call came to: nothing worth keeping, a finish that took a new edge, or a trap. */
-enum { SR_NONE, SR_EDGE, SR_TRAP };
+/* What a solved call came to: a finish with nothing new, a finish that took a new edge, a trap, or another stop. */
+enum { SR_NONE, SR_EDGE, SR_TRAP, SR_STOP };
 
 /* One solved call: the seed with the model's values written over it; SR_EDGE if it finished and
- * took an edge nobody had (then it is worth tracking itself), SR_TRAP if it trapped (a trapped call is a seed
+ * took an edge nobody had (then it is worth tracking itself), SR_STOP if it stopped some other way, SR_TRAP if it trapped (a trapped call is a seed
  * of the queue of its own, see trap_step).  The model is in solver symbols;
  * `syms` (from the seed's tracked run) maps them back to the keys of the draws. */
 static int solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *syms, const Fn *f, const SFn *s,
@@ -1498,7 +1504,7 @@ static int solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *sy
         return st == EV_TRAP ? SR_TRAP : SR_EDGE;
     }
     seed_free(&c);
-    return SR_NONE;
+    return st == EV_OK ? SR_NONE : SR_STOP;
 }
 
 static bool tried(const STriedVec *t, const Blk *b, uint32_t edge)
@@ -1648,7 +1654,7 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                 if (!whole)
                     continue;
                 {
-                    STried t = { b, e };
+                    STried t = { b, e, AK_UNKNOWN };
                     vec_push(done, t);
                 }
                 q->queries++;
@@ -1661,10 +1667,13 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                 st->sat += r == SX_SAT;
                 st->unsat += r == SX_UNSAT;
                 st->unknown += r == SX_UNKNOWN;
-                if (r != SX_SAT)
+                if (r != SX_SAT) {
+                    done->data[done->len - 1].ask = r == SX_UNSAT ? AK_UNSAT : AK_UNKNOWN;
                     continue;
+                }
                 st->calls++;
                 sat = solve_run(v, &m, seed, syms, x->f, x->s, x->body, x->name, &x->bad, &x->saw_ok, &child);
+                done->data[done->len - 1].ask = sat == SR_TRAP ? AK_TRAP : sat == SR_STOP ? AK_STOP : AK_MISS;
                 if (sat == SR_TRAP) {
                     trap_push(q, child);
                 } else if (sat == SR_EDGE) {
@@ -1888,6 +1897,8 @@ typedef struct SweptFn {
     size_t i;
     bool finished;
     char why[112], loc[112];
+    bool has_ask;                       /* the solver ran: ask counts the untaken edges by class and by what asking came to */
+    size_t ask[MC_N][AK_N];
 } SweptFn;
 
 /* Is name one of the comma-separated names of list? */
@@ -1931,9 +1942,39 @@ static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N])
     return total;
 }
 
+/* The untaken edges of the finished function f by class and by what asking the solver came to (done: the edges asked);
+ * the same edges as fn_miss counts.  A switch of more than 61 cases has its default counted as never asked. */
+static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][AK_N])
+{
+    size_t i;
+    v->c = f->c;
+    for (i = 0; i < f->nblk; i++) {
+        const Blk *b = &f->blk[i];
+        unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
+        int c = -1;
+        if (blk_const(f, b)) {
+            ask[MC_OTHER][AK_NEVER] += !(b->seen & 3);
+            continue;
+        }
+        for (e = 0; e < ne; e++)
+            if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
+                uint32_t fe = b->term == TK_SWTCH && e == ne - 1 && b->nc <= 61 ? (uint32_t)b->nc : e;
+                size_t j;
+                int a = AK_NEVER;
+                if (c < 0)
+                    c = miss_class(v, f, b);
+                for (j = 0; j < done->len; j++)
+                    if (done->data[j].blk == b && done->data[j].edge == fe)
+                        a = done->data[j].ask;
+                ask[c][a]++;
+            }
+    }
+}
+
 static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 {
     size_t counts[MC_N] = {0}, total = 0, k, i;
+    size_t ask[MC_N][AK_N] = {{0}};
     struct { char key[104]; size_t edges; const char *ex[4]; unsigned nex; } why[128];
     size_t nwhy = 0;
     struct AtEnt { char key[200]; size_t edges; } at[256];
@@ -1971,6 +2012,12 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
                     fprintf(stderr, " %s %zu;", miss_name[i], cls[i]);
             fputc(10, stderr);
         }
+        if (sw[k].has_ask)
+            for (i = 0; i < MC_N; i++) {
+                unsigned a;
+                for (a = 0; a < AK_N; a++)
+                    ask[i][a] += sw[k].ask[i][a];
+            }
         if (fe) {                                   /* per function, and by the place the stop read its pointer */
             char key[200], *p;
             size_t w;
@@ -2012,6 +2059,19 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
     for (i = 0; i < MC_N; i++)
         fprintf(stderr, " %s %zu;", miss_name[i], counts[i]);
     fputc(10, stderr);
+    if (v->c->opt.eval_miss)                        /* the finished functions' untaken edges by class, by what asking came to */
+        for (i = 0; i < MC_N; i++) {
+            unsigned a;
+            size_t t = 0;
+            for (a = 0; a < AK_N; a++)
+                t += ask[i][a];
+            if (!t)
+                continue;
+            fprintf(stderr, "cereal: asked %s: %zu:", miss_name[i], t);
+            for (a = 0; a < AK_N; a++)
+                fprintf(stderr, " %s %zu;", ask_name[a], ask[i][a]);
+            fputc(10, stderr);
+        }
 }
 
 /* How many ways there are to pick the built states for f's parameters (0: it takes none, or the
@@ -2077,6 +2137,8 @@ static void eval_sweep(Checker *c0)
         const char *name;
         unsigned nv, vi;
         bool fin = false;               /* a state variant finished */
+        bool has_ask = false;           /* the plain variant's untaken edges by class and by the solver's answer (fn_ask) */
+        size_t ask[MC_N][AK_N] = {{0}};
         if (!sweep_cand(f))
             continue;
         v->c = c;
@@ -2152,10 +2214,16 @@ static void eval_sweep(Checker *c0)
                 ed = 0;
                 blk_count(f, &ed, &tk);
                 ss.taken += st ? 0 : tk;
+                if (!st && (x.saw_ok || fin)) {
+                    memset(ask, 0, sizeof ask);
+                    fn_ask(v, f, &x.q.done, ask);
+                    has_ask = true;
+                }
                 search_free(&x.q);
             }
             if (!st) {
-                SweptFn sw = { i, x.saw_ok || fin, "", "" };
+                SweptFn sw = { i, x.saw_ok || fin, "", "", has_ask, {{0}} };
+                memcpy(sw.ask, ask, sizeof sw.ask);
                 memcpy(sw.why, x.why, sizeof sw.why);
                 memcpy(sw.loc, x.loc, sizeof sw.loc);
                 vec_push(&swept, sw);
