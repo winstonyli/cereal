@@ -58,3 +58,27 @@ int la_eq(struct LA *s)
         return 0;
     return (char *)(unsigned long)s->a == s->a;
 }
+
+/* realloc of a model address: gcc's wrapper returns it unchanged (equal to s->a), so the evaluator stops rather than treat it as NULL and allocate */
+void *realloc(void *, unsigned long);
+int la_re(struct LA *s)
+{
+    if (!s->a)
+        return 0;
+    return (char *)realloc((void *)(unsigned long)s->a, 16) == s->a;
+}
+
+/* a pointer before the start of a blob and far past its end: the integers are signed offsets from the model address, the same on both sides */
+unsigned long la_neg(struct LA *s)
+{
+    if (!s->a)
+        return 0;
+    return (unsigned long)(s->a - 1) - (unsigned long)s->a;
+}
+
+unsigned long la_end(struct LA *s)
+{
+    if (!s->a)
+        return 0;
+    return (unsigned long)(s->a + 100000) - (unsigned long)s->a;
+}

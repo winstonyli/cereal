@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include "c/eval_int.h"
+#include "c/sw_addr.h"
 
 #define NEED(n) do { if (na < (n)) { UNSUP(v, "call with too few arguments"); return 0; } } while (0)
 
@@ -506,6 +507,10 @@ static uint64_t h_realloc(Ev *v, const HArg *a, unsigned na)
     uint32_t id;
     uint64_t keep;
     NEED(2);
+    if (MODEL_ADDR(a[0].x)) {           /* gcc's wrapper returns it unchanged; it is not NULL, and no object has it */
+        UNSUP(v, "realloc of a model address");
+        return 0;
+    }
     if (pid(a[0].x) == 0)
         return h_malloc(v, a + 1, 1);
     if (lazy_ptr(v, a[0].x)) {          /* a lazy blob stays where it is and grows in place (docs/LAZY_REALLOC_DESIGN.md) */

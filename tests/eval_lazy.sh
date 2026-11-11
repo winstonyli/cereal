@@ -135,7 +135,7 @@ echo "eval_lazy: lazy realloc agrees with gcc"
 # A pointer into a lazy blob read as an integer has a fixed address on both sides (docs/LAZY_ADDR_DESIGN.md): the calls finish.
 # An integer turned back into a pointer and dereferenced stops (a NULL draw still finishes, so la_ctl is the count to stay under).
 la_n() { "$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_addr.c" 2>/dev/null </dev/null | grep -ac "^call $1 .* =>"; }
-for fn in la_align la_diff la_hash la_ctl; do
+for fn in la_align la_diff la_hash la_ctl la_neg; do
     n=$(la_n $fn)
     if [ "$n" -lt 24 ]; then
         echo "eval_lazy: lazy_addr.c: only $n of 24 calls of $fn finished (address as an integer)"
@@ -143,7 +143,7 @@ for fn in la_align la_diff la_hash la_ctl; do
     fi
 done
 la_stops() { "$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_addr.c" 2>/dev/null </dev/null | grep -ac "^call $1 .* unsupported $2"; }
-for fn in la_back la_pun la_eq; do
+for fn in la_back la_pun la_eq la_re; do
     n=$(la_n $fn)
     s=$(la_stops $fn "[a-z ]*model address")
     if [ "$n" -ge 24 ] || [ "$s" -lt 1 ]; then

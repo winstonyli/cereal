@@ -122,3 +122,12 @@ finished, 46317 equal, 0 differ, 0 gcc crashed (45321 before). The two seed swee
 Not covered: a model address passed to `free`/`realloc` (the evaluator traps, gcc's wrapper ignores it); a model address reaching a pointer through a path that skips
 `ev_access`, `compare` and pointer subtraction (none found by reading); a `MAP_FIXED_NOREPLACE` macro on a gcc without it (the driver is built with gnu99 or later);
 addresses of non-lazy objects; map-back of an integer to a pointer (i2: Lua and zstd have no such cast on a path the sweep reaches, §5).
+
+### 6.1 After the build (2026-11-10)
+
+Deferred minors fixed (`la_re` RED 88 finished / 0 stops, then green): `realloc` of a model address stops (`eval_libc.c`, it was treated as NULL while gcc's wrapper returns it unchanged); `sweep_rt.h` guards `MAP_ANONYMOUS` and `MAP_FIXED_NOREPLACE` and says why it aborts; `la_neg` and `la_end` pin a negative offset and a pointer past a blob's end (equal to gcc). `free` of a model address needed nothing: both sides ignore it. Gate 2406 / 2405 sanitizer (`2026-11-10-addr4-gate`), `lib_oracle` zstd 46317 equal, 0 differ (`2026-11-10-addr4-liboracle`).
+
+Surveys, both read-only, both **parked** (`PARKED.md` row 248):
+- **Map-back (i2)**: 0 model-address stops in the two final seed sweeps; Lua and zstd have one integer-to-pointer cast between them (`zstd_cwksp.h:541`, no caller) and a function-pointer one. Smaller shape if ever built: decode in `convert` (blob index and offset from the integer), which would delete the `ev_access` and `compare` stops. Trigger: a model-address stop in a sweep or `lib_oracle` run on a new library. Static grep only (memcpy and union punning not scanned). The `compare` stop was added after the seed sweeps, so its count is in no log.
+- **Addresses for non-lazy objects**: at most 19 of about 1100 untaken edges. Lua's 11 (`luai_makeseed` hashes addresses with `time(NULL)`) cannot match gcc at all; zstd's 8 are alignment arithmetic on its own block (`zstd_cwksp.h:265,279`), coverable only by a second range plus gcc-side malloc wrapping. An opaque integer that stops on any other use needs a shadow type on integers: rejected. Trigger: a library whose alignment checks on its own blocks dominate its stop list.
+- Gap both found: `lib_oracle` prints no per-reason stop count, so its 582 stops are unattributed.

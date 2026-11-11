@@ -10,6 +10,12 @@
 #include <string.h>
 #include <sys/mman.h>
 #include "../src/c/sw_addr.h"
+#ifndef MAP_ANONYMOUS                   /* hidden under a strict -std, and before glibc 2.31 for the other */
+#define MAP_ANONYMOUS 0x20
+#endif
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0x100000    /* an older kernel ignores it: the check in sw_load catches a different address */
+#endif
 #ifdef SW_FORK
 #include <signal.h>
 #include <sys/wait.h>
@@ -69,8 +75,10 @@ static const unsigned char *sw_load(SwG *g, const unsigned char *in, unsigned ar
     /* blob i at its model address (src/c/sw_addr.h): an integer made of a blob's address is the evaluator's; untouched pages cost nothing */
     g->arena = !g->n ? NULL : mmap((void *)SW_BASE, g->n * SW_STRIDE, PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE | MAP_NORESERVE, -1, 0);
-    if (g->n && g->arena != (unsigned char *)SW_BASE)     /* an older kernel takes the address as a hint */
+    if (g->n && g->arena != (unsigned char *)SW_BASE) {    /* an older kernel takes the address as a hint */
+        fprintf(stderr, "sweep driver: cannot map the blob range at %#llx\n", SW_BASE);
         abort();
+    }
     sw_alo = g->arena;
     sw_ahi = g->arena + g->n * SW_STRIDE;
     for (i = 0; i < g->n; i++) {
