@@ -96,6 +96,12 @@ run_group() {
         }
         $1 == "call" {
             name = fi ":" $2
+            if ($4 != "=>") {           # one line per stop (unsupported, trap, limit), numbers folded, for the lib oracle histogram
+                why = $4
+                for (wk = 5; wk <= NF; wk++) why = why " " $wk
+                gsub(/[0-9]+/, "N", why)
+                print why > (W "/stops.txt")
+            }
             if ($4 == "=>") {
                 print name " " $3 > calls
                 print $5 > expf
@@ -199,6 +205,7 @@ run_group() {
                     for (k in crash) printf "%s: gcc crashed %s x%d\n", f, k, crash[k]
                     printf "%s: lib oracle: %d calls finished by the evaluator, %d equal, %d differ, %d gcc crashed; %d evaluator stops\n", f, ne + nd + nc, ne, nd, nc, nt
                 }' "$W/all.txt"
+            [ -s "$W/stops.txt" ] && sort "$W/stops.txt" | uniq -c | sort -rn | head -12 | sed "s|^ *|$f: stops: |"
             return
         fi
         mism=$(awk -F'\t' -v f="$f" '$2 != $3 {

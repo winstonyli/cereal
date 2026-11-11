@@ -157,6 +157,12 @@ if [ "$n" -ne 0 ] || [ "$s" -lt 1 ]; then
     echo "eval_lazy: lazy_addr.c: la_own finished $n calls and stopped $s on an address as an integer (the function own block stays unsupported)"
     exit 1
 fi
+# the lib oracle (tests/eval_sweep.sh, EVAL_SWEEP_LIB=1) counts the calls that stopped, by reason
+h=$(EVAL_SWEEP_LIB=1 EVAL_SWEEP_LINK=1 EVAL_SWEEP_N=24 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_addr.c" 2>&1 | grep -c ": stops: [0-9]* unsupported .*model address")
+if [ "$h" -lt 2 ]; then
+    echo "eval_lazy: lazy_addr.c: the lib oracle printed $h stop-reason lines for a model address (want at least 2)"
+    exit 1
+fi
 echo "eval_lazy: lazy address ok"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_addr.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_addr.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy address agrees with gcc"
