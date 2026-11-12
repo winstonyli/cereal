@@ -1900,6 +1900,7 @@ typedef struct SweptFn {
     char why[112], loc[112];
     bool has_ask;                       /* the solver ran: ask counts the untaken edges by class and by what asking came to */
     size_t ask[MC_N][AK_N];
+    size_t fr[MC_N][AK_N];              /* the same for the frontier: untaken edges of a reached block into a block nothing reached */
 } SweptFn;
 
 /* Is name one of the comma-separated names of list? */
@@ -1948,7 +1949,7 @@ static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N])
  * `done` holds the queries made while sweeping f's plain variant, callee blocks included, and none of the state variants';
  * Blk.trk is set by any tracked run of any function; "unsat" is relative to the first seed's path prefix; "symbolic step,
  * not asked" lumps the query and run budgets, a path cap and a tracked run that did not finish. */
-static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][AK_N])
+static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][AK_N], size_t fr[MC_N][AK_N])
 {
     size_t i;
     v->c = f->c;
@@ -1971,6 +1972,10 @@ static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][A
                     if (done->data[j].blk == b && done->data[j].edge == fe)
                         a = done->data[j].ask;
                 ask[c][a]++;
+                if (b->seen) {          /* a reached block: is this edge the way into one nothing reached? */
+                    uint32_t to = b->term == TK_BR ? (fe ? b->b : b->a) : fe < b->nc ? b->cases[fe].to : b->a;
+                    fr[c][a] += to < f->nblk && !f->blk[to].seen;
+                }
             }
     }
 }
@@ -1978,7 +1983,7 @@ static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][A
 static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 {
     size_t counts[MC_N] = {0}, total = 0, k, i;
-    size_t ask[MC_N][AK_N] = {{0}};
+    size_t ask[MC_N][AK_N] = {{0}}, fr[MC_N][AK_N] = {{0}};
     struct { char key[104]; size_t edges; const char *ex[4]; unsigned nex; } why[128];
     size_t nwhy = 0;
     struct AtEnt { char key[200]; size_t edges; } at[256];
@@ -2019,8 +2024,10 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
         if (sw[k].has_ask)
             for (i = 0; i < MC_N; i++) {
                 unsigned a;
-                for (a = 0; a < AK_N; a++)
+                for (a = 0; a < AK_N; a++) {
                     ask[i][a] += sw[k].ask[i][a];
+                    fr[i][a] += sw[k].fr[i][a];
+                }
             }
         if (fe) {                                   /* per function, and by the place the stop read its pointer */
             char key[200], *p;
@@ -2074,6 +2081,12 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
             fprintf(stderr, "cereal: asked %s: %zu:", miss_name[i], t);
             for (a = 0; a < AK_N; a++)
                 fprintf(stderr, " %s %zu;", ask_name[a], ask[i][a]);
+            fputc(10, stderr);
+            for (t = 0, a = 0; a < AK_N; a++)
+                t += fr[i][a];
+            fprintf(stderr, "cereal: frontier %s: %zu:", miss_name[i], t);
+            for (a = 0; a < AK_N; a++)
+                fprintf(stderr, " %s %zu;", ask_name[a], fr[i][a]);
             fputc(10, stderr);
         }
 }
@@ -2142,7 +2155,7 @@ static void eval_sweep(Checker *c0)
         unsigned nv, vi;
         bool fin = false;               /* a state variant finished */
         bool has_ask = false;           /* the plain variant's untaken edges by class and by the solver's answer (fn_ask) */
-        size_t ask[MC_N][AK_N] = {{0}};
+        size_t ask[MC_N][AK_N] = {{0}}, fr[MC_N][AK_N] = {{0}};
         if (!sweep_cand(f))
             continue;
         v->c = c;
@@ -2220,14 +2233,16 @@ static void eval_sweep(Checker *c0)
                 ss.taken += st ? 0 : tk;
                 if (!st && (x.saw_ok || fin) && c0->opt.eval_miss) {
                     memset(ask, 0, sizeof ask);
-                    fn_ask(v, f, &x.q.done, ask);
+                    memset(fr, 0, sizeof fr);
+                    fn_ask(v, f, &x.q.done, ask, fr);
                     has_ask = true;
                 }
                 search_free(&x.q);
             }
             if (!st) {
-                SweptFn sw = { i, x.saw_ok || fin, "", "", has_ask, {{0}} };
+                SweptFn sw = { i, x.saw_ok || fin, "", "", has_ask, {{0}}, {{0}} };
                 memcpy(sw.ask, ask, sizeof sw.ask);
+                memcpy(sw.fr, fr, sizeof sw.fr);
                 memcpy(sw.why, x.why, sizeof sw.why);
                 memcpy(sw.loc, x.loc, sizeof sw.loc);
                 vec_push(&swept, sw);
