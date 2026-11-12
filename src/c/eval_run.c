@@ -1980,7 +1980,10 @@ static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][A
                 ask[c][a]++;
                 if (b->seen) {          /* a reached block: is this edge the way into one nothing reached? */
                     uint32_t to = b->term == TK_BR ? (fe ? b->b : b->a) : fe < b->nc ? b->cases[fe].to : b->a;
-                    fr[c][a] += to < f->nblk && !f->blk[to].seen;
+                    size_t hop;     /* only branch blocks record `seen`: follow jumps to the next one */
+                    for (hop = 0; hop < f->nblk && to < f->nblk && f->blk[to].term == TK_JMP; hop++)
+                        to = f->blk[to].a;
+                    fr[c][a] += to < f->nblk && (f->blk[to].term == TK_BR || f->blk[to].term == TK_SWTCH) && !f->blk[to].seen;
                 }
             }
     }

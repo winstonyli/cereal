@@ -129,7 +129,7 @@ As built (differences from section 1 in bold):
   and `solve_step` (one tracked run of the next corpus input and its queries, interleaved after each
   dictionary round, then until the caps `SEXPAND` 8 tracked runs and `SQUERY` 48 queries are spent). A
   solved child that takes a new edge joins the corpus and is tracked in turn. A call that traps (random,
-  or solved) goes to a queue of its own (4 slots) that `trap_step` pops before and after, walked by the
+  or solved) goes to a queue of its own (4 slots) that `stop_step` pops before and after, walked by the
   same `flip_walk`; its budget is 4 + untaken edges / 8, at most 256 (`docs/STOPPED_SEEDS_SPIKE.md`, "Built"). Every finishing call is
   printed and compared with gcc as before. Variants parked: `PARKED.md` (round budget by progress,
   yield-weighted mutations, printing only new-edge calls). Corpus (zstd and Lua 5.4, N=24, run

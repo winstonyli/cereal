@@ -1,5 +1,5 @@
 #!/bin/sh
-# eval_trapq.sh CEREAL: the trapped-call queue of the solver sweep (src/c/eval_run.c, trap_step).
+# eval_trapq.sh CEREAL: the trapped-call queue of the solver sweep (src/c/eval_run.c, stop_step).
 # tests/cfg_trapq/trapq.c has an edge only reachable through a call that traps; with the queue the solver
 # takes every edge, without it one stays untaken.  Needs EVAL_SWEEP_SOLVE (e.g. 'z3 -in -smt2'); skipped without.
 C=${1:?cereal binary}
