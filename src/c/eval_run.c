@@ -2075,7 +2075,7 @@ static bool blk_reached_branch(const Blk *b)
  * through a computed goto). */
 static void fn_gates(Ev *v, const Fn *f)
 {
-    size_t n = f->nblk, i, e, tot = 0, toti = 0, left = 0, picks = 0;
+    size_t n = f->nblk, i, e, tot = 0, toti = 0, left = 0, picks = 0, lab = 0;
     unsigned *wt = calloc(n, sizeof *wt), *wi = calloc(n, sizeof *wi);
     uint8_t *cov = calloc(n, 1);
     uint32_t *stk = malloc(n * sizeof *stk);
@@ -2163,9 +2163,35 @@ static void fn_gates(Ev *v, const Fn *f)
                 left += wt[x];
             }
     }
+    if (tot && f->nlab) {                       /* of the edges behind no gate, those behind a label of a computed goto */
+        uint8_t *lr = calloc(n, 1);
+        size_t j, sp = 0;
+        if (lr) {
+            for (j = 0; j < f->nlab; j++)
+                if (f->lab[j].blk < n && !lr[f->lab[j].blk] && !blk_reached_branch(&f->blk[f->lab[j].blk])) {
+                    lr[f->lab[j].blk] = 1;
+                    stk[sp++] = f->lab[j].blk;
+                }
+            while (sp) {
+                uint32_t x = stk[--sp];
+                const Blk *y = &f->blk[x];
+                size_t k, ns = blk_nsucc(y);
+                for (k = 0; k < ns; k++) {
+                    uint32_t s = blk_succ(y, k);
+                    if (s < n && !lr[s] && !blk_reached_branch(&f->blk[s])) {
+                        lr[s] = 1;
+                        stk[sp++] = s;
+                    }
+                }
+            }
+            for (j = 0; j < n; j++)
+                lab += lr[j] && !cov[j] ? wt[j] : 0;
+            free(lr);
+        }
+    }
     if (tot)
-        fprintf(stderr, "cereal: gated %s: %zu edges (%zu integer) in unreached blocks, %zu behind no gate, %zu gates, %zu picks\n",
-                ev_fn_name(f->c, f->fsym), tot, toti, tot - left, gs.len, picks);
+        fprintf(stderr, "cereal: gated %s: %zu edges (%zu integer) in unreached blocks, %zu behind no gate (%zu of them behind a label), %zu gates, %zu picks\n",
+                ev_fn_name(f->c, f->fsym), tot, toti, tot - left, lab, gs.len, picks);
 out:
     while (gs.len)
         free(vec_pop(&gs).reach);
