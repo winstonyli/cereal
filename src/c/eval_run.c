@@ -1944,7 +1944,10 @@ static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N])
 }
 
 /* The untaken edges of the finished function f by class and by what asking the solver came to (done: the edges asked);
- * the same edges as fn_miss counts.  A switch of more than 61 cases has its default counted as never asked. */
+ * the same edges as fn_miss counts, at the moment the function's search ends (later callers may take more).  Caveats:
+ * `done` holds the queries made while sweeping f's plain variant, callee blocks included, and none of the state variants';
+ * Blk.trk is set by any tracked run of any function; "unsat" is relative to the first seed's path prefix; "symbolic step,
+ * not asked" lumps the query and run budgets, a path cap and a tracked run that did not finish. */
 static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][AK_N])
 {
     size_t i;
@@ -1954,12 +1957,12 @@ static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][A
         unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
         int c = -1;
         if (blk_const(f, b)) {
-            ask[MC_OTHER][AK_CONC] += !(b->seen & 3);
+            ask[MC_OTHER][AK_NOREACH] += !(b->seen & 3);
             continue;
         }
         for (e = 0; e < ne; e++)
             if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
-                uint32_t fe = b->term == TK_SWTCH && e == ne - 1 && b->nc <= 61 ? (uint32_t)b->nc : e;
+                uint32_t fe = b->term == TK_SWTCH && e == ne - 1 ? (uint32_t)b->nc : e;
                 size_t j;
                 int a = b->trk & 2 ? AK_OPEN : b->trk ? AK_CONC : AK_NOREACH;
                 if (c < 0)
@@ -2215,7 +2218,7 @@ static void eval_sweep(Checker *c0)
                 ed = 0;
                 blk_count(f, &ed, &tk);
                 ss.taken += st ? 0 : tk;
-                if (!st && (x.saw_ok || fin)) {
+                if (!st && (x.saw_ok || fin) && c0->opt.eval_miss) {
                     memset(ask, 0, sizeof ask);
                     fn_ask(v, f, &x.q.done, ask);
                     has_ask = true;

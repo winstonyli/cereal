@@ -64,9 +64,9 @@ typedef struct Blk {
     size_t nc;
     uint32_t val, a, b;
     uint8_t term;
+    uint8_t trk;                /* a tracked run reached its branch or switch (bit 0), on a symbolic condition (bit 1): --eval-miss */
     uint64_t seen;              /* the edges any call has taken: a branch's a (bit 0) and b (bit 1);
                                    a switch's cases by index (bits 0..61, later ones share 61), default bit 62 */
-    uint8_t trk;                /* a tracked run reached its branch or switch (bit 0), on a symbolic condition (bit 1): --eval-miss */
 } Blk;
 
 /* One step of a tracked call's path: a branch or switch on a symbolic value (blk, the edge taken:
