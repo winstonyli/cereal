@@ -2048,6 +2048,134 @@ static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][A
     }
 }
 
+typedef struct Gate {
+    uint32_t blk, ed;                   /* the block and the edge (as the `cereal: edge` lines give it) */
+    int cls;
+    uint8_t *reach;                     /* the blocks its edge leads to without passing a reached branch */
+} Gate;
+
+static size_t blk_nsucc(const Blk *b)
+{
+    return b->term == TK_BR ? 2 : b->term == TK_SWTCH ? b->nc + 1 : b->term == TK_JMP ? 1 : 0;
+}
+
+static uint32_t blk_succ(const Blk *b, size_t i)
+{
+    return b->term == TK_BR ? (i ? b->b : b->a) : b->term == TK_SWTCH && i < b->nc ? b->cases[i].to : b->a;
+}
+
+static bool blk_reached_branch(const Blk *b)
+{
+    return (b->term == TK_BR || b->term == TK_SWTCH) && b->seen;
+}
+
+/* --eval-miss: the untaken edges of branch blocks no run reached, traced to their gates: the untaken edges of reached
+ * blocks that lead into them (the frontier).  Greedy cover, per function: the gate with the most still uncovered edges
+ * behind it first.  Prints the picks, then the function's totals (edges behind no gate: unreachable here, or only
+ * through a computed goto). */
+static void fn_gates(Ev *v, const Fn *f)
+{
+    size_t n = f->nblk, i, e, tot = 0, toti = 0, left = 0, picks = 0;
+    unsigned *wt = calloc(n, sizeof *wt), *wi = calloc(n, sizeof *wi);
+    uint8_t *cov = calloc(n, 1);
+    uint32_t *stk = malloc(n * sizeof *stk);
+    VEC(Gate) gs = {0};
+    v->c = f->c;
+    if (!wt || !wi || !cov || !stk)
+        goto out;
+    for (i = 0; i < n; i++) {
+        const Blk *b = &f->blk[i];
+        if ((b->term != TK_BR && b->term != TK_SWTCH) || b->seen)
+            continue;
+        wt[i] = blk_const(f, b) ? 1 : b->term == TK_BR ? 2 : (b->nc > 61 ? 62 : (unsigned)b->nc + 1);
+        if (!blk_const(f, b)) {
+            int c = miss_class(v, f, b);
+            wi[i] = c == MC_ICMP || c == MC_IVAL ? wt[i] : 0;
+        }
+        tot += wt[i];
+        toti += wi[i];
+    }
+    for (i = 0; i < n && tot; i++) {
+        const Blk *b = &f->blk[i];
+        unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0;
+        int c = -1;
+        if (!b->seen || !ne || blk_const(f, b))
+            continue;
+        for (e = 0; e < ne; e++) {
+            uint32_t ed = b->term == TK_SWTCH && e == ne - 1 ? 62u : (uint32_t)e;
+            uint32_t t = blk_succ(b, ed == 62u ? b->nc : e);
+            size_t sp = 0, hit = 0;
+            uint8_t *r;
+            if (b->seen >> ed & 1 || t >= n || blk_reached_branch(&f->blk[t]))
+                continue;
+            if (!(r = calloc(n, 1)))
+                goto out;
+            r[t] = 1;
+            stk[sp++] = t;
+            while (sp) {
+                uint32_t x = stk[--sp];
+                const Blk *y = &f->blk[x];
+                size_t k, ns = blk_nsucc(y);
+                hit += wt[x];
+                for (k = 0; k < ns; k++) {
+                    uint32_t s = blk_succ(y, k);
+                    if (s < n && !r[s] && !blk_reached_branch(&f->blk[s])) {
+                        r[s] = 1;
+                        stk[sp++] = s;
+                    }
+                }
+            }
+            if (!hit) {
+                free(r);
+                continue;
+            }
+            if (c < 0)
+                c = miss_class(v, f, b);
+            {
+                Gate g = { (uint32_t)i, ed, c, r };
+                vec_push(&gs, g);
+            }
+        }
+    }
+    while (tot) {
+        size_t best = 0, bw = 0, bi = 0, g, x;
+        for (g = 0; g < gs.len; g++) {
+            size_t w = 0, wj = 0;
+            for (x = 0; x < n; x++)
+                if (gs.data[g].reach[x] && !cov[x]) {
+                    w += wt[x];
+                    wj += wi[x];
+                }
+            if (w > bw) {
+                best = g;
+                bw = w;
+                bi = wj;
+            }
+        }
+        if (!bw)
+            break;
+        if (picks++ < 12)
+            fprintf(stderr, "cereal: gate %s %u.%u %s opens %zu edges (%zu integer)\n", ev_fn_name(f->c, f->fsym),
+                    gs.data[best].blk, gs.data[best].ed, miss_name[gs.data[best].cls], bw, bi);
+        for (x = 0; x < n; x++)
+            if (gs.data[best].reach[x] && !cov[x]) {
+                cov[x] = 1;
+                left += wt[x];
+            }
+    }
+    if (tot)
+        fprintf(stderr, "cereal: gated %s: %zu edges (%zu integer) in unreached blocks, %zu behind no gate, %zu gates, %zu picks\n",
+                ev_fn_name(f->c, f->fsym), tot, toti, tot - left, gs.len, picks);
+out:
+    while (gs.len)
+        free(vec_pop(&gs).reach);
+    vec_free(&gs);
+    free(wt);
+    free(wi);
+    free(cov);
+    free(stk);
+}
+
 static void miss_report(Ev *v, const SweptFn *sw, size_t n)
 {
     size_t counts[MC_N] = {0}, total = 0, k, i;
@@ -2062,6 +2190,8 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
         for (i = 0; i < MC_N; i++)
             counts[i] += cls[i];
         total += ft;
+        if (v->c->opt.eval_miss && sw[k].finished)
+            fn_gates(v, f);
         if (fe) {                                   /* by the function's first stop, digits and addresses folded */
             char key[104];
             size_t m, j = 0, w;
