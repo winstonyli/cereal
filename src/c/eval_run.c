@@ -1557,6 +1557,7 @@ typedef struct SSearch {
     size_t next;
     STriedVec done;                     /* the edges already asked about */
     size_t queries, expanded;
+    size_t tqueries;                    /* table-index queries (g1 spike): a budget of their own, STABQ */
     VEC(SSeed) stopped;                 /* calls that stopped: the queue of their own, popped by stop_step */
     size_t texpanded;
 } SSearch;
@@ -1670,14 +1671,14 @@ static bool probe_sat(Ev *v, SxSolver *sv, size_t i, uint32_t e, unsigned drop)
 /* One query: do the bytes exist that satisfy cs (n conditions) on top of the prefix asserted so far?  If so, run them
  * as one more call, kept as a seed if it takes a new edge (or, if it stops, in the queue of its own).  The AK_* class
  * of the answer. */
-static int flip_ask(SCtx *x, const SSeed *seed, const LKeys *syms, const SxCond *cs, size_t n, SxModel *m)
+static int flip_ask(SCtx *x, const SSeed *seed, const LKeys *syms, const SxCond *cs, size_t n, SxModel *m, size_t *budget)
 {
     Ev *v = x->v;
     SolveStat *st = x->ss;
     SSearch *q = &x->q;
     SSeed child = {0};
     int r, sat;
-    q->queries++;
+    ++*budget;
     st->queries++;
     r = sx_try(x->sv, cs, n, m);
     if (r == SX_ERROR) {
@@ -1704,6 +1705,7 @@ static int flip_ask(SCtx *x, const SSeed *seed, const LKeys *syms, const SxCond 
 }
 
 #define STAB 8                  /* table elements asked per walk (g1 spike) */
+#define STABQ 48                /* table-index queries per function (g1 spike); the branch flips keep SQUERY */
 
 /* g1 spike: the pin p is the index of a pointer into the read-only table p.tobj.  Ask for indices this index site has
  * not taken yet: the pin's word equal to each. */
@@ -1712,7 +1714,7 @@ static void table_flips(SCtx *x, const SSeed *seed, const LKeys *syms, const Pat
     Ev *v = x->v;
     uint32_t sh = sx_at(&v->sx, p->expr)->a;
     uint64_t k;
-    for (k = 0; k < p->tn && *left && x->q.queries < SQUERY; k++) {
+    for (k = 0; k < p->tn && *left && x->q.tqueries < STABQ; k++) {
         size_t i;
         SxCond c;
         for (i = 0; i < v->tseen.len; i++)
@@ -1728,7 +1730,7 @@ static void table_flips(SCtx *x, const SSeed *seed, const LKeys *syms, const Pat
         c.want = true;
         (*left)--;
         x->ss->tq++;
-        x->ss->tsat += flip_ask(x, seed, syms, &c, 1, m) >= AK_STOP;
+        x->ss->tsat += flip_ask(x, seed, syms, &c, 1, m, &x->q.tqueries) >= AK_STOP;
     }
 }
 
@@ -1776,7 +1778,7 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                     STried t = { b, e, AK_UNKNOWN };
                     vec_push(done, t);
                 }
-                ask = flip_ask(x, seed, syms, cs, n, &m);
+                ask = flip_ask(x, seed, syms, cs, n, &m, &q->queries);
                 done->data[done->len - 1].ask = ask;
                 if (ask == AK_UNSAT && v->c->opt.eval_miss && nun < SQUERY) {
                     un[nun].i = i;
