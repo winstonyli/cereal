@@ -1388,8 +1388,8 @@ static int sweep_call(Ev *v, StrBuf *body, const char *name, const Fn *f, const 
 #define SSEEDS 4                /* finishing inputs kept as starting points */
 #define SEXPAND 8               /* tracked runs per function */
 #define SRLIMIT 5000000         /* the solver's resource limit per query: deterministic, not time */
-#define STRAP 4                 /* calls that trapped, kept as starting points of their own */
-#define STBASE 4                /* tracked runs of trapped calls per function, plus one per STDIV untaken edges, at most STMAX */
+#define STRAP 4                 /* calls that stopped (trap, unsupported, limit), kept as starting points of their own */
+#define STBASE 4                /* tracked runs of stopped calls per function, plus one per STDIV untaken edges, at most STMAX */
 #define STDIV 8
 #define STMAX 256
 
@@ -1401,13 +1401,13 @@ typedef struct SolveStat {
     unsigned long steps, open;      /* path steps (branches on symbolic values, pins); branches with an unseen edge */
     unsigned long branches;         /* every branch and switch the tracked runs took */
     unsigned long gain;             /* edges first taken by a solver round, in any function */
-    unsigned long trapped;          /* tracked runs of trapped calls (the queue of their own) */
+    unsigned long stopped;          /* tracked runs of stopped calls (the queue of their own) */
 } SolveStat;
 
 /* What came of asking the solver for an edge (--eval-miss reports the edges still untaken by it). */
-enum { AK_NOREACH, AK_UNTRK, AK_CONC, AK_OPEN, AK_UNKNOWN, AK_UNSAT, AK_TRAP, AK_STOP, AK_MISS, AK_N };
+enum { AK_NOREACH, AK_UNTRK, AK_CONC, AK_OPEN, AK_UNKNOWN, AK_UNSAT, AK_STOP, AK_MISS, AK_N };
 static const char *const ask_name[AK_N] = { "no run reached it", "only untracked runs reached it", "reached, condition concrete",
-    "symbolic step, not asked", "unknown", "unsat", "sat, run trapped", "sat, run stopped",
+    "symbolic step, not asked", "unknown", "unsat", "sat, run stopped",
     "sat, run finished without it" };
 
 typedef struct STried {
@@ -1468,12 +1468,18 @@ static void seed_free(SSeed *sd)
     vec_free(&sd->log);
 }
 
-/* What a solved call came to: a finish with nothing new, a finish that took a new edge, a trap, or another stop. */
-enum { SR_NONE, SR_EDGE, SR_TRAP, SR_STOP };
+/* What a solved call came to: nothing worth keeping (a finish with nothing new, an exit), a finish that took a new edge, or a stop. */
+enum { SR_NONE, SR_EDGE, SR_STOP };
+
+/* A call that stopped before its end (a trap, an unsupported construct, the step limit): its path up to the stop is a seed. */
+static bool call_stopped(int st)
+{
+    return st == EV_TRAP || st == EV_UNSUPPORTED || st == EV_FUEL;
+}
 
 /* One solved call: the seed with the model's values written over it; SR_EDGE if it finished and
- * took an edge nobody had (then it is worth tracking itself), SR_STOP if it stopped some other way, SR_TRAP if it trapped (a trapped call is a seed
- * of the queue of its own, see trap_step).  The model is in solver symbols;
+ * took an edge nobody had (then it is worth tracking itself), SR_STOP if it stopped (a stopped call is a seed
+ * of the queue of its own, see stop_step).  The model is in solver symbols;
  * `syms` (from the seed's tracked run) maps them back to the keys of the draws. */
 static int solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *syms, const Fn *f, const SFn *s,
                       StrBuf *body, const char *name, bool *bad, bool *saw_ok, SSeed *child)
@@ -1500,12 +1506,12 @@ static int solve_run(Ev *v, const SxModel *m, const SSeed *seed, const LKeys *sy
         llog_sort(&c.log);
     }
     *saw_ok |= st == EV_OK;
-    if ((st == EV_OK && v->newseen != before) || st == EV_TRAP) {
+    if ((st == EV_OK && v->newseen != before) || call_stopped(st)) {
         *child = c;
-        return st == EV_TRAP ? SR_TRAP : SR_EDGE;
+        return call_stopped(st) ? SR_STOP : SR_EDGE;
     }
     seed_free(&c);
-    return st == EV_OK ? SR_NONE : SR_STOP;
+    return SR_NONE;
 }
 
 static bool tried(const STriedVec *t, const Blk *b, uint32_t edge)
@@ -1548,7 +1554,7 @@ typedef struct SSearch {
     size_t next;
     STriedVec done;                     /* the edges already asked about */
     size_t queries, expanded;
-    VEC(SSeed) trapped;                 /* calls that trapped: the queue of their own, popped by trap_step */
+    VEC(SSeed) stopped;                 /* calls that stopped: the queue of their own, popped by stop_step */
     size_t texpanded;
 } SSearch;
 
@@ -1571,13 +1577,13 @@ static void search_keep(SSearch *q, LLog *log, uint64_t rs0, bool fresh)
     vec_push(&q->corpus, seed_take(log, rs0));
 }
 
-/* Keeps a call that trapped for the queue of its own; sd is consumed. */
-static void trap_push(SSearch *q, SSeed sd)
+/* Keeps a call that stopped for the queue of its own; sd is consumed. */
+static void stop_push(SSearch *q, SSeed sd)
 {
-    if (q->trapped.len >= STRAP)
+    if (q->stopped.len >= STRAP)
         seed_free(&sd);
     else
-        vec_push(&q->trapped, sd);
+        vec_push(&q->stopped, sd);
 }
 
 static void search_free(SSearch *q)
@@ -1588,11 +1594,11 @@ static void search_free(SSearch *q)
     }
     vec_free(&q->corpus);
     vec_free(&q->done);
-    while (q->trapped.len) {
-        SSeed sd = vec_pop(&q->trapped);
+    while (q->stopped.len) {
+        SSeed sd = vec_pop(&q->stopped);
         seed_free(&sd);
     }
-    vec_free(&q->trapped);
+    vec_free(&q->stopped);
 }
 
 /* One function's sweep: what a mutation needs (a mutation is a round of the search). */
@@ -1613,7 +1619,7 @@ typedef struct SCtx {
 
 /* The walk over the tracked path of seed (just rerun, its symbols in syms): at each branch whose other edge
  * nobody has taken, ask for bytes that take it, the steps before it as the prefix; each answer is one more
- * call, kept if it takes a new edge (or, if it traps, in the queue of its own). */
+ * call, kept if it takes a new edge (or, if it stops, in the queue of its own). */
 static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
 {
     Ev *v = x->v;
@@ -1674,9 +1680,9 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                 }
                 st->calls++;
                 sat = solve_run(v, &m, seed, syms, x->f, x->s, x->body, x->name, &x->bad, &x->saw_ok, &child);
-                done->data[done->len - 1].ask = sat == SR_TRAP ? AK_TRAP : sat == SR_STOP ? AK_STOP : AK_MISS;
-                if (sat == SR_TRAP) {
-                    trap_push(q, child);
+                done->data[done->len - 1].ask = sat == SR_STOP ? AK_STOP : AK_MISS;
+                if (sat == SR_STOP) {
+                    stop_push(q, child);
                 } else if (sat == SR_EDGE) {
                     st->fresh++;
                     if (q->corpus.len < SCORPUS)
@@ -1736,8 +1742,8 @@ static bool solve_step1(SCtx *x)
     return true;
 }
 
-/* Tracked runs of trapped calls per function: STBASE, plus one for each STDIV edges still untaken, at most STMAX. */
-static size_t trap_budget(const SCtx *x)
+/* Tracked runs of stopped calls per function: STBASE, plus one for each STDIV edges still untaken, at most STMAX. */
+static size_t stop_budget(const SCtx *x)
 {
     size_t edges = 0, taken = 0, b;
     blk_count(x->f, &edges, &taken);
@@ -1745,10 +1751,10 @@ static size_t trap_budget(const SCtx *x)
     return b < STMAX ? b : STMAX;
 }
 
-/* The trapped-call mutation: a call that trapped is a seed like a finished one, but from the queue of its own
- * (a trap is not an input to keep as a corpus entry).  Rerun tracked, its path up to the trap is walked like
- * any other, and each answer that traps again joins the queue (a chain).  False when the queue or the budget is used up. */
-static bool trap_step(SCtx *x)
+/* The stopped-call mutation: a call that stopped is a seed like a finished one, but from the queue of its own
+ * (a stop is not an input to keep as a corpus entry).  Rerun tracked, its path up to the stop is walked like
+ * any other, and each answer that stops again joins the queue (a chain).  False when the queue or the budget is used up. */
+static bool stop_step(SCtx *x)
 {
     Ev *v = x->v;
     SSearch *q = &x->q;
@@ -1756,9 +1762,9 @@ static bool trap_step(SCtx *x)
     SSeed seed;
     StrBuf sink = {0};
     int r;
-    if (!q->trapped.len || q->texpanded >= trap_budget(x) || q->queries >= SQUERY)
+    if (!q->stopped.len || q->texpanded >= stop_budget(x) || q->queries >= SQUERY)
         return false;
-    seed = vec_pop(&q->trapped);
+    seed = vec_pop(&q->stopped);
     v->track = true;
     {
         LOpt op = {&seed.log, NULL, &syms};
@@ -1768,9 +1774,9 @@ static bool trap_step(SCtx *x)
     v->track = false;
     sb_free(&sink);
     q->texpanded++;
-    x->ss->trapped++;
+    x->ss->stopped++;
     v->nbr = 0;
-    if (r == EV_TRAP)
+    if (call_stopped(r))
         flip_walk(x, &seed, &syms);
     vec_free(&syms);
     seed_free(&seed);
@@ -1780,7 +1786,7 @@ static bool trap_step(SCtx *x)
 static bool solve_step(SCtx *x)
 {
     unsigned long seen = x->v->newseen;
-    bool r = trap_step(x) || solve_step1(x) || trap_step(x);
+    bool r = stop_step(x) || solve_step1(x) || stop_step(x);
     x->ss->gain += x->v->newseen - seen;
     return r;
 }
@@ -1820,8 +1826,8 @@ static void mut_gen(SCtx *x)
         }
         if (x->sv && st == EV_OK)
             search_keep(&x->q, &rec, rs0, v->newseen != seen);
-        else if (x->sv && st == EV_TRAP)
-            trap_push(&x->q, seed_take(&rec, rs0));
+        else if (x->sv && call_stopped(st))
+            stop_push(&x->q, seed_take(&rec, rs0));
         vec_free(&rec);
     }
     x->saw_ok |= st == EV_OK;
@@ -2265,10 +2271,10 @@ static void eval_sweep(Checker *c0)
         fprintf(stderr,
                 "cereal: solve: %lu queries (%lu sat, %lu unsat, %lu unknown), %lu calls, %lu reached a new edge; "
                 "edges taken %zu of %zu, %lu of them first by a solver round (callees included); at most %zu nodes in a call; "
-                "%lu functions with a finishing input, %lu tracked runs (%lu of trapped calls), %lu symbolic steps of %lu branches, "
+                "%lu functions with a finishing input, %lu tracked runs (%lu of stopped calls), %lu symbolic steps of %lu branches, "
                 "%lu with an unseen edge\n",
                 ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
-                ss.nodes, ss.seeded, ss.tracked, ss.trapped, ss.steps, ss.branches, ss.open);
+                ss.nodes, ss.seeded, ss.tracked, ss.stopped, ss.steps, ss.branches, ss.open);
         miss_report(v, swept.data, swept.len);
         vec_free(&swept);
         sx_close(sv);
