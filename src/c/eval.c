@@ -1555,7 +1555,7 @@ static bool nullable_sh(Ev *v, uint32_t sh)
 
 /* A symbolic value the evaluator uses as a number (an index, a divisor, a shift count) keeps
  * its value on the path: the entry is the equation. */
-static void pin(Ev *v, uint32_t sh, uint64_t x)
+static void pin(Ev *v, uint32_t sh, uint64_t x, PinKind kind)
 {
     PathEnt e;
     if (!v->track || !(sh = strip_sh(v, sh)))
@@ -1563,6 +1563,8 @@ static void pin(Ev *v, uint32_t sh, uint64_t x)
     memset(&e, 0, sizeof e);
     e.expr = sx_op(&v->sx, SX_EQ, sh, sx_const(&v->sx, 64, x));
     e.want = true;
+    e.edge = kind;
+    v->npin[kind]++;
     path_add(v, e);
 }
 
@@ -1704,7 +1706,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     }
     case TO_LOAD:
         a = ev_node(r, KID(r, n, 0));
-        pin(v, v->sh, a);
+        pin(v, v->sh, a, PK_LOAD);
         if (is_agg(v, t->ty) || v->res.status)
             return a;
         if (!ev_tinfo(v, t->ty, &ti))
@@ -1717,7 +1719,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     case TO_STORE: {
         uint64_t sz;
         a = ev_node(r, KID(r, n, 0));
-        pin(v, v->sh, a);
+        pin(v, v->sh, a, PK_STORE);
         b = ev_node(r, KID(r, n, 1));
         bsh = v->sh;
         if (v->res.status)
@@ -1840,7 +1842,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         if (v->res.status || !ev_tinfo(v, t->ty, &ti))
             return 0;
         if (!ti.flt && (t->pun == P_SLASH || t->pun == P_PERCENT || t->pun == P_SHL || t->pun == P_SHR))
-            pin(v, bsh, b);
+            pin(v, bsh, b, PK_SHDIV);
         if (!ti.flt && bin_op(t->pun, ti.sg) >= 0)
             *sh = op_sh(v, bin_op(t->pun, ti.sg), &ti, a, ash, b, bsh);
         return ti.flt ? fbin(v, t->pun, &ti, a, b) : int_arith(v, t->pun, t->ty, a, b);
@@ -1906,7 +1908,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             return 0;
         }
         a = ev_node(r, KID(r, n, 0));
-        pin(v, v->sh, a);
+        pin(v, v->sh, a, PK_FIELD);
         a = mkptr(pid(a), (int64_t)poff(a) + t->val);
         if (is_agg(v, t->ty) || v->res.status)
             return a;
@@ -1922,7 +1924,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         b = ev_node(r, KID(r, n, 1));
         if (v->res.status)
             return 0;
-        pin(v, v->sh, b);
+        pin(v, v->sh, b, PK_INDEX);
         if (__builtin_mul_overflow((int64_t)b, t->val, &off) ||
             __builtin_add_overflow(off, (int64_t)poff(a), &off) || off < INT32_MIN ||
             off > INT32_MAX) {
@@ -2122,7 +2124,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
             uint32_t to;
             if (v->res.status)
                 break;
-            pin(v, v->sh, c);
+            pin(v, v->sh, c, PK_GOTO);
             if (!label_blk(v, f, c, &to))
                 break;
             bi = to;

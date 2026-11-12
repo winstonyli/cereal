@@ -1402,6 +1402,8 @@ typedef struct SolveStat {
     unsigned long branches;         /* every branch and switch the tracked runs took */
     unsigned long gain;             /* edges first taken by a solver round, in any function */
     unsigned long stopped;          /* tracked runs of stopped calls (the queue of their own) */
+    unsigned long unsat_nopin;      /* --eval-miss: unsat queries that are sat with every pin dropped (an upper bound: a model may not replay) */
+    unsigned long unsat_kind[PK_N]; /* ... and with only the pins of that kind dropped */
 } SolveStat;
 
 /* What came of asking the solver for an edge (--eval-miss reports the edges still untaken by it). */
@@ -1617,6 +1619,53 @@ typedef struct SCtx {
     char loc[112];                      /* ... and where it had read the pointer it stopped on */
 } SCtx;
 
+/* The conditions that take edge e of the branch step p (n of them; whole: all could be built). */
+static size_t flip_conds(Ev *v, const PathEnt *p, uint32_t e, SxCond *cs, bool *whole)
+{
+    *whole = true;
+    if (p->blk->term == TK_BR) {
+        cs[0].a = p->expr;
+        cs[0].want = !p->want;
+        return 1;
+    }
+    return switch_conds(v, p, e, cs, whole);
+}
+
+/* The step itself joins the prefix. */
+static void assert_step(Ev *v, SxSolver *sv, const PathEnt *p)
+{
+    if (!p->blk || p->blk->term == TK_BR) {
+        sx_assert(sv, p->expr, p->want);
+    } else {
+        SxCond cs[64];
+        bool whole;
+        size_t n = switch_conds(v, p, p->edge, cs, &whole), k;
+        for (k = 0; k < n; k++)
+            sx_assert(sv, cs[k].a, cs[k].want);
+    }
+}
+
+/* Is edge e of path step i taken by some input when the pins of the kinds in drop (a PinKind mask) are left out of
+ * the prefix?  Only for the --eval-miss census of what the pins cost. */
+static bool probe_sat(Ev *v, SxSolver *sv, size_t i, uint32_t e, unsigned drop)
+{
+    SxCond cs[64];
+    SxModel m = {0};
+    bool whole;
+    size_t j, n;
+    int r;
+    sx_begin(sv, &v->sx);
+    for (j = 0; j < v->dom.len; j++)
+        sx_assert(sv, v->dom.data[j], true);
+    for (j = 0; j < i; j++)
+        if (v->path.data[j].blk || !(drop >> v->path.data[j].edge & 1))
+            assert_step(v, sv, &v->path.data[j]);
+    n = flip_conds(v, &v->path.data[i], e, cs, &whole);
+    r = whole ? sx_try(sv, cs, n, &m) : SX_ERROR;
+    sx_model_free(&m);
+    return r == SX_SAT;
+}
+
 /* The walk over the tracked path of seed (just rerun, its symbols in syms): at each branch whose other edge
  * nobody has taken, ask for bytes that take it, the steps before it as the prefix; each answer is one more
  * call, kept if it takes a new edge (or, if it stops, in the queue of its own). */
@@ -1628,7 +1677,8 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
     SSearch *q = &x->q;
     STriedVec *done = &q->done;
     SxModel m = {0};
-    size_t i;
+    struct { size_t i; uint32_t e; } un[SQUERY];
+    size_t i, nun = 0;
     sx_begin(sv, &v->sx);
     for (i = 0; i < v->dom.len; i++)
         sx_assert(sv, v->dom.data[i], true);
@@ -1651,13 +1701,7 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                 SSeed child = {0};
                 if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(done, b, e))
                     continue;
-                if (b->term == TK_BR) {
-                    cs[0].a = p.expr;
-                    cs[0].want = !p.want;
-                    n = 1;
-                } else {
-                    n = switch_conds(v, &p, e, cs, &whole);
-                }
+                n = flip_conds(v, &p, e, cs, &whole);
                 if (!whole)
                     continue;
                 {
@@ -1676,6 +1720,10 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                 st->unknown += r == SX_UNKNOWN;
                 if (r != SX_SAT) {
                     done->data[done->len - 1].ask = r == SX_UNSAT ? AK_UNSAT : AK_UNKNOWN;
+                    if (r == SX_UNSAT && v->c->opt.eval_miss && nun < SQUERY) {
+                        un[nun].i = i;
+                        un[nun++].e = e;
+                    }
                     continue;
                 }
                 st->calls++;
@@ -1692,15 +1740,20 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                 }
             }
         }
-        /* the step itself joins the prefix */
-        if (!p.blk || p.blk->term == TK_BR) {
-            sx_assert(sv, p.expr, p.want);
-        } else {
-            bool whole;
-            size_t n = switch_conds(v, &p, p.edge, cs, &whole), k;
-            for (k = 0; k < n; k++)
-                sx_assert(sv, cs[k].a, cs[k].want);
-        }
+        assert_step(v, sv, &p);
+    }
+    for (i = 0; i < nun; i++) {                 /* --eval-miss: would the unsat queries be sat without their pins? */
+        unsigned present = 0, k;
+        size_t j;
+        for (j = 0; j < un[i].i; j++)
+            if (!v->path.data[j].blk)
+                present |= 1u << v->path.data[j].edge;
+        if (!present || !probe_sat(v, sv, un[i].i, un[i].e, present))
+            continue;
+        st->unsat_nopin++;
+        for (k = 0; k < PK_N; k++)
+            if (present >> k & 1)
+                st->unsat_kind[k] += probe_sat(v, sv, un[i].i, un[i].e, 1u << k);
     }
     sx_model_free(&m);
 }
@@ -2284,6 +2337,18 @@ static void eval_sweep(Checker *c0)
                 "%lu with an unseen edge\n",
                 ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
                 ss.nodes, ss.seeded, ss.tracked, ss.stopped, ss.steps, ss.branches, ss.open);
+        if (c0->opt.eval_miss) {
+            static const char *const pk[PK_N] = { "load", "store", "field", "index", "shift or divide", "goto" };
+            unsigned pk_i;
+            fprintf(stderr, "cereal: pins recorded:");
+            for (pk_i = 0; pk_i < PK_N; pk_i++)
+                fprintf(stderr, " %s %lu;", pk[pk_i], v->npin[pk_i]);
+            fprintf(stderr, "\ncereal: pins: %lu of the %lu unsat queries are sat with every pin dropped; with only one kind dropped:",
+                    ss.unsat_nopin, ss.unsat);
+            for (pk_i = 0; pk_i < PK_N; pk_i++)
+                fprintf(stderr, " %s %lu;", pk[pk_i], ss.unsat_kind[pk_i]);
+            fputc(10, stderr);
+        }
         miss_report(v, swept.data, swept.len);
         vec_free(&swept);
         sx_close(sv);

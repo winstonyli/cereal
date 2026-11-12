@@ -76,9 +76,13 @@ typedef struct Blk {
 typedef struct PathEnt {
     uint32_t expr;
     const Blk *blk;
-    uint32_t edge;
+    uint32_t edge;              /* a branch: the edge taken; a pin: its kind (PinKind) */
     bool want;
 } PathEnt;
+
+/* What a pin fixes: the address of a load, a store or a field read, the index of a pointer add, a shift count or divisor,
+ * the target of a computed goto. */
+typedef enum PinKind { PK_LOAD, PK_STORE, PK_FIELD, PK_INDEX, PK_SHDIV, PK_GOTO, PK_N } PinKind;
 
 #define PATH_MAX_ENT 256
 
@@ -169,6 +173,7 @@ struct Ev {
     VEC(uint32_t) dom;          /* conditions that hold of every input (the range of a pointer offset the solver may pick), asserted with the path */
     unsigned long nbr;          /* branches and switches run while tracking, symbolic or not */
     unsigned long newseen;      /* edges taken for the first time (Blk.seen), counted over all calls */
+    unsigned long npin[PK_N];   /* pins the tracked runs recorded, by kind */
     uint32_t ld_obj, f_obj;     /* the object and offset of the last pointer read (ld), and of the one the
                                    latest stop followed (f): where the bad pointer or byte was read from */
     int32_t ld_off, f_off;
