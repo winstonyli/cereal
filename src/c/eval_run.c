@@ -1405,9 +1405,10 @@ typedef struct SolveStat {
 } SolveStat;
 
 /* What came of asking the solver for an edge (--eval-miss reports the edges still untaken by it). */
-enum { AK_NEVER, AK_UNKNOWN, AK_UNSAT, AK_TRAP, AK_STOP, AK_MISS, AK_N };
-static const char *const ask_name[AK_N] = { "never asked", "unknown", "unsat", "sat, run trapped",
-    "sat, run stopped", "sat, run finished without it" };
+enum { AK_NOREACH, AK_CONC, AK_OPEN, AK_UNKNOWN, AK_UNSAT, AK_TRAP, AK_STOP, AK_MISS, AK_N };
+static const char *const ask_name[AK_N] = { "no tracked run reached it", "reached, condition concrete",
+    "symbolic step, not asked", "unknown", "unsat", "sat, run trapped", "sat, run stopped",
+    "sat, run finished without it" };
 
 typedef struct STried {
     const Blk *blk;
@@ -1953,14 +1954,14 @@ static void fn_ask(Ev *v, const Fn *f, const STriedVec *done, size_t ask[MC_N][A
         unsigned ne = b->term == TK_BR ? 2 : b->term == TK_SWTCH ? (b->nc > 61 ? 62 : (unsigned)b->nc + 1) : 0, e;
         int c = -1;
         if (blk_const(f, b)) {
-            ask[MC_OTHER][AK_NEVER] += !(b->seen & 3);
+            ask[MC_OTHER][AK_CONC] += !(b->seen & 3);
             continue;
         }
         for (e = 0; e < ne; e++)
             if (!(b->seen >> (b->term == TK_SWTCH && e == ne - 1 ? 62 : e) & 1)) {
                 uint32_t fe = b->term == TK_SWTCH && e == ne - 1 && b->nc <= 61 ? (uint32_t)b->nc : e;
                 size_t j;
-                int a = AK_NEVER;
+                int a = b->trk & 2 ? AK_OPEN : b->trk ? AK_CONC : AK_NOREACH;
                 if (c < 0)
                     c = miss_class(v, f, b);
                 for (j = 0; j < done->len; j++)

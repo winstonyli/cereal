@@ -2086,6 +2086,8 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
             bi = c ? b->a : b->b;
             mark_seen(v, b, c ? 0 : 1);
             v->nbr += v->track;
+            if (v->track)
+                b->trk |= csh ? 3 : 1;
             if (v->track && csh) {
                 PathEnt e = { csh, b, c ? 0u : 1u, c != 0 };
                 path_add(v, e);
@@ -2106,6 +2108,8 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
             bi = to;
             mark_seen(v, b, blk_edge_bit(b, edge));
             v->nbr += v->track;
+            if (v->track)
+                b->trk |= csh ? 3 : 1;
             if (v->track && csh) {
                 PathEnt e = { csh, b, edge, true };
                 path_add(v, e);
