@@ -1568,6 +1568,34 @@ static void pin(Ev *v, uint32_t sh, uint64_t x, PinKind kind)
     path_add(v, e);
 }
 
+/* g1 spike: the PK_INDEX pin just recorded (entry pi) is the index of an element pointer into a read-only object (a
+ * table).  Tag the entry with the object, the number of elements from the pointer on and the index the run took, and
+ * remember that this site has taken it, so the flip search can ask for another index (table_flips in eval_run.c). */
+static void tab_note(Ev *v, Fr *r, uint32_t n, size_t pi, uint64_t a, int64_t scale, uint64_t idx)
+{
+    PathEnt *e;
+    const Obj *o;
+    size_t i;
+    uint64_t key;
+    if (!v->track || v->path.len != pi + 1 || scale <= 0 || !pid(a) || pid(a) > v->obj.len)
+        return;
+    o = &v->obj.data[pid(a) - 1];
+    if (!o->ro || o->lazy || poff(a) < 0 || (uint64_t)poff(a) >= o->size)
+        return;
+    key = ((uint64_t)(uintptr_t)r->f << 20) ^ n;
+    for (i = 0; i < v->tseen.len; i++)
+        if (v->tseen.data[i].key == key && v->tseen.data[i].val == idx)
+            break;
+    if (i == v->tseen.len) {
+        TSeen t = { key, idx };
+        vec_push(&v->tseen, t);
+    }
+    e = &v->path.data[pi];
+    e->tobj = pid(a);
+    e->tn = (uint32_t)((o->size - (uint64_t)poff(a)) / (uint64_t)scale);
+    e->tkey = key;
+}
+
 /* A pointer's shadow is its whole 64-bit word as an expression: the object id is a constant, the offset (the low 32
  * bits) may be the solver's (Ev.lazy_off in eval_run.c).  The word of pointer a moved by delta bytes. */
 static uint32_t ptr_add_sh(Ev *v, uint64_t a, uint32_t ash, int64_t delta)
@@ -1919,12 +1947,15 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
         return a;
     case TO_PTRADD: {
         int64_t off;
+        size_t pi;
         a = ev_node(r, KID(r, n, 0));
         ash = v->sh;
         b = ev_node(r, KID(r, n, 1));
         if (v->res.status)
             return 0;
+        pi = v->path.len;
         pin(v, v->sh, b, PK_INDEX);
+        tab_note(v, r, n, pi, a, t->val, b);
         if (__builtin_mul_overflow((int64_t)b, t->val, &off) ||
             __builtin_add_overflow(off, (int64_t)poff(a), &off) || off < INT32_MIN ||
             off > INT32_MAX) {
@@ -2091,7 +2122,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
             if (v->track)
                 b->trk |= csh ? 3 : 1;
             if (v->track && csh) {
-                PathEnt e = { csh, b, c ? 0u : 1u, c != 0 };
+                PathEnt e = { .expr = csh, .blk = b, .edge = c ? 0u : 1u, .want = c != 0 };
                 path_add(v, e);
             }
             continue;
@@ -2113,7 +2144,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
             if (v->track)
                 b->trk |= csh ? 3 : 1;
             if (v->track && csh) {
-                PathEnt e = { csh, b, edge, true };
+                PathEnt e = { .expr = csh, .blk = b, .edge = edge, .want = true };
                 path_add(v, e);
             }
             continue;
@@ -2196,6 +2227,7 @@ void ev_free(Ev *v)
     sx_free(&v->sx);
     vec_free(&v->path);
     vec_free(&v->dom);
+    vec_free(&v->tseen);
     vec_free(&v->obj);
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];

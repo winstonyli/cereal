@@ -1404,6 +1404,7 @@ typedef struct SolveStat {
     unsigned long stopped;          /* tracked runs of stopped calls (the queue of their own) */
     unsigned long unsat_nopin;      /* --eval-miss: unsat queries that are sat with every pin dropped (an upper bound: a model may not replay) */
     unsigned long unsat_kind[PK_N]; /* ... and with only the pins of that kind dropped */
+    unsigned long tq, tsat;         /* g1 spike: table-element queries, and those with a model */
 } SolveStat;
 
 /* What came of asking the solver for an edge (--eval-miss reports the edges still untaken by it). */
@@ -1666,6 +1667,72 @@ static bool probe_sat(Ev *v, SxSolver *sv, size_t i, uint32_t e, unsigned drop)
     return r == SX_SAT;
 }
 
+/* One query: do the bytes exist that satisfy cs (n conditions) on top of the prefix asserted so far?  If so, run them
+ * as one more call, kept as a seed if it takes a new edge (or, if it stops, in the queue of its own).  The AK_* class
+ * of the answer. */
+static int flip_ask(SCtx *x, const SSeed *seed, const LKeys *syms, const SxCond *cs, size_t n, SxModel *m)
+{
+    Ev *v = x->v;
+    SolveStat *st = x->ss;
+    SSearch *q = &x->q;
+    SSeed child = {0};
+    int r, sat;
+    q->queries++;
+    st->queries++;
+    r = sx_try(x->sv, cs, n, m);
+    if (r == SX_ERROR) {
+        fprintf(stderr, "cereal: the solver stopped answering\n");
+        exit(2);
+    }
+    st->sat += r == SX_SAT;
+    st->unsat += r == SX_UNSAT;
+    st->unknown += r == SX_UNKNOWN;
+    if (r != SX_SAT)
+        return r == SX_UNSAT ? AK_UNSAT : AK_UNKNOWN;
+    st->calls++;
+    sat = solve_run(v, m, seed, syms, x->f, x->s, x->body, x->name, &x->bad, &x->saw_ok, &child);
+    if (sat == SR_STOP) {
+        stop_push(q, child);
+    } else if (sat == SR_EDGE) {
+        st->fresh++;
+        if (q->corpus.len < SCORPUS)
+            vec_push(&q->corpus, child);
+        else
+            seed_free(&child);
+    }
+    return sat == SR_STOP ? AK_STOP : AK_MISS;
+}
+
+#define STAB 8                  /* table elements asked per walk (g1 spike) */
+
+/* g1 spike: the pin p is the index of a pointer into the read-only table p.tobj.  Ask for indices this index site has
+ * not taken yet: the pin's word equal to each. */
+static void table_flips(SCtx *x, const SSeed *seed, const LKeys *syms, const PathEnt *p, SxModel *m, unsigned *left)
+{
+    Ev *v = x->v;
+    uint32_t sh = sx_at(&v->sx, p->expr)->a;
+    uint64_t k;
+    for (k = 0; k < p->tn && *left && x->q.queries < SQUERY; k++) {
+        size_t i;
+        SxCond c;
+        for (i = 0; i < v->tseen.len; i++)
+            if (v->tseen.data[i].key == p->tkey && v->tseen.data[i].val == k)
+                break;
+        if (i < v->tseen.len)
+            continue;
+        {
+            TSeen t = { p->tkey, k };
+            vec_push(&v->tseen, t);
+        }
+        c.a = sx_op(&v->sx, SX_EQ, sh, sx_const(&v->sx, 64, k));
+        c.want = true;
+        (*left)--;
+        x->ss->tq++;
+        x->ss->tsat += flip_ask(x, seed, syms, &c, 1, m) >= AK_STOP;
+    }
+}
+
+
 /* The walk over the tracked path of seed (just rerun, its symbols in syms): at each branch whose other edge
  * nobody has taken, ask for bytes that take it, the steps before it as the prefix; each answer is one more
  * call, kept if it takes a new edge (or, if it stops, in the queue of its own). */
@@ -1679,6 +1746,8 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
     SxModel m = {0};
     struct { size_t i; uint32_t e; } un[SQUERY];
     size_t i, nun = 0;
+    bool tflip = getenv("CEREAL_TFLIP") != NULL;
+    unsigned tleft = STAB;
     sx_begin(sv, &v->sx);
     for (i = 0; i < v->dom.len; i++)
         sx_assert(sv, v->dom.data[i], true);
@@ -1697,8 +1766,7 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
             for (e = 0; e < ne && q->queries < SQUERY; e++) {
                 size_t n;
                 bool whole = true;
-                int r, sat;
-                SSeed child = {0};
+                int ask;
                 if (e == p.edge || (b->seen >> blk_edge_bit(b, e) & 1) || tried(done, b, e))
                     continue;
                 n = flip_conds(v, &p, e, cs, &whole);
@@ -1708,37 +1776,15 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                     STried t = { b, e, AK_UNKNOWN };
                     vec_push(done, t);
                 }
-                q->queries++;
-                st->queries++;
-                r = sx_try(sv, cs, n, &m);
-                if (r == SX_ERROR) {
-                    fprintf(stderr, "cereal: the solver stopped answering\n");
-                    exit(2);
-                }
-                st->sat += r == SX_SAT;
-                st->unsat += r == SX_UNSAT;
-                st->unknown += r == SX_UNKNOWN;
-                if (r != SX_SAT) {
-                    done->data[done->len - 1].ask = r == SX_UNSAT ? AK_UNSAT : AK_UNKNOWN;
-                    if (r == SX_UNSAT && v->c->opt.eval_miss && nun < SQUERY) {
-                        un[nun].i = i;
-                        un[nun++].e = e;
-                    }
-                    continue;
-                }
-                st->calls++;
-                sat = solve_run(v, &m, seed, syms, x->f, x->s, x->body, x->name, &x->bad, &x->saw_ok, &child);
-                done->data[done->len - 1].ask = sat == SR_STOP ? AK_STOP : AK_MISS;
-                if (sat == SR_STOP) {
-                    stop_push(q, child);
-                } else if (sat == SR_EDGE) {
-                    st->fresh++;
-                    if (q->corpus.len < SCORPUS)
-                        vec_push(&q->corpus, child);
-                    else
-                        seed_free(&child);
+                ask = flip_ask(x, seed, syms, cs, n, &m);
+                done->data[done->len - 1].ask = ask;
+                if (ask == AK_UNSAT && v->c->opt.eval_miss && nun < SQUERY) {
+                    un[nun].i = i;
+                    un[nun++].e = e;
                 }
             }
+        } else if (p.tobj && tflip) {
+            table_flips(x, seed, syms, &p, &m, &tleft);
         }
         assert_step(v, sv, &p);
     }
@@ -2493,6 +2539,8 @@ static void eval_sweep(Checker *c0)
                 "%lu with an unseen edge\n",
                 ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
                 ss.nodes, ss.seeded, ss.tracked, ss.stopped, ss.steps, ss.branches, ss.open);
+        if (getenv("CEREAL_TFLIP"))
+            fprintf(stderr, "cereal: table flips: %lu queries, %lu with a model\n", ss.tq, ss.tsat);
         if (c0->opt.eval_miss) {
             static const char *const pk[PK_N] = { "load", "store", "field", "index", "shift or divide", "goto" };
             unsigned pk_i;

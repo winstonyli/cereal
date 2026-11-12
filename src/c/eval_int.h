@@ -78,7 +78,15 @@ typedef struct PathEnt {
     const Blk *blk;
     uint32_t edge;              /* a branch: the edge taken; a pin: its kind (PinKind) */
     bool want;
+    uint32_t tobj;              /* a PK_INDEX pin of a pointer into a read-only object (a table): that object, else 0 (g1 spike) */
+    uint32_t tn;                /* ... the number of elements from the pointer on, */
+    uint64_t tkey;              /* ... and the index site (function and node) */
 } PathEnt;
+
+/* An index an index site has taken into a table in some tracked run. */
+typedef struct TSeen {
+    uint64_t key, val;
+} TSeen;
 
 /* What a pin fixes: the address of a load, a store or a field read, the index of a pointer add, a shift count or divisor,
  * the target of a computed goto. */
@@ -174,6 +182,7 @@ struct Ev {
     unsigned long nbr;          /* branches and switches run while tracking, symbolic or not */
     unsigned long newseen;      /* edges taken for the first time (Blk.seen), counted over all calls */
     unsigned long npin[PK_N];   /* pins the tracked runs recorded, by kind */
+    VEC(TSeen) tseen;           /* the table indices index sites have taken (g1 spike) */
     uint32_t ld_obj, f_obj;     /* the object and offset of the last pointer read (ld), and of the one the
                                    latest stop followed (f): where the bad pointer or byte was read from */
     int32_t ld_off, f_off;
