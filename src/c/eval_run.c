@@ -1923,8 +1923,9 @@ static bool name_listed(const char *list, const char *name)
     return false;
 }
 
-/* The untaken edges of f by class (cls), as the sweep counts edges (blk_count); the total. */
-static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N])
+/* The untaken edges of f by class (cls), as the sweep counts edges (blk_count); the total.  ids: one `cereal: edge FN
+ * BLOCK.EDGE CLASS` line per edge on stderr (--eval-miss), so runs with other seeds can be intersected. */
+static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N], bool ids)
 {
     size_t i, total = 0;
     v->c = f->c;
@@ -1935,6 +1936,8 @@ static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N])
         if (blk_const(f, b)) {                  /* its one live edge, untaken only if the block was never reached */
             if (!(b->seen & 3)) {
                 cls[finished ? MC_OTHER : MC_NOFIN]++;
+                if (ids)
+                    fprintf(stderr, "cereal: edge %s %zu.0 %s\n", ev_fn_name(f->c, f->fsym), i, miss_name[finished ? MC_OTHER : MC_NOFIN]);
                 total++;
             }
             continue;
@@ -1944,6 +1947,9 @@ static size_t fn_miss(Ev *v, const Fn *f, bool finished, size_t cls[MC_N])
                 if (c < 0)
                     c = finished ? miss_class(v, f, b) : MC_NOFIN;
                 cls[c]++;
+                if (ids)
+                    fprintf(stderr, "cereal: edge %s %zu.%u %s\n", ev_fn_name(f->c, f->fsym), i,
+                            b->term == TK_SWTCH && e == ne - 1 ? 62u : e, miss_name[c]);
                 total++;
             }
     }
@@ -1999,7 +2005,7 @@ static void miss_report(Ev *v, const SweptFn *sw, size_t n)
     size_t nat = 0;
     for (k = 0; k < n; k++) {
         const Fn *f = &v->fn.data[sw[k].i];
-        size_t cls[MC_N] = {0}, ft = fn_miss(v, f, sw[k].finished, cls), fe = cls[MC_NOFIN];
+        size_t cls[MC_N] = {0}, ft = fn_miss(v, f, sw[k].finished, cls, v->c->opt.eval_miss), fe = cls[MC_NOFIN];
         for (i = 0; i < MC_N; i++)
             counts[i] += cls[i];
         total += ft;
