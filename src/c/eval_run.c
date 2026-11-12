@@ -1704,8 +1704,13 @@ static int flip_ask(SCtx *x, const SSeed *seed, const LKeys *syms, const SxCond 
     return sat == SR_STOP ? AK_STOP : AK_MISS;
 }
 
-#define STAB 8                  /* table elements asked per walk (g1 spike) */
-#define STABQ 48                /* table-index queries per function (g1 spike); the branch flips keep SQUERY */
+static unsigned tab_cap(const char *name, unsigned def)        /* g1 spike: the caps are env-tunable while measuring */
+{
+    const char *s = getenv(name);
+    return s ? (unsigned)strtoul(s, NULL, 10) : def;
+}
+#define STAB tab_cap("CEREAL_STAB", 8)  /* table elements asked per walk (g1 spike) */
+#define STABQ tab_cap("CEREAL_STABQ", 48) /* table-index queries per function (g1 spike); the branch flips keep SQUERY */
 
 /* g1 spike: the pin p is the index of a pointer into the read-only table p.tobj.  Ask for indices this index site has
  * not taken yet: the pin's word equal to each. */
