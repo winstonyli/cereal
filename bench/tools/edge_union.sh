@@ -2,6 +2,8 @@
 # edge_union.sh ERR...: the untaken edges of several --eval-miss runs (same program, other seeds), from their
 # `cereal: edge FN BLOCK.EDGE CLASS` lines: how many are untaken in 1, 2, ... N runs, and the classes of those untaken in all.
 # The union of taken edges is the total minus the "all N" row.  Class labels are the first file's.
+# An edge absent from a run counts as taken there, so a function the run did not sweep also reads as taken, and two static
+# functions of one name merge: the "taken" union is an upper bound.
 [ $# -ge 1 ] || { echo "usage: edge_union.sh ERR..." >&2; exit 2; }
 N=$#
 for f in "$@"; do grep '^cereal: edge ' "$f" | awk '{print $3, $4}' | sort -u; done | sort | uniq -c |
