@@ -1585,8 +1585,8 @@ static void tab_note(Ev *v, size_t pi, uint64_t a, int64_t scale, uint64_t idx)
     }
 }
 
-/* the most entries of a read-only table that a symbolic read spans (a longer one is read concretely) */
-#define TABMAX 256
+/* the most entries of a read-only table that a symbolic read spans (a longer one is read concretely); 4096 covers a ctype table (257, which a cap of 256 missed) */
+#define TABMAX 4096
 
 /* The load of ti through pointer p, if p came from a tracked add into a read-only table whose elements are ti-sized: the
  * loaded value's shadow is the table read at the add's index (SX_TAB).  The add's pin, which fixed the index, becomes the
