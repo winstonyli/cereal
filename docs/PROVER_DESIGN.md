@@ -120,6 +120,19 @@ atom and a lexer channel; the second drops macro expansion of specs and `#if $sp
 - e2 **Also support `//@` as a second front end** over the same contract IR.
     - Pro: reuses VeriFast annotations. Con: a second parser for a spec language whose semantics differ (predicates, lemmas, ghost commands); not pursued unless a corpus needs it.
 
+### Decide F: first integration (decided 2026-11-13: f1)
+
+Searched: I tried deleting the first-surface question by integrating everywhere at once; that makes a prover bug an editor lie (language server) or a miscompile (code generation) before the soundness story exists. Removed: nothing; the order is the decision.
+
+- f1 **Command line first** (chosen): a `--prove` mode that reports per-obligation status and replays failures through the evaluator (decide D). No editor feedback and no check elision yet.
+    - Pro: smallest surface; exercises the replay seam. Con: no visible payoff for editor users.
+- f2 **Language server first**: obligation status as diagnostics from a background phase.
+    - Pro: the visible payoff. Con: needs background-phase and cancellation work in the server first.
+- f3 **Code generation first**: elide runtime checks for proved obligations.
+    - Pro: a measurable payoff. Con: a prover bug becomes a miscompile.
+
+Where the prover also fits later, in order: language-server diagnostics (a third source beside the macro and compiler phases), cache keys on the unit summaries and read sets (`csum.h`) by function-contract hash, a prover test list beside `tests/eval.sh` with "the evaluator traps where a proof fails" as the oracle, open obligations in `cereal audit`, and check elision in `cgx86.c` last. It runs beside the evaluator, not inside the sweep loop (the rejected b2).
+
 ## 4. End-state fit
 
 | Change | Target | Replaces | Deletes |
