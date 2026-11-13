@@ -1585,15 +1585,8 @@ static void tab_note(Ev *v, size_t pi, uint64_t a, int64_t scale, uint64_t idx)
     }
 }
 
-static unsigned tab_max(void)
-{
-    static long m = -1;
-    if (m < 0) {
-        const char *s = getenv("CEREAL_TABMAX");
-        m = s ? strtol(s, NULL, 10) : 256;
-    }
-    return (unsigned)m;
-}
+/* the most entries of a read-only table that a symbolic read spans (a longer one is read concretely) */
+#define TABMAX 256
 
 /* The load of ti through pointer p, if p came from a tracked add into a read-only table whose elements are ti-sized: the
  * loaded value's shadow is the table read at the add's index (SX_TAB).  The add's pin, which fixed the index, becomes the
@@ -1618,7 +1611,7 @@ static uint32_t tab_load(Ev *v, uint64_t p, const Ti *ti)
         return 0;
     e = &v->path.data[t->pi];
     n = t->tn;
-    if (e->blk || e->edge != PK_INDEX || !n || n > tab_max())
+    if (e->blk || e->edge != PK_INDEX || !n || n > TABMAX)
         return 0;
     o = &v->obj.data[t->tobj - 1];
     for (k = 0; k < n; k++) {
