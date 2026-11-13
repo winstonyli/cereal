@@ -1787,7 +1787,7 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                     un[nun++].e = e;
                 }
             }
-        } else if (p.ij && ev_tabsym()) {
+        } else if (p.ij) {
             goto_flips(x, seed, syms, &p, &m);
         }
         assert_step(v, sv, &p);
@@ -2543,8 +2543,7 @@ static void eval_sweep(Checker *c0)
                 "%lu with an unseen edge\n",
                 ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
                 ss.nodes, ss.seeded, ss.tracked, ss.stopped, ss.steps, ss.branches, ss.open);
-        if (ev_tabsym())
-            fprintf(stderr, "cereal: goto flips: %lu queries, %lu with a model\n", ss.gq, ss.gsat);
+        fprintf(stderr, "cereal: goto flips: %lu queries, %lu with a model\n", ss.gq, ss.gsat);
         if (c0->opt.eval_miss) {
             static const char *const pk[PK_N] = { "load", "store", "field", "index", "shift or divide", "goto" };
             unsigned pk_i;

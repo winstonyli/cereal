@@ -1573,7 +1573,7 @@ static void pin(Ev *v, uint32_t sh, uint64_t x, PinKind kind)
 static void tab_note(Ev *v, size_t pi, uint64_t a, int64_t scale, uint64_t idx)
 {
     const Obj *o;
-    if (!ev_tabsym() || !v->track || v->path.len != pi + 1 || scale <= 0 || !pid(a) || pid(a) > v->obj.len)
+    if (!v->track || v->path.len != pi + 1 || scale <= 0 || !pid(a) || pid(a) > v->obj.len)
         return;
     o = &v->obj.data[pid(a) - 1];
     if (!o->ro || o->lazy || poff(a) < 0 || (uint64_t)poff(a) >= o->size)
@@ -1583,14 +1583,6 @@ static void tab_note(Ev *v, size_t pi, uint64_t a, int64_t scale, uint64_t idx)
                    (uint32_t)((o->size - (uint64_t)poff(a)) / (uint64_t)scale) };
         vec_push(&v->tptr, t);
     }
-}
-
-bool ev_tabsym(void)
-{
-    static int on = -1;
-    if (on < 0)
-        on = getenv("CEREAL_TAB") != NULL;
-    return on;
 }
 
 static unsigned tab_max(void)

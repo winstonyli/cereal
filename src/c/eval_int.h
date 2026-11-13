@@ -230,7 +230,6 @@ typedef struct Ti {
 
 /* ---- failure: the first one wins and ends the evaluation ---- */
 
-bool ev_tabsym(void);                   /* k1 spike: CEREAL_TAB set */
 bool ev_label_open(const Ev *v, const Fn *f, const Blk *ij, uint64_t word, size_t *j);   /* word is a label of f no call has gone to from ij */
 void ev_fail(Ev *v, int st, const char *fmt, ...);
 

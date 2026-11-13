@@ -109,10 +109,10 @@ if command -v z3 >/dev/null 2>&1; then
             { echo "eval_lazy: $1 with the solver never gave $2 (whether a pointer is NULL is not the solver's)"; exit 1; }
     done
     echo "eval_lazy: pointer null ok"
-    # A computed goto through a table (CEREAL_TAB): the table read is symbolic and the solver asks which index reaches the
+    # A computed goto through a table (symbolic table read): the table read is symbolic and the solver asks which index reaches the
     # label no call has gone to; gt_run's handler is 1 of 256 entries and needs p[1] == 0x5a as well.  gcc must agree.
-    CEREAL_TAB=1 EVAL_SWEEP_SOLVE='z3 -in -smt2' sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_gototab.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_gototab.c differs from gcc"; exit 1; }
-    out=$(CEREAL_TAB=1 "$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_gototab.c" 2>/dev/null </dev/null)
+    EVAL_SWEEP_SOLVE='z3 -in -smt2' sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_gototab.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_gototab.c differs from gcc"; exit 1; }
+    out=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_gototab.c" 2>/dev/null </dev/null)
     echo "$out" | awk '$1 == "call" && $2 == "gt_run" && $4 == "=>" && substr($5, 1, 8) == "01000000" { found = 1 } END { exit !found }' ||
         { echo "eval_lazy: gt_run with the solver never gave 1 (a table read is not symbolic, or the goto does not ask for its labels)"; exit 1; }
     echo "eval_lazy: goto table ok"
