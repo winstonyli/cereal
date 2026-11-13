@@ -170,3 +170,20 @@ Each has a kill criterion; a missed one is a result, written up and the design r
 - `symx` is 415 lines of QF_BV; T3 as a compile-time default needs the extensions above and a Windows-native solver path.
 - The prover core is thousands of lines (inference); this pass does not estimate it beyond the spikes.
 - The goal-to-witness hand-off (`SPECS.md` 7b) and the VC-generator trust (7b item 4) are untouched; d1 fixes only the key scheme.
+
+## 7. Build order after the spikes (proposed 2026-11-13, not decided)
+
+Searched: tried dropping stages 1 and 5 (build the prover over the evaluator's table at once; build without replay). Stage 1's gate exists because every spike ran on one copy loop; replay stays because it is d1's soundness story. Removed: nothing.
+
+What the spikes settle: a1 is enough for the copy loop (S3); the engine can check and prune candidates (S3); replay confirms a bounds bug when given real allocations (S4, a generated driver, not the sweep); obligations are a heap-model client (S1); modes read as a1 facts for leaf utilities only (S5). What they leave open: the memory half of b1's shared table (S2), whether Houdini candidates and a1 survive a second and third loop, and that `symx` has neither arrays nor quantifiers (415 lines of QF_BV), which S3 got from z3 directly.
+
+Stages, each ending in a check that can fail:
+
+1. **Gate spike S6**: three more hand-run loops (a pointer-walk `strlen`, a two-index loop, a loop with a nested `if`), same script, same kill rules (a1 proves it, Houdini finds an invariant from the loop condition and the postcondition, a mutation fails and replays). Two or more failing means a1's "facts per allocation" or the candidate templates need a redesign before anything below.
+2. **Solver layer**: a prover-side SMT emitter with arrays and quantifiers over `tcfg` blocks; `symx` stays untouched for now (parked as unification, trigger: a second client of the emitter). Check: the S3 obligations regenerate byte-equal to the spike's.
+3. **Obligation generator and `--prove`** (f1): back-edge loop heads derived from the CFG (no marker), bounds goals only, directives from `SPECS.md` (`requires`, `ensures`, `invariant`, extents). Check: the copy loop and its two mutations, per-obligation status.
+4. **Engine**: fuel calibrated on a baseline goal, scalar and quantified facts kept apart, candidate pruning. Check: S3's numbers, then S6's.
+5. **Replay**: the generated driver (S4 follow-up). Check: every `sat` bounds goal of the test list traps at its site; a goal with no trap is reported "unconfirmed".
+6. **Gate for b1's table**: before sharing rules with the evaluator, a spike that builds the memory half for three operations (`LOAD`, `STORE`, `PTRADD`) with parity tests. Failing keeps the prover's own rules and parks the table.
+
+Not in this order (parked or later): lists and trees (M3), language-server diagnostics, cache keys, check elision, a type-invariant concept (`PARKED.md`, chunk-heap row).
