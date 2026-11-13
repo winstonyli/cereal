@@ -1405,6 +1405,7 @@ typedef struct SolveStat {
     unsigned long stopped;          /* tracked runs of stopped calls (the queue of their own) */
     unsigned long unsat_nopin;      /* --eval-miss: unsat queries that are sat with every pin dropped (an upper bound: a model may not replay) */
     unsigned long unsat_kind[PK_N]; /* ... and with only the pins of that kind dropped */
+    unsigned long unsat_idx_tab, unsat_idx_other;   /* o1: ... and with only the index pins of a read-only table, or only the other index pins, dropped */
     unsigned long tq, tsat;         /* g1 spike: table-element queries, and those with a model */
 } SolveStat;
 
@@ -1650,6 +1651,13 @@ static void assert_step(Ev *v, SxSolver *sv, const PathEnt *p)
 
 /* Is edge e of path step i taken by some input when the pins of the kinds in drop (a PinKind mask) are left out of
  * the prefix?  Only for the --eval-miss census of what the pins cost. */
+#define DROP_TAB (1u << 8)             /* o1: of the kinds in drop, only the pins tagged with a read-only table ... */
+#define DROP_OTHER (1u << 9)           /* ... or only the untagged ones */
+static bool dropped(const PathEnt *p, unsigned drop)
+{
+    return (drop >> p->edge & 1) && !(drop & DROP_TAB && !p->tobj) && !(drop & DROP_OTHER && p->tobj);
+}
+
 static bool probe_sat(Ev *v, SxSolver *sv, size_t i, uint32_t e, unsigned drop)
 {
     SxCond cs[64];
@@ -1661,7 +1669,7 @@ static bool probe_sat(Ev *v, SxSolver *sv, size_t i, uint32_t e, unsigned drop)
     for (j = 0; j < v->dom.len; j++)
         sx_assert(sv, v->dom.data[j], true);
     for (j = 0; j < i; j++)
-        if (v->path.data[j].blk || !(drop >> v->path.data[j].edge & 1))
+        if (v->path.data[j].blk || !dropped(&v->path.data[j], drop))
             assert_step(v, sv, &v->path.data[j]);
     n = flip_conds(v, &v->path.data[i], e, cs, &whole);
     r = whole ? sx_try(sv, cs, n, &m) : SX_ERROR;
@@ -1842,6 +1850,10 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
         for (k = 0; k < PK_N; k++)
             if (present >> k & 1)
                 st->unsat_kind[k] += probe_sat(v, sv, un[i].i, un[i].e, 1u << k);
+        if (present >> PK_INDEX & 1) {
+            st->unsat_idx_tab += probe_sat(v, sv, un[i].i, un[i].e, 1u << PK_INDEX | DROP_TAB);
+            st->unsat_idx_other += probe_sat(v, sv, un[i].i, un[i].e, 1u << PK_INDEX | DROP_OTHER);
+        }
     }
     sx_model_free(&m);
 }
@@ -2593,6 +2605,7 @@ static void eval_sweep(Checker *c0)
                     ss.unsat_nopin, ss.unsat);
             for (pk_i = 0; pk_i < PK_N; pk_i++)
                 fprintf(stderr, " %s %lu;", pk[pk_i], ss.unsat_kind[pk_i]);
+            fprintf(stderr, " (index: read-only table pins only %lu, other pins only %lu);", ss.unsat_idx_tab, ss.unsat_idx_other);
             fputc(10, stderr);
         }
         miss_report(v, swept.data, swept.len);
