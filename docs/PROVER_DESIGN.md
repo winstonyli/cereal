@@ -44,7 +44,7 @@ sugar for chunks" is true only for a fragment; this pass does not rest on it.
 
 ## 3. Decisions
 
-### Decide A: the heap core
+### Decide A: the heap core (decided 2026-11-13: a1)
 
 Searched: I tried deleting the chunk engine (object facts per allocation, with modes only for
 parameter aliasing and `#modifies` for frames) and deleting the permission layer (all formulas,
@@ -62,7 +62,7 @@ and is unmeasured. Removed: nothing yet; a1 removes the chunk concept.
 
 Coupling: c1 presupposes a1 or a2. With symbolic extents (`out[n]`, `p[lo:hi]`) neither a1 nor a2 keeps T2 as `SPECS.md` section 2's linear dataflow pass: the check is fuel-bounded entailment, cheap only when the facts are syntactically equal. Formulas only (M1) is not offered as an option; it is the measured baseline in S3 (`SPECS.md` section 4 calls it "far slower").
 
-### Decide B: where the engine lives
+### Decide B: where the engine lives (decided 2026-11-13: b1)
 
 The engine runs the CFG symbolically with havoc, forking, loop invariants and summaries.
 
@@ -82,7 +82,7 @@ Boogie), and abstract interpretation first with the prover only for what falls t
     - Pro: no engine to build. Con: C memory semantics and UB classes live in the translator, which is then the trusted base (`SPECS.md` 7b item 4); no shared counterexample path.
 Also considered, not options: abstract interpretation first (`SPECS.md` T0/T1) is a stage inside c1's ladder, not an engine; bounded symbolic execution without havoc is a bug finder that the concolic sweep already approximates and proves nothing.
 
-### Decide C: tiers as ladder or as separate passes
+### Decide C: tiers as ladder or as separate passes (decided 2026-11-13: c1)
 
 Searched: I tried deleting the four tiers (T0 syntactic, T1 abstract interpretation, T2 permission
 check, T3 solver) as separate passes in favor of one `entails(facts, goal, fuel)`: T0 is the
@@ -94,7 +94,7 @@ T2 the object-fact check, T3 the SMT call. Removed: three passes and their inter
 - c2 **Four passes as in `SPECS.md` section 2**.
     - Pro: each pass can be built and shipped alone. Con: four interfaces, and facts convert between them.
 
-### Decide D: what the evaluator is for, and the witness
+### Decide D: what the evaluator is for, and the witness (decided 2026-11-13: d1)
 
 Searched: I tried deleting the replay seam (models reported as text) and deleting the shared
 witness file (a model file beside a certificate file). The first loses the executable counterexample
@@ -108,7 +108,7 @@ schemes for artifacts that are keyed by the same goal identity. Removed: the sec
 
 Not pursued: observed ranges as invariant candidates (observed, not proved; a separate design if wanted).
 
-### Decide E: annotation syntax
+### Decide E: annotation syntax (decided 2026-11-13: e1)
 
 Searched: I tried deleting the annotation front end altogether (no `//@`, no `annot` field) and
 deleting the directive syntax in favor of `//@`. The first removes `annot = verifast`, its overlay

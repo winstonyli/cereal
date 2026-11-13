@@ -235,7 +235,7 @@ and the file is recorded as "re-includable" (X-macro style).
         language:  std year, GNU/ISO mode, extension set (a bitset)
         overlay:   macro assignments on top of the target's predefines
         sysroot:   include directories, system headers, __has_* answers
-        annot:     none | verifast   (what the lexer keeps; no atom)
+        annot:     none | verifast   (dropped as a goal 2026-11-13, PROVER_DESIGN.md decide E; no consumer)
         origin:    compile-DB entry index, plus overlay hash for a virtual one
     }
 
@@ -646,13 +646,7 @@ SysV); a configuration naming another target is `UNREALIZED` for checking.
 
 ### 7.4 Proving (VeriFast-style)
 
-`annot = verifast` is a configuration field that makes the lexer keep `//@` and
-`/*@ ... @*/` comments as tokens for an annotation parser. The macro `VERIFAST`
-is an ordinary `I(VERIFAST)` atom, set by the overlay of the proof
-configuration; `#ifndef VERIFAST` code is inactive there and active in the
-compile configuration, from the same mechanism. The proof checker is out of
-scope; the requirement here is only that an annotation mode is a configuration
-field and that PCs of annotation-guarded code work.
+Dropped as a goal (2026-11-13, `docs/PROVER_DESIGN.md` decide E: specs are `SPECS.md` directives, so no `//@` lexer channel and no `VERIFAST` overlay atom; `#if $spec` blocks cover the use). The `annot` field above and the S5 row below stay only as a record until a consumer exists.
 
 ## 8. Stages, the oracle, and stop rules
 

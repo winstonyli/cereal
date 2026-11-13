@@ -214,8 +214,7 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   compile entry: the real flags plus an overlay of standard, extensions,
   predefined macros and target), derived from the guards of each `#if` group,
   so that every group is indexed and checked under a configuration that
-  activates it; it must also carry compilation (a target) and VeriFast-style
-  proving (an annotation channel and a `VERIFAST`-like view) later.
+  activates it; it must also carry compilation (a target); proving no longer needs an annotation view (PROVER_DESIGN.md decide E).
   Survey numbers: HISTORY Round 238.  Design: `docs/CONFIG_DESIGN.md`
   (Round 239); first step is its S0 spikes, before any code.
   Shared prerequisite: a record format bump (each event gains the macro
@@ -223,9 +222,7 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   the stop rule of B5d's `rename_libuv.py` as the measure (12.2% of libuv's
   external functions are refused today for inactive groups, 1.1% for macro
   bodies).
-- Proving annotation channel (VeriFast-style): comments are dropped by the lexer, so annotations need a lexer and
-  preprocessor design of their own (an annotation token class, a `VERIFAST`-like view); independent of TAST_DESIGN.md,
-  which only keeps source spans and field paths available (its section 8). Design pass (draft, undecided): `docs/PROVER_DESIGN.md`.
+- Proving: design pass `docs/PROVER_DESIGN.md` (decided 2026-11-13: command line first, specs are `SPECS.md` directives, so no `//@` lexer channel). Independent of TAST_DESIGN.md, which keeps source spans and field paths available (its section 8).
 - Not planned: formatter, sanitizer instrumentation, `-fanalyzer`.
 
 ## Order
