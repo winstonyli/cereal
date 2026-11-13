@@ -1568,34 +1568,19 @@ static void pin(Ev *v, uint32_t sh, uint64_t x, PinKind kind)
     path_add(v, e);
 }
 
-/* g1 spike: the PK_INDEX pin just recorded (entry pi) is the index of an element pointer into a read-only object (a
- * table).  Tag the entry with the object, the number of elements from the pointer on and the index the run took, and
- * remember that this site has taken it, so the flip search can ask for another index (table_flips in eval_run.c). */
-static void tab_note(Ev *v, Fr *r, uint32_t n, size_t pi, uint64_t a, int64_t scale, uint64_t idx)
+/* The PK_INDEX pin just recorded (entry pi) is the index of an element pointer into a read-only object (a table): note
+ * the pointer the add made, so a load through it can read the table symbolically (tab_load). */
+static void tab_note(Ev *v, size_t pi, uint64_t a, int64_t scale, uint64_t idx)
 {
-    PathEnt *e;
     const Obj *o;
-    size_t i;
-    uint64_t key;
-    if (!v->track || v->path.len != pi + 1 || scale <= 0 || !pid(a) || pid(a) > v->obj.len)
+    if (!ev_tabsym() || !v->track || v->path.len != pi + 1 || scale <= 0 || !pid(a) || pid(a) > v->obj.len)
         return;
     o = &v->obj.data[pid(a) - 1];
     if (!o->ro || o->lazy || poff(a) < 0 || (uint64_t)poff(a) >= o->size)
         return;
-    key = ((uint64_t)(uintptr_t)r->f << 20) ^ n;
-    for (i = 0; i < v->tseen.len; i++)
-        if (v->tseen.data[i].key == key && v->tseen.data[i].val == idx)
-            break;
-    if (i == v->tseen.len) {
-        TSeen t = { key, idx };
-        vec_push(&v->tseen, t);
-    }
-    e = &v->path.data[pi];
-    e->tobj = pid(a);
-    e->tn = (uint32_t)((o->size - (uint64_t)poff(a)) / (uint64_t)scale);
-    e->tkey = key;
-    if (ev_tabsym()) {
-        TPtr t = { mkptr(pid(a), poff(a) + (int64_t)idx * scale), a, pi, scale };
+    {
+        TPtr t = { mkptr(pid(a), poff(a) + (int64_t)idx * scale), a, pi, scale, pid(a),
+                   (uint32_t)((o->size - (uint64_t)poff(a)) / (uint64_t)scale) };
         vec_push(&v->tptr, t);
     }
 }
@@ -1618,10 +1603,10 @@ static unsigned tab_max(void)
     return (unsigned)m;
 }
 
-/* k1 spike: the load of ti through pointer p, if p came from a tracked add into a read-only table whose elements are
- * ti-sized: the loaded value's shadow is the table read at the add's index (SX_TAB).  The add's pin, which fixed the
- * index, becomes the range of the table: the solver may pick another element, and what the value feeds (a computed
- * goto, a branch) is asked about in terms of it.  0 when the load is not one. */
+/* The load of ti through pointer p, if p came from a tracked add into a read-only table whose elements are ti-sized: the
+ * loaded value's shadow is the table read at the add's index (SX_TAB).  The add's pin, which fixed the index, becomes the
+ * range of the table: the solver may pick another element, and what the value feeds (a computed goto, a branch) is asked
+ * about in terms of it.  0 when the load is not one. */
 static uint32_t tab_load(Ev *v, uint64_t p, const Ti *ti)
 {
     size_t i, k, n;
@@ -1640,12 +1625,10 @@ static uint32_t tab_load(Ev *v, uint64_t p, const Ti *ti)
     if (!t || t->pi >= v->path.len || t->scale != (int64_t)ti->bytes)
         return 0;
     e = &v->path.data[t->pi];
-    if (e->blk || e->edge != PK_INDEX || !e->tobj || e->tobj > v->obj.len)
+    n = t->tn;
+    if (e->blk || e->edge != PK_INDEX || !n || n > tab_max())
         return 0;
-    n = e->tn;
-    if (!n || n > tab_max())
-        return 0;
-    o = &v->obj.data[e->tobj - 1];
+    o = &v->obj.data[t->tobj - 1];
     for (k = 0; k < n; k++) {
         uint64_t x = 0, off = (uint64_t)poff(t->base) + k * ti->bytes;
         unsigned j;
@@ -1660,8 +1643,7 @@ static uint32_t tab_load(Ev *v, uint64_t p, const Ti *ti)
             }
             x |= (uint64_t)o->b[off + j] << (8 * j);
         }
-        x = ev_canon(ti, x);
-        vec_push(&w, x);
+        vec_push(&w, ev_canon(ti, x));
     }
     idx = sx_at(&v->sx, e->expr)->a;
     idx = sx_tab(&v->sx, idx, w.data, n);
@@ -2032,7 +2014,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             return 0;
         pi = v->path.len;
         pin(v, v->sh, b, PK_INDEX);
-        tab_note(v, r, n, pi, a, t->val, b);
+        tab_note(v, pi, a, t->val, b);
         if (__builtin_mul_overflow((int64_t)b, t->val, &off) ||
             __builtin_add_overflow(off, (int64_t)poff(a), &off) || off < INT32_MIN ||
             off > INT32_MAX) {
@@ -2250,7 +2232,7 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
                 break;
             pin(v, v->sh, c, PK_GOTO);
             if (v->path.len == np + 1)
-                v->path.data[np].tkey = (uint64_t)(uintptr_t)b;   /* k1 spike: the goto the pin belongs to */
+                v->path.data[np].ij = b;
             if (!label_blk(v, f, c, &to, &lj))
                 break;
             if (!b->ijs)
@@ -2325,7 +2307,6 @@ void ev_free(Ev *v)
     sx_free(&v->sx);
     vec_free(&v->path);
     vec_free(&v->dom);
-    vec_free(&v->tseen);
     vec_free(&v->tptr);
     vec_free(&v->obj);
     for (i = 0; i < v->fn.len; i++) {
