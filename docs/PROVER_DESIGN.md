@@ -54,7 +54,7 @@ aliasing pass. `SPECS.md` calls M1 "far slower", but that cost is about aliasing
 and is unmeasured. Removed: nothing yet; a1 removes the chunk concept.
 
 - a1 **Object facts, modes for parameter aliasing, chunks parked** (recommended): bounds, initialization and liveness are facts per allocation over the evaluator's own object table; `in`/`out`/`inout` say which parameters may alias; `#modifies` is the frame. Chunk-style predicates (M3) are a later, separate addition.
-    - Pro: fewest concepts; no heap-matching engine; fits the UB-elimination product. Con: no route to VeriFast-style functional proofs of lists and trees until M3; the "not slow" claim is unmeasured (spike S3 includes a two-array case); S5 found no mode without a reading, but nullable pointers, nested reach and non-object `borrow` bounds are inexpressible (see Results).
+    - Pro: fewest concepts; no heap-matching engine; fits the UB-elimination product. Con: no route to VeriFast-style functional proofs of lists and trees until M3; the "not slow" claim is measured only on one copy loop (S3 result below); S5 found no mode without a reading, but nullable pointers, nested reach and non-object `borrow` bounds are inexpressible (see Results).
 - a2 **Chunk core, modes as a fragment**: one symbolic heap of chunks, the modes desugar to chunk shapes where they can, `raw`, `borrow` and the `$`-facts handled beside it, M3 adds user kinds.
     - Pro: the VeriFast-style end state with one engine. Con: builds `consume`/`produce` and matching first, and gives recursive shapes a home only by adding a second layer of user chunk kinds.
 - a3 **Modes only, no heap model** (`SPECS.md` fork 1 as written): T2 as a dataflow pass.
@@ -90,7 +90,7 @@ constant folding the DAG needs anyway, T1 interval and congruence reasoning over
 T2 the object-fact check, T3 the SMT call. Removed: three passes and their interfaces.
 
 - c1 **One entailment engine with a fuel ladder** (recommended): the only parameter left is fuel; summaries inferred by T1 and invariants supplied by users are both facts the same engine checks.
-    - Pro: one interface, determinism from fuel (`SPECS.md` 7; 7b needs it only of the checker). Con: widening must emit an invariant and the same engine must check it; spike S3 measures it.
+    - Pro: one interface, determinism from fuel (`SPECS.md` 7; 7b needs it only of the checker). Con: widening must emit an invariant and the same engine must check it; spike S3 ran it once on the copy loop (Results).
 - c2 **Four passes as in `SPECS.md` section 2**.
     - Pro: each pass can be built and shipped alone. Con: four interfaces, and facts convert between them.
 
