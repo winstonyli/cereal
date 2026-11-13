@@ -64,6 +64,8 @@ Coupling: c1 presupposes a1 or a2. With symbolic extents (`out[n]`, `p[lo:hi]`) 
 
 ### Decide B: where the engine lives (decided 2026-11-13: b1)
 
+Reaffirmed 2026-11-13 after the review: b1 stays. Considered and not taken: start with the prover's own rules over `symx` and park the shared table (less work now, but duplicated rules and the parity risk in section 6, and it contradicts the end state). Open: whether the table can hold the memory half (S2 did not show it).
+
 The engine runs the CFG symbolically with havoc, forking, loop invariants and summaries.
 
 Searched: I tried deleting the engine's own operation semantics by making the evaluator the prover
