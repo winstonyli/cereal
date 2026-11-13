@@ -15,8 +15,8 @@
 
 /* ---- arena ---- */
 
-void sx_free(Sx *sx) { vec_free(&sx->n); }
-void sx_clear(Sx *sx) { sx->n.len = 0; }
+void sx_free(Sx *sx) { vec_free(&sx->n); vec_free(&sx->tv); }
+void sx_clear(Sx *sx) { sx->n.len = 0; sx->tv.len = 0; }
 
 static uint32_t sx_new(Sx *sx, int op, unsigned w, uint32_t a, uint32_t b, uint64_t k) {
     SxNode n = { (uint8_t)op, (uint8_t)w, a, b, k };
@@ -58,6 +58,11 @@ uint32_t sx_ext(Sx *sx, uint32_t a, unsigned bytes, bool sg, bool boolean) {
     return sx_new(sx, SX_EXT, 64, a, 0, bytes | (sg ? 1u << 8 : 0) | (boolean ? 1u << 9 : 0));
 }
 uint32_t sx_op(Sx *sx, int op, uint32_t a, uint32_t b) { return sx_new(sx, op, 64, a, b, 0); }
+uint32_t sx_tab(Sx *sx, uint32_t idx, const uint64_t *w, size_t n) {
+    uint64_t k = (uint64_t)sx->tv.len | (uint64_t)n << 32;
+    for (size_t i = 0; i < n; i++) vec_push(&sx->tv, w[i]);
+    return sx_new(sx, SX_TAB, 64, idx, 0, k);
+}
 
 /* ---- SMT-LIB2 printing ---- */
 
@@ -142,6 +147,22 @@ static void put_def(const Sx *sx, StrBuf *sb, uint32_t id) {
         put_opnd(sb, sx, n->a);
         sb_puts(sb, " #x0000000000000000) #x0000000000000001 #x0000000000000000)");
         break;
+    case SX_TAB: {
+        size_t nn = (size_t)(n->k >> 32), off = (size_t)(n->k & 0xffffffffu), i;
+        for (i = 0; i + 1 < nn; i++) {
+            sb_puts(sb, "(ite (= ");
+            put_opnd(sb, sx, n->a);
+            sb_putc(sb, ' ');
+            put_bits(sb, 64, i);
+            sb_putc(sb, ')');
+            sb_putc(sb, ' ');
+            put_bits(sb, 64, sx->tv.data[off + i]);
+            sb_putc(sb, ' ');
+        }
+        put_bits(sb, 64, sx->tv.data[off + nn - 1]);
+        for (i = 0; i + 1 < nn; i++) sb_putc(sb, ')');
+        break;
+    }
     case SX_MASK:
         sb_puts(sb, "(ite (= ");
         put_opnd(sb, sx, n->b);
@@ -187,7 +208,7 @@ static void put_defs(SxSolver *s, StrBuf *sb, uint32_t a) {
         const SxNode *n = sx_at(sx, vec_pop(&stk));
         uint32_t ch[2] = { 0, 0 };
         switch (n->op) {
-        case SX_BYTE: case SX_EXT: case SX_NEG: case SX_NOT: case SX_LNOT: ch[0] = n->a; break;
+        case SX_BYTE: case SX_EXT: case SX_NEG: case SX_NOT: case SX_LNOT: case SX_TAB: ch[0] = n->a; break;
         case SX_SYM: case SX_CONST: break;
         default: ch[0] = n->a; ch[1] = n->b; break;
         }

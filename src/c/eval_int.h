@@ -65,6 +65,7 @@ typedef struct Blk {
     uint32_t val, a, b;
     uint8_t term;
     uint8_t trk;                /* a tracked run reached its branch or switch (bit 0), on a symbolic condition (bit 1): --eval-miss */
+    uint8_t *ijs;               /* a computed goto: per label (index in Fn.lab), whether any call went there (k1 spike) */
     uint64_t seen;              /* the edges any call has taken: a branch's a (bit 0) and b (bit 1);
                                    a switch's cases by index (bits 0..61, later ones share 61), default bit 62 */
 } Blk;
@@ -87,6 +88,14 @@ typedef struct PathEnt {
 typedef struct TSeen {
     uint64_t key, val;
 } TSeen;
+
+/* k1 spike: an element pointer into a read-only table made by a tracked pointer add: its word, the add's PK_INDEX pin (path
+ * entry pi), the base pointer and the element size; a load through the same word reads the table symbolically. */
+typedef struct TPtr {
+    uint64_t ptr, base;
+    size_t pi;
+    int64_t scale;
+} TPtr;
 
 /* What a pin fixes: the address of a load, a store or a field read, the index of a pointer add, a shift count or divisor,
  * the target of a computed goto. */
@@ -183,6 +192,7 @@ struct Ev {
     unsigned long newseen;      /* edges taken for the first time (Blk.seen), counted over all calls */
     unsigned long npin[PK_N];   /* pins the tracked runs recorded, by kind */
     VEC(TSeen) tseen;           /* the table indices index sites have taken (g1 spike) */
+    VEC(TPtr) tptr;             /* the table pointers of the tracked call (k1 spike) */
     uint32_t ld_obj, f_obj;     /* the object and offset of the last pointer read (ld), and of the one the
                                    latest stop followed (f): where the bad pointer or byte was read from */
     int32_t ld_off, f_off;
@@ -226,6 +236,8 @@ typedef struct Ti {
 
 /* ---- failure: the first one wins and ends the evaluation ---- */
 
+bool ev_tabsym(void);                   /* k1 spike: CEREAL_TAB set */
+bool ev_label_open(const Ev *v, const Fn *f, const Blk *ij, uint64_t word, size_t *j);   /* word is a label of f no call has gone to from ij */
 void ev_fail(Ev *v, int st, const char *fmt, ...);
 
 #define UNSUP(v, ...) ev_fail(v, EV_UNSUPPORTED, __VA_ARGS__)

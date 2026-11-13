@@ -1594,6 +1594,80 @@ static void tab_note(Ev *v, Fr *r, uint32_t n, size_t pi, uint64_t a, int64_t sc
     e->tobj = pid(a);
     e->tn = (uint32_t)((o->size - (uint64_t)poff(a)) / (uint64_t)scale);
     e->tkey = key;
+    if (ev_tabsym()) {
+        TPtr t = { mkptr(pid(a), poff(a) + (int64_t)idx * scale), a, pi, scale };
+        vec_push(&v->tptr, t);
+    }
+}
+
+bool ev_tabsym(void)
+{
+    static int on = -1;
+    if (on < 0)
+        on = getenv("CEREAL_TAB") != NULL;
+    return on;
+}
+
+static unsigned tab_max(void)
+{
+    static long m = -1;
+    if (m < 0) {
+        const char *s = getenv("CEREAL_TABMAX");
+        m = s ? strtol(s, NULL, 10) : 256;
+    }
+    return (unsigned)m;
+}
+
+/* k1 spike: the load of ti through pointer p, if p came from a tracked add into a read-only table whose elements are
+ * ti-sized: the loaded value's shadow is the table read at the add's index (SX_TAB).  The add's pin, which fixed the
+ * index, becomes the range of the table: the solver may pick another element, and what the value feeds (a computed
+ * goto, a branch) is asked about in terms of it.  0 when the load is not one. */
+static uint32_t tab_load(Ev *v, uint64_t p, const Ti *ti)
+{
+    size_t i, k, n;
+    const TPtr *t = NULL;
+    const Obj *o;
+    PathEnt *e;
+    uint32_t idx;
+    VEC(uint64_t) w = {0};
+    if (!v->track)
+        return 0;
+    for (i = v->tptr.len; i-- > 0;)
+        if (v->tptr.data[i].ptr == p) {
+            t = &v->tptr.data[i];
+            break;
+        }
+    if (!t || t->pi >= v->path.len || t->scale != (int64_t)ti->bytes)
+        return 0;
+    e = &v->path.data[t->pi];
+    if (e->blk || e->edge != PK_INDEX || !e->tobj || e->tobj > v->obj.len)
+        return 0;
+    n = e->tn;
+    if (!n || n > tab_max())
+        return 0;
+    o = &v->obj.data[e->tobj - 1];
+    for (k = 0; k < n; k++) {
+        uint64_t x = 0, off = (uint64_t)poff(t->base) + k * ti->bytes;
+        unsigned j;
+        if (off + ti->bytes > o->size) {
+            vec_free(&w);
+            return 0;
+        }
+        for (j = 0; j < ti->bytes; j++) {
+            if (!o->init[off + j]) {
+                vec_free(&w);
+                return 0;
+            }
+            x |= (uint64_t)o->b[off + j] << (8 * j);
+        }
+        x = ev_canon(ti, x);
+        vec_push(&w, x);
+    }
+    idx = sx_at(&v->sx, e->expr)->a;
+    idx = sx_tab(&v->sx, idx, w.data, n);
+    e->expr = sx_op(&v->sx, SX_ULT, sx_at(&v->sx, e->expr)->a, sx_const(&v->sx, 64, n));
+    vec_free(&w);
+    return idx;
 }
 
 /* A pointer's shadow is its whole 64-bit word as an expression: the object id is a constant, the offset (the low 32
@@ -1741,8 +1815,11 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
             return 0;
         if (is_bf(r, KID(r, n, 0)))
             return bf_load(v, a, &ti, NODE(r, KID(r, n, 0))->pun, NODE(r, KID(r, n, 0))->width);
+        b = a;
         a = load_n(v, a, &ti);
         *sh = v->sh;
+        if (!*sh && !v->res.status)
+            *sh = tab_load(v, b, &ti);
         return a;
     case TO_STORE: {
         uint64_t sz;
@@ -2028,22 +2105,37 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     }
 }
 
-/* The block a computed goto to p goes to: p must be the address of a label of f (its label object, offset 0). */
-static bool label_blk(Ev *v, const Fn *f, uint64_t p, uint32_t *blk)
+/* The index in f->lab of the label whose address is p. */
+static bool label_idx(const Ev *v, const Fn *f, uint64_t p, size_t *lj)
 {
     uint32_t fi = (uint32_t)(f - v->fn.data);
     size_t k, j;
+    for (k = 0; k + 2 < v->lab.len && pid(p) && !poff(p); k += 3)
+        if (v->lab.data[k] == fi && v->lab.data[k + 2] == pid(p))
+            for (j = 0; j < f->nlab; j++)
+                if (f->lab[j].id == v->lab.data[k + 1]) {
+                    *lj = j;
+                    return true;
+                }
+    return false;
+}
+
+bool ev_label_open(const Ev *v, const Fn *f, const Blk *ij, uint64_t word, size_t *j)
+{
+    return label_idx(v, f, word, j) && !(ij->ijs && ij->ijs[*j]);
+}
+
+/* The block a computed goto to p goes to: p must be the address of a label of f (its label object, offset 0). */
+static bool label_blk(Ev *v, const Fn *f, uint64_t p, uint32_t *blk, size_t *lj)
+{
     if (!pid(p)) {
         TRAP(v, "computed goto through a null pointer");
         return false;
     }
-    for (k = 0; k + 2 < v->lab.len && !poff(p); k += 3)
-        if (v->lab.data[k] == fi && v->lab.data[k + 2] == pid(p))
-            for (j = 0; j < f->nlab; j++)
-                if (f->lab[j].id == v->lab.data[k + 1]) {
-                    *blk = f->lab[j].blk;
-                    return true;
-                }
+    if (label_idx(v, f, p, lj)) {
+        *blk = f->lab[*lj].blk;
+        return true;
+    }
     TRAP(v, "computed goto to an address that is not a label of the function");
     return false;
 }
@@ -2153,11 +2245,17 @@ static uint64_t run_fn(Fr *caller, Fn *f, const uint64_t *args, const uint32_t *
         {
             uint64_t c = ev_node(&r, b->val);
             uint32_t to;
+            size_t lj, np = v->path.len;
             if (v->res.status)
                 break;
             pin(v, v->sh, c, PK_GOTO);
-            if (!label_blk(v, f, c, &to))
+            if (v->path.len == np + 1)
+                v->path.data[np].tkey = (uint64_t)(uintptr_t)b;   /* k1 spike: the goto the pin belongs to */
+            if (!label_blk(v, f, c, &to, &lj))
                 break;
+            if (!b->ijs)
+                b->ijs = xcalloc(f->nlab ? f->nlab : 1, 1);
+            b->ijs[lj] = 1;
             bi = to;
             continue;
         }
@@ -2228,12 +2326,14 @@ void ev_free(Ev *v)
     vec_free(&v->path);
     vec_free(&v->dom);
     vec_free(&v->tseen);
+    vec_free(&v->tptr);
     vec_free(&v->obj);
     for (i = 0; i < v->fn.len; i++) {
         Fn *f = &v->fn.data[i];
         for (j = 0; j < f->nblk; j++) {
             free(f->blk[j].st);
             free(f->blk[j].cases);
+            free(f->blk[j].ijs);
         }
         free(f->blk);
         free(f->lab);

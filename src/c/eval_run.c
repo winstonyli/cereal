@@ -651,6 +651,7 @@ static void track_begin(Ev *v)
 {
     sx_clear(&v->sx);
     v->path.len = 0;
+    v->tptr.len = 0;
     v->path_full = false;
     v->dom.len = 0;
 }
@@ -1740,6 +1741,38 @@ static void table_flips(SCtx *x, const SSeed *seed, const LKeys *syms, const Pat
 }
 
 
+/* k1 spike: the pin p is a computed goto whose target word is a table read (SX_TAB): ask for an index that makes the goto
+ * go to each label of the function no call has gone to from this goto yet, the steps before it as the prefix. */
+static void goto_flips(SCtx *x, const SSeed *seed, const LKeys *syms, const PathEnt *p, SxModel *m)
+{
+    Ev *v = x->v;
+    const SxNode *eq = sx_at(&v->sx, p->expr);
+    const Blk *ij = (const Blk *)(uintptr_t)p->tkey;
+    uint32_t tab;
+    size_t n, off, k, j;
+    uint64_t taken;
+    if (eq->op != SX_EQ || sx_at(&v->sx, eq->a)->op != SX_TAB || sx_at(&v->sx, eq->b)->op != SX_CONST)
+        return;
+    tab = eq->a;
+    taken = sx_at(&v->sx, eq->b)->k;
+    n = (size_t)(sx_at(&v->sx, tab)->k >> 32);
+    off = (size_t)(sx_at(&v->sx, tab)->k & 0xffffffffu);
+    for (k = 0; k < n && x->q.tqueries < STABQ; k++) {
+        uint64_t w = v->sx.tv.data[off + k];
+        SxCond c;
+        if (w == taken || !ev_label_open(v, x->f, ij, w, &j) || tried(&x->q.done, ij, (uint32_t)j))
+            continue;
+        {
+            STried t = { ij, (uint32_t)j, AK_UNKNOWN };
+            vec_push(&x->q.done, t);
+        }
+        c.a = sx_op(&v->sx, SX_EQ, tab, sx_const(&v->sx, 64, w));
+        c.want = true;
+        x->ss->tq++;
+        x->ss->tsat += flip_ask(x, seed, syms, &c, 1, m, &x->q.tqueries) >= AK_STOP;
+    }
+}
+
 /* The walk over the tracked path of seed (just rerun, its symbols in syms): at each branch whose other edge
  * nobody has taken, ask for bytes that take it, the steps before it as the prefix; each answer is one more
  * call, kept if it takes a new edge (or, if it stops, in the queue of its own). */
@@ -1790,6 +1823,8 @@ static void flip_walk(SCtx *x, const SSeed *seed, const LKeys *syms)
                     un[nun++].e = e;
                 }
             }
+        } else if (!p.blk && p.edge == PK_GOTO && p.tkey && ev_tabsym()) {
+            goto_flips(x, seed, syms, &p, &m);
         } else if (p.tobj && tflip) {
             table_flips(x, seed, syms, &p, &m, &tleft);
         }
@@ -2546,7 +2581,7 @@ static void eval_sweep(Checker *c0)
                 "%lu with an unseen edge\n",
                 ss.queries, ss.sat, ss.unsat, ss.unknown, ss.calls, ss.fresh, ss.taken, ss.edges, ss.gain,
                 ss.nodes, ss.seeded, ss.tracked, ss.stopped, ss.steps, ss.branches, ss.open);
-        if (getenv("CEREAL_TFLIP"))
+        if (getenv("CEREAL_TFLIP") || ev_tabsym())
             fprintf(stderr, "cereal: table flips: %lu queries, %lu with a model\n", ss.tq, ss.tsat);
         if (c0->opt.eval_miss) {
             static const char *const pk[PK_N] = { "load", "store", "field", "index", "shift or divide", "goto" };

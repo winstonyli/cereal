@@ -22,6 +22,7 @@ enum {
     SX_AND, SX_OR, SX_XOR, SX_SHL, SX_LSHR, SX_ASHR,
     SX_MASK,                    /* a if b is non-zero, else 0 (a nullable pointer: its word, or NULL) */
     SX_NEG, SX_NOT, SX_LNOT,    /* unary, on 64 bits */
+    SX_TAB,                     /* a read-only table read at index a: k = offset into Sx.tv | count << 32 (64-bit words; an index past the end reads the last) */
     SX_EQ, SX_NE, SX_ULT, SX_ULE, SX_SLT, SX_SLE   /* 64-bit 0 or 1 */
 };
 
@@ -34,6 +35,7 @@ typedef struct SxNode {
 
 typedef struct Sx {
     VEC(SxNode) n;
+    VEC(uint64_t) tv;           /* the words of the SX_TAB nodes */
 } Sx;
 
 void sx_free(Sx *sx);
@@ -44,6 +46,7 @@ uint32_t sx_byte(Sx *sx, uint32_t a, unsigned j);
 uint32_t sx_join(Sx *sx, uint32_t hi, uint32_t lo);
 uint32_t sx_ext(Sx *sx, uint32_t a, unsigned bytes, bool sg, bool boolean);
 uint32_t sx_op(Sx *sx, int op, uint32_t a, uint32_t b);       /* a 64-bit operation (b: 0 for the unary ones) */
+uint32_t sx_tab(Sx *sx, uint32_t idx, const uint64_t *w, size_t n);   /* the table w[0..n) read at idx (n >= 1) */
 
 static inline const SxNode *sx_at(const Sx *sx, uint32_t id) { return &sx->n.data[id - 1]; }
 
