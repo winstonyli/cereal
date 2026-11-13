@@ -225,7 +225,7 @@ retained index on huge files, so B1/B2 skip units above a size threshold.
   bodies).
 - Proving annotation channel (VeriFast-style): comments are dropped by the lexer, so annotations need a lexer and
   preprocessor design of their own (an annotation token class, a `VERIFAST`-like view); independent of TAST_DESIGN.md,
-  which only keeps source spans and field paths available (its section 8). No design yet.
+  which only keeps source spans and field paths available (its section 8). Design pass (draft, undecided): `docs/PROVER_DESIGN.md`.
 - Not planned: formatter, sanitizer instrumentation, `-fanalyzer`.
 
 ## Order
