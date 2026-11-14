@@ -10,5 +10,7 @@ T3=1 python3 -P s6.py l2.dump rev < /dev/null        # adds the sum template (re
 DROP=0 DRIVER=/tmp/dv SRC=l1.c python3 -P s6.py l1.dump blen < /dev/null   # drop requires fact 0, write replay drivers
 ```
 
+S7: `p1.c` (`pcopy`, needs `T4=1`) and `p2.c` (`fill2`, `T5=1`; invariants found, write bound not proved: nonlinear `bvmul`). Template flags: `T3` sum, `T4` equality, `T5` enclosing-loop condition.
+
 `DROP=n` removes the n-th `requires` fact; `DRIVER`/`SRC` write `<DRIVER>_0.c` and `_1.c` (buffers filled with 0 and 1),
 which run under `cereal check --eval-sweep=2,1`. The specs live in the `SPECS` dict; values are 64-bit and 32-bit wrap is not modelled.

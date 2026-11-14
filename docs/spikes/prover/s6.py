@@ -38,6 +38,9 @@ class Ctx:   # what spec lambdas see
     pass
 
 
+def numv(x): return x[2] if x[0] == 'ptr' else x[1]      # a pointer compares and subtracts by its offset into one object
+
+
 SPECS = {
     'copy': dict(ptrs={'dst': 'D', 'src': 'S'}, scal=['n'], req=['n<=szD', 'n<=szS'],
                  posts=[('forall', 'n', lambda c, k: f'(= {c.sel("D", k)} {c.sel("S", k)})')]),
@@ -49,6 +52,10 @@ SPECS = {
                 posts=[('forall', 'n', lambda c, k: f'(= {c.sel("D", k)} {c.sel("S", f"(bvsub (bvsub {c.p["n"]} {k}) (_ bv1 64))")})')]),
     'fillnz': dict(ptrs={'d': 'D', 's': 'S'}, scal=['n'], req=['n<=szD', 'n<=szS'],
                    posts=[('forall', 'n', lambda c, k: f'(not (= {c.sel("D", k)} #x00))')]),
+    'pcopy': dict(ptrs={'d': 'D', 's': 'S'}, scal=['n'], req=['n<=szD', 'n<=szS'],
+                  posts=[('forall', 'n', lambda c, k: f'(= {c.sel("D", k)} {c.sel("S", k)})')]),
+    'fill2': dict(ptrs={'d': 'D'}, scal=['r', 'c'], req=['r<=2147483648', 'c<=2147483648', 'r*c<=szD'],
+                  posts=[]),   # bounds only: the fill postcondition needs a product-indexed nested invariant
 }
 
 
@@ -65,14 +72,18 @@ class VC:
         self.facts = [self.req_f(r) for r in reqs]
         self.edges, self.obls = [], []   # edges: (src, src_state, path, tgt, tgt_state); obls: (src, src_state, path, goal, desc)
         self.heads = self.find_heads()
-        self.assigned, self.written = self.scan()
+        self.loops = {h: self.scan(self.body(h)) for h in self.heads}
+        self.assigned = set().union(*[a for a, w in self.loops.values()]) if self.loops else set()
 
     def fresh(self, sort, hint):
         self.cnt += 1; nm = f'{hint}_{self.cnt}'; self.decls[nm] = sort; return nm
 
     def req_f(self, r):
         a, b = r.split('<=')
-        v = lambda x: self.p[x] if x in self.p else self.sz[x[2:]]
+        def v(x):
+            if '*' in x: l, rr = x.split('*'); return f'(bvmul {v(l)} {v(rr)})'
+            if x.isdigit(): return f'(_ bv{x} 64)'
+            return self.p[x] if x in self.p else self.sz[x[2:]]
         return f'(bvule {v(a)} {v(b)})'
 
     def find_heads(self):
@@ -90,19 +101,57 @@ class VC:
         dfs('B0')
         return heads
 
-    def scan(self):
+    def succ(self, b):
+        t = self.B[b]['term']
+        if t is None or t[0] == 'ret': return []
+        return [x for x in t[1] if re.fullmatch(r'B\d+', x)]
+
+    def dom(self):
+        if getattr(self, '_dom', None): return self._dom
+        allb = set(self.B); dom = {b: set(allb) for b in allb}; dom['B0'] = {'B0'}
+        preds = {b: [p for p in allb if b in self.succ(p)] for b in allb}
+        changed = True
+        while changed:
+            changed = False
+            for b in allb - {'B0'}:
+                new = {b} | (set.intersection(*[dom[p] for p in preds[b]]) if preds[b] else set())
+                if new != dom[b]: dom[b] = new; changed = True
+        self._dom = dom
+        return dom
+
+    def body(self, h):
+        # natural loop of head h: h plus the blocks that reach a back-edge source without passing h
+        reach, todo = {h}, [h]
+        while todo:
+            for s in self.succ(todo.pop()):
+                if s not in reach: reach.add(s); todo.append(s)
+        srcs = [b for b in reach if h in self.succ(b) and h in self.dom()[b]]    # back edges only: h dominates the source
+        body, todo = {h}, list(srcs)
+        while todo:
+            b = todo.pop()
+            if b in body: continue
+            body.add(b)
+            todo += [p for p in self.B if b in self.succ(p) and p in reach]
+        return body
+
+    def scan(self, blocks):
         assigned, written = set(), set()
         for b, blk in self.B.items():
+            if b not in blocks: continue
             ops = {nid: (op, t) for nid, op, t in blk['nodes']}
             for nid, op, t in blk['nodes']:
                 if op != 'store': continue
                 tgt = int(t[0][1:]); o, tt = ops[tgt]
                 if o == 'sym': assigned.add(name_of(tt[0]))
                 elif o == 'deref':
-                    pp = ops[int(tt[0][1:])]               # ptradd *1 #p #i
-                    ld = ops[int(pp[1][1][1:])]            # load of sym
-                    sy = ops[int(ld[1][0][1:])]
-                    written.add(self.spec['ptrs'][name_of(sy[1][0])])
+                    def who(n):                            # the pointer parameter a pointer expression walks from
+                        o, a = ops[n]
+                        if o == 'sym': return name_of(a[0])
+                        if o in ('load', 'deref', 'cast', 'post'): return who(int(a[0][1:]))
+                        if o == 'store': return who(int(a[0][1:]))
+                        if o == 'ptradd': return who(int(a[1][1:]))
+                        raise SystemExit(f'cannot find the pointer of node {n} ({o})')
+                    written.add(self.spec['ptrs'][who(int(tt[0][1:]))])
         return assigned, written
 
     # ---- states ----
@@ -111,11 +160,14 @@ class VC:
         for pn, a in self.spec['ptrs'].items(): env[pn] = ('ptr', a, Z)
         return {'env': env, 'mem': dict(self.arr0)}
 
-    def havoc(self, st):
+    def havoc(self, st, h):
+        assigned, written = self.loops[h]
         env = dict(st['env'])
-        for n in self.assigned: env[n] = ('bv', self.fresh(BV, n))
+        for n in assigned:
+            old = env.get(n)
+            env[n] = ('ptr', old[1], self.fresh(BV, n)) if old and old[0] == 'ptr' else ('bv', self.fresh(BV, n))
         mem = dict(st['mem'])
-        for a in self.written: mem[a] = self.fresh(ARR, 'm' + a)
+        for a in written: mem[a] = self.fresh(ARR, 'm' + a)
         return {'env': env, 'mem': mem}
 
     def ctx(self, st, ret=None):
@@ -126,7 +178,7 @@ class VC:
     # ---- symbolic execution ----
     def run(self, bid, st, path, src, src_state):
         st = {'env': dict(st['env']), 'mem': dict(st['mem'])}
-        blk = self.B[bid]; val = {}
+        blk = self.B[bid]; val = {}; oldv = {}
         for nid, op, t in blk['nodes']:
             g = lambda i: val[int(t[i][1:])]
             if op == 'local':
@@ -134,7 +186,8 @@ class VC:
                     k = [x for x in t[1:] if x.startswith('#')]
                     if k: st['env'][name_of(t[0])] = val[int(k[0][1:])]
                 val[nid] = None
-            elif op in ('exprstmt', 'post'): val[nid] = None
+            elif op == 'exprstmt': val[nid] = None
+            elif op == 'post': val[nid] = oldv.get(int(t[0][1:]))      # x++ yields the value before the store
             elif op == 'sym': val[nid] = ('ref', name_of(t[0]))
             elif op == 'const': val[nid] = ('bv', f'(_ bv{t[0]} 64)')
             elif op == 'cast': val[nid] = g(0)
@@ -150,16 +203,16 @@ class VC:
                     s = f'(select {st["mem"][a]} {off})'
                     val[nid] = ('bv', f'((_ sign_extend 56) {s})' if ch else s)
             elif op == 'binop':
-                a, b = g(1), g(2); f = {'+': 'bvadd', '-': 'bvsub'}[t[0]]
+                a, b = g(1), g(2); f = {'+': 'bvadd', '-': 'bvsub', '*': 'bvmul'}[t[0]]
                 val[nid] = ('bv', f'({f} {a[1]} {b[1]})')
             elif op == 'cmp':
-                a, b = g(1), g(2); x, y = a[1], b[1]
+                a, b = g(1), g(2); x, y = numv(a), numv(b)
                 e = {'<': f'(bvult {x} {y})', '<=': f'(bvule {x} {y})', '>': f'(bvugt {x} {y})', '>=': f'(bvuge {x} {y})',
                      '==': f'(= {x} {y})', '!=': f'(not (= {x} {y}))'}[t[0]]
                 val[nid] = ('bool', e)
             elif op == 'store':
                 r, v = g(0), g(1)
-                if r[0] == 'ref': st['env'][r[1]] = v
+                if r[0] == 'ref': oldv[nid] = st['env'].get(r[1]); st['env'][r[1]] = v
                 else:
                     _, a, off = r
                     self.obls.append((src, src_state, list(path), f'(bvult {off} {self.sz[a]})', f'write {a}[..]@{bid}'))
@@ -183,9 +236,14 @@ class VC:
     def build(self):
         s0 = self.init_state()
         self.run('B0', s0, [], None, s0)
-        self.hstate = {}
-        for h in sorted(self.heads):
-            hs = self.havoc(s0); self.hstate[h] = hs
+        self.hstate, done = {}, set()
+        while len(done) < len(self.heads):
+            # a head is cut from the state of the first edge that reached it; only what its loop assigns is havocked
+            ready = [h for h in sorted(self.heads) if h not in done and any(e[3] == h for e in self.edges)]
+            if not ready: raise SystemExit('unreachable loop head')
+            h = ready[0]; done.add(h)
+            base = [e for e in self.edges if e[3] == h][0][4]
+            hs = self.havoc(base, h); self.hstate[h] = hs
             self.run(h, hs, [], h, hs)
 
     # ---- candidates ----
@@ -203,37 +261,45 @@ class VC:
 
     def cands(self, h):
         v, b = self.head_info(h); out = {}
-        cv = lambda name: (lambda st: st['env'][name][1])
-        if v and b: out[f'{v}<={b}'] = lambda st, v=v, b=b: f'(bvule {st["env"][v][1]} {self.val(st, b)})'
+        if v and b: out[f'{v}<={b}'] = lambda st, v=v, b=b: f'(bvule {self.val(st, v)} {self.val(st, b)})'
         for i, po in enumerate(self.spec['posts']):
             if po[0] != 'forall' or not v: continue
             def f(st, po=po, v=v):
                 k = 'kq'
                 c = self.ctx(st)
-                return f'(forall (({k} {BV})) (=> (bvult {k} {st["env"][v][1]}) {po[2](c, k)}))'
+                return f'(forall (({k} {BV})) (=> (bvult {k} {self.val(st, v)}) {po[2](c, k)}))'
             out[f'forall k<{v} (post{i})'] = f
+        if os.environ.get('T5'):     # T5: the condition of each enclosing loop still holds inside this one
+            for h2 in sorted(self.heads):
+                if h2 != h and h in self.body(h2):
+                    v2, b2 = self.head_info(h2)
+                    if v2 and b2: out[f'{v2}<{b2} (enclosing {h2})'] = lambda st, v2=v2, b2=b2: f'(bvult {self.val(st, v2)} {self.val(st, b2)})'
+        loc = sorted(self.loops[h][0])
         if os.environ.get('T3'):
-            loc = sorted(self.assigned)
             for x, y in itertools.combinations(loc, 2):
                 for c in self.p:
-                    out[f'{x}+{y}=={c}'] = lambda st, x=x, y=y, c=c: f'(= (bvadd {st["env"][x][1]} {st["env"][y][1]}) {self.p[c]})'
+                    out[f'{x}+{y}=={c}'] = lambda st, x=x, y=y, c=c: f'(= (bvadd {self.val(st, x)} {self.val(st, y)}) {self.p[c]})'
+        if os.environ.get('T4'):
+            for x, y in itertools.combinations(loc, 2):
+                out[f'{x}=={y}'] = lambda st, x=x, y=y: f'(= {self.val(st, x)} {self.val(st, y)})'
         return out
 
-    def val(self, st, name): return st['env'][name][1] if name in st['env'] else self.p[name]
+    def val(self, st, name): return numv(st['env'][name]) if name in st['env'] else self.p[name]
 
     # ---- discharge ----
     def holds(self, hyps, goal, quant_ok=True):
+        # tiers, cheapest first: without the requires facts (a nonlinear fact such as r*c <= szD makes every query it
+        # joins expensive), then with them; each of slice, instantiate, full
         tiers = []
-        if 'forall' not in goal: tiers.append([h for h in self.facts + hyps if 'forall' not in h])
-        if 'forall' in goal or any('forall' in h for h in hyps):
-            # quantifier-free tier: skolemize the goal's foralls, replace each hypothesis forall by its instances at the
-            # skolem constants and every 64-bit constant (a consequence of it, so sound)
-            ks = [self.fresh(BV, 'ks')]
-            consts = ks + [k for k, s in self.decls.items() if s == BV and not k.startswith('ks')]
-            g2 = subq(goal, lambda body: re.sub(r'\bkq\b', ks[0], body))
-            h2 = [subq(h, lambda body: '(and ' + ' '.join(re.sub(r'\bkq\b', c, body) for c in consts) + ')') for h in self.facts + hyps]
-            tiers.append(('qf', h2, g2))
-        tiers.append(('full', self.facts + hyps, goal))
+        for fs in ([], self.facts) if self.facts else (self.facts,):
+            if 'forall' not in goal: tiers.append([h for h in fs + hyps if 'forall' not in h])
+            if 'forall' in goal or any('forall' in h for h in hyps):
+                ks = [self.fresh(BV, 'ks')]
+                consts = ks + [k for k, s in self.decls.items() if s == BV and not k.startswith('ks')]
+                g2 = subq(goal, lambda body: re.sub(r'\bkq\b', ks[0], body))
+                h2 = [subq(h, lambda body: '(and ' + ' '.join(re.sub(r'\bkq\b', c, body) for c in consts) + ')') for h in fs + hyps]
+                tiers.append(('qf', h2, g2))
+            if fs: tiers.append(('full', fs + hyps, goal))
         for tier in tiers:
             hs, gl = (tier[1], tier[2]) if isinstance(tier, tuple) else (tier, goal)
             r = z3run(self.decls, hs, gl, self.cap)
@@ -252,7 +318,7 @@ class VC:
             else:
                 bound = ret if po[1] == 'ret' else self.p[po[1]]
                 parts.append(f'(forall ((kq {BV})) (=> (bvult kq {bound}) {po[2](c, "kq")}))')
-        return '(and ' + ' '.join(parts) + ')'
+        return '(and ' + ' '.join(parts) + ')' if parts else 'true'
 
 
 LASTMODEL = None
