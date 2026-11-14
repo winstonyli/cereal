@@ -63,6 +63,10 @@ typedef struct Parser {
     bool unwind;                /* ending an unclosed function body */
     uint8_t loop_pragma;        /* 1: #pragma GCC ivdep, 2: unroll just before the
                                  * statement being parsed */
+    uint8_t spec_ctx;           /* SCTX_*: the next compound is a function or loop body
+                                 * whose leading #pragma cereal lines are specs */
+    ScratchCursor spec_cur;     /* spec text lexed from the pragma line */
+    bool in_spec;               /* parsing a spec expression: ==> is an operator */
     uint32_t unwind_to;
     struct {                    /* gcc's parser->error and what hangs off it */
         bool have;              /* an error was reported since the unit began */

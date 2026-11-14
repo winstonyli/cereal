@@ -1,0 +1,39 @@
+spec_err.c:3:25: error: 'zz' undeclared (first use in this function)
+    3 | #pragma cereal requires zz > 0
+      |                         ^
+spec_err.c:3:25: note: each undeclared identifier is reported only once for each function it appears in
+    3 | #pragma cereal requires zz > 0
+      |                         ^
+spec_err.c:9:16: error: '#pragma cereal requires' must start a function body
+    9 | #pragma cereal requires n > 0
+      |                ^
+spec_err.c:12:16: error: '#pragma cereal requires' must start a function body
+   12 | #pragma cereal requires 1
+      |                ^
+spec_err.c:14:16: error: '#pragma cereal requires' must start a function body
+   14 | #pragma cereal requires 1
+      |                ^
+spec_err.c:20:16: error: '#pragma cereal invariant' needs a braced loop body
+   20 | #pragma cereal invariant n > 0
+      |                ^
+spec_err.c:23:16: error: '#pragma cereal invariant' must start a loop body
+   23 | #pragma cereal invariant n > 0
+      |                ^
+spec_err.c:30:30: error: expected expression before '>' token
+   30 | #pragma cereal requires a == > b
+      |                              ^
+spec_err.c:36:25: error: used struct type value where scalar is required
+   36 | #pragma cereal requires q ==> a
+      |                         ^
+spec_err.c:37:31: error: used struct type value where scalar is required
+   37 | #pragma cereal requires a ==> q
+      |                               ^
+spec_err.c:38:24: error: expected expression at end of input
+   38 | #pragma cereal requires
+      |                        ^
+spec_err.c:39:16: error: unknown '#pragma cereal' directive
+   39 | #pragma cereal requries a
+      |                ^
+spec_err.c:40:26: error: junk at end of '#pragma cereal ensures' before 'a'
+   40 | #pragma cereal ensures a a
+      |                          ^

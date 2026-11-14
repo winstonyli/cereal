@@ -1,0 +1,46 @@
+FUNC_DEF 'int' 1:1
+  SPECS 'int' 1:1
+    TYPESPEC 'int' 1:1
+  FUNC '(' 1:6
+    NAME 'f' 1:5
+    SCOPE '(' 1:6
+    PARAM 'int' 1:7
+      SPECS 'int' 1:7
+        TYPESPEC 'int' 1:7
+      NAME 'n' 1:11
+    SCOPE_END 'n' 1:11
+  DECLARED 'f' 1:5 [2]
+  SCOPE '{' 2:1 [80]
+  COMPOUND '{' 2:1
+    BODY '{' 2:1
+    PRAGMA 'pragma cereal requires n > 0' 3:1 #1
+      BINARY '>' 3:27
+        IDENT 'n' 3:25
+        NUMBER '0' 3:29
+    FOR 'for' 4:3
+      SCOPE 'for' 4:3
+      DECL 'int' 4:8
+        SPECS 'int' 4:8
+          TYPESPEC 'int' 4:8
+        INIT_DECL 'i' 4:12
+          NAME 'i' 4:12
+          DECLARED 'i' 4:12
+          NUMBER '0' 4:16
+      BINARY '<' 4:21
+        IDENT 'i' 4:19
+        IDENT 'n' 4:23
+      POSTFIX '++' 4:27
+        IDENT 'i' 4:26
+      SCOPE '{' 4:31
+      COMPOUND '{' 4:31
+        SCOPE '{' 4:31
+        PRAGMA 'pragma cereal invariant i >= 0' 5:1 #3
+          BINARY '>=' 5:28
+            IDENT 'i' 5:26
+            NUMBER '0' 5:31
+        SCOPE_END '}' 6:3
+      SCOPE_END '}' 6:3
+      SCOPE_END '}' 6:3
+    RETURN 'return' 7:3
+      IDENT 'n' 7:10
+  SCOPE_END '}' 8:1

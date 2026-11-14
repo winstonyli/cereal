@@ -685,6 +685,17 @@ static void e_arith(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op)
         c->ef[i] |= EF_INTOPS;
 }
 
+/* a ==> b in a spec (the parser marks it with aux): an int, never folded */
+static void e_implies(Checker *c, uint32_t i, uint32_t a, uint32_t b)
+{
+    if (!truth_ok(c, a) || !truth_ok(c, b)) {
+        set_err(c, i);
+        return;
+    }
+    c->ty[i] = TYPE_B(INT);
+    c->ef[i] = (c->ef[a] | c->ef[b]) & EF_PROP;
+}
+
 void e_binary(Checker *c, uint32_t i)
 {
     uint32_t k[2];
@@ -707,6 +718,10 @@ void e_binary(Checker *c, uint32_t i)
     ok = binop_operand_at(c, k[1], cnode_loc(c, i)) && ok;
     if (!ok) {
         set_err(c, i);
+        return;
+    }
+    if (cnode(c, i)->aux) {
+        e_implies(c, i, k[0], k[1]);
         return;
     }
     if (op == P_SLASH)

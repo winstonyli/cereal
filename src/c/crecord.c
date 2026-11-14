@@ -1490,6 +1490,7 @@ void cdecl_pragma_visit(Checker *c, uint32_t i)
 {
     if (c->par[i] != NO_NODE && ntag(c, c->par[i]) == N_STRUCT)
         cdecl_struct_semis(c, cnode(c, i)->tok);
-    cpragma_apply(c, cnode(c, i)->tok);
+    if (!cnode(c, i)->aux)      /* a spec (aux: its kind) has no text to interpret */
+        cpragma_apply(c, cnode(c, i)->tok);
 }
 

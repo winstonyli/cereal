@@ -1012,8 +1012,150 @@ static void pch_pragma_check(Parser *p)
     }
 }
 
-/* Pragmas where an item may start become items. */
-static void item_pragmas(Parser *p)
+/* ---- specs: #pragma cereal requires|ensures|invariant EXPR ------------
+ * docs/SPEC_DIRECTIVES_DESIGN.md.  The expression is lexed from the
+ * pragma's own source text, spliced into the token stream behind the
+ * pragma token and parsed in place; the node is the pragma, with the
+ * expression as its child and the spec kind in aux. */
+
+static void parse_expr(Parser *p);
+
+enum { SCTX_NONE, SCTX_FUNC, SCTX_LOOP };   /* what a body's leading specs may be */
+enum { SPEC_REQUIRES = 1, SPEC_ENSURES, SPEC_INVARIANT, SPEC_UNKNOWN };
+static const char *const spec_kw[] = {"", "requires", "ensures", "invariant"};
+
+static bool blank(char c)
+{
+    return c == ' ' || c == '\t';
+}
+
+static bool ident_char(char c)
+{
+    return isalnum((unsigned char)c) || c == '_' || c == '$';
+}
+
+/* s is at word w (not a prefix of a longer word): step over it and the
+ * blanks after it. */
+static bool take_word(const char **s, const char *e, const char *w)
+{
+    size_t n = strlen(w);
+    if ((size_t)(e - *s) < n || strncmp(*s, w, n) ||
+        ((size_t)(e - *s) > n && ident_char((*s)[n])))
+        return false;
+    *s += n;
+    while (*s < e && blank(**s))
+        (*s)++;
+    return true;
+}
+
+/* The spec a TK_PRAGMA token is (SPEC_*), 0 for any other pragma; *kw is
+ * where its keyword starts in the source line (the expression follows it)
+ * or NULL when the source is not a plain '#pragma' line. */
+static int spec_kind(Parser *p, const Tok *t, const char **kw)
+{
+    const char *s = tok_text_raw(p->sm, p->in, t), *e = s + t->len;
+    const char *r = srcmgr_ptr(p->sm, t->loc);
+    int k;
+    while (s < e && blank(*s))
+        s++;
+    (void)take_word(&s, e, "pragma");
+    if (!take_word(&s, e, "cereal"))
+        return 0;
+    for (k = SPEC_REQUIRES; k <= SPEC_INVARIANT; k++)
+        if (take_word(&s, e, spec_kw[k]))
+            break;
+    if (k > SPEC_INVARIANT)
+        k = SPEC_UNKNOWN;
+    *kw = NULL;
+    if (*r == '#') {
+        const char *q = r + 1;
+        while (blank(*q))
+            q++;
+        if (take_word(&q, q + 64, "pragma") && take_word(&q, q + 64, "cereal"))
+            *kw = q;
+    }
+    return k;
+}
+
+/* The pragma at toks[pt] is a spec of kind k in a body of kind ctx (SCTX_*). */
+static void spec_pragma(Parser *p, uint32_t pt, int k, const char *kw, int ctx)
+{
+    SrcLoc loc = p->toks.data[pt].t.loc;
+    const char *r = srcmgr_ptr(p->sm, loc);
+    if (k == SPEC_UNKNOWN || !kw) {
+        perr_at(p, pt, kw ? loc + (SrcLoc)(kw - r) : loc,
+                k == SPEC_UNKNOWN ? "unknown '#pragma cereal' directive"
+                                  : "a spec must be written as '#pragma cereal'");
+        p->err.live = false;
+    } else if (ctx != (k == SPEC_INVARIANT ? SCTX_LOOP : SCTX_FUNC)) {
+        perr_at(p, pt, loc + (SrcLoc)(kw - r), "'#pragma cereal %s' must start a %s body",
+                spec_kw[k], k == SPEC_INVARIANT ? "loop" : "function");
+        p->err.live = false;
+    } else {
+        const char *a = kw + strlen(spec_kw[k]), *q;
+        Lexer L;
+        LexOptions o;
+        Tok t;
+        VEC(PTok) v = {0};
+        size_t i, n, at = pt + 1, old = p->toks.len;
+        uint32_t start;
+        PTok eof;
+        while (blank(*a))
+            a++;
+        q = a;
+        while (*q && *q != '\n') {
+            if (*q == '\\' && (q[1] == '\n' || (q[1] == '\r' && q[2] == '\n')))
+                q += q[1] == '\n' ? 2 : 3;
+            else
+                q++;
+        }
+        memset(&o, 0, sizeof o);
+        o.dollar_idents = true;     /* $len */
+        o.uliterals = true;
+        o.c23 = p->year >= 2023;
+        lexer_init_range(&L, p->sm, p->in, &p->spec_cur, o,
+                         loc + (SrcLoc)(a - r), (uint32_t)(q - a));
+        for (lex_next(&L, &t); t.kind != TK_EOF; lex_next(&L, &t)) {
+            PTok x;
+            memset(&x, 0, sizeof x);
+            x.t = t;
+            x.t.flags &= (uint8_t)~TF_BOL;
+            vec_push(&v, x);
+        }
+        lexer_free(&L);
+        memset(&eof, 0, sizeof eof);
+        eof.t.kind = TK_EOF;
+        eof.t.loc = loc + (SrcLoc)(q - r);
+        vec_push(&v, eof);
+        n = v.len;
+        for (i = 0; i < n; i++)
+            vec_push(&p->toks, p->toks.data[pt]);
+        memmove(&p->toks.data[at + n], &p->toks.data[at], (old - at) * sizeof(PTok));
+        memcpy(&p->toks.data[at], v.data, n * sizeof(PTok));
+        vec_free(&v);
+        start = nmark(p);
+        p->pos = (uint32_t)at;
+        p->in_spec = true;
+        parse_expr(p);
+        p->in_spec = false;
+        if (!at_eof(p)) {
+            char buf[160];
+            perr(p, ci(p), "junk at end of '#pragma cereal %s'%s", spec_kw[k],
+                 tok_desc(p, ci(p), buf, sizeof buf));
+            p->err.live = false;
+        }
+        p->pos = (uint32_t)(at + n);    /* past the sentinel */
+        emit(p, N_PRAGMA, pt, start, 0);
+        set_aux(p, (uint32_t)k);
+        return;
+    }
+    leaf(p, N_PRAGMA, pt);
+    p->pos = pt + 1;
+}
+
+/* Pragmas where an item may start become items; ctx says whether leading
+ * specs are allowed (the first call of a function or loop body). */
+static void item_pragmas(Parser *p, int ctx)
 {
     bool loops = false;
     p->loop_pragma = 0;
@@ -1021,6 +1163,12 @@ static void item_pragmas(Parser *p)
            p->toks.data[p->pos].t.kind == TK_PRAGMA) {
         const Tok *t = &p->toks.data[p->pos].t;
         const char *s = tok_text_raw(p->sm, p->in, t), *e = s + t->len;
+        const char *kw;
+        int sk = spec_kind(p, t, &kw);
+        if (sk) {
+            spec_pragma(p, p->pos, sk, kw, ctx);
+            continue;
+        }
         while (s < e && (*s == ' ' || *s == '	'))
             s++;
         if (e - s > 6 && !strncmp(s, "pragma", 6))
@@ -1886,7 +2034,7 @@ static void struct_spec(Parser *p)
         set_aux(p, ckw_of(p, &p->toks.data[kw]) == CK_UNION);
         flags |= NF_BODY;
         for (;;) {
-            item_pragmas(p);
+            item_pragmas(p, SCTX_NONE);
             if (at(p, P_RBRACE) || at_eof(p))
                 break;
             if (accept(p, P_SEMI))
@@ -2764,6 +2912,17 @@ static void parse_cast(Parser *p)
     unary(p);
 }
 
+/* In a spec, "==>" (two adjacent tokens) is an operator of its own. */
+static bool at_implies(Parser *p)
+{
+    PTok a, b;
+    if (!p->in_spec)
+        return false;
+    a = ct(p);
+    b = pk(p, 1);
+    return is_p(&a, P_EQEQ) && is_p(&b, P_GT) && b.t.loc == a.t.loc + 2;
+}
+
 static void binary(Parser *p, int min)
 {
     uint32_t start = nmark(p);
@@ -2772,7 +2931,7 @@ static void binary(Parser *p, int min)
         PTok t = ct(p);
         int prec = tok_prec(&t.t);
         uint32_t op;
-        if (!prec || prec < min)
+        if (!prec || prec < min || at_implies(p))
             return;
         op = adv(p);
         binary(p, prec + 1);
@@ -2780,10 +2939,25 @@ static void binary(Parser *p, int min)
     }
 }
 
-static void parse_cond(Parser *p)
+/* a ==> b, right associative, between || and ?: ; the node is a binary on the
+ * "==" token with aux 1 */
+static void implies(Parser *p)
 {
     uint32_t start = nmark(p);
     binary(p, PR_LOR);
+    if (at_implies(p)) {
+        uint32_t op = adv(p);
+        adv(p);
+        implies(p);
+        emit(p, N_BINARY, op, start, 0);
+        set_aux(p, 1);
+    }
+}
+
+static void parse_cond(Parser *p)
+{
+    uint32_t start = nmark(p);
+    implies(p);
     if (at(p, P_QUESTION)) {
         uint32_t q = adv(p);
         unsigned flags = 0;
@@ -2828,6 +3002,34 @@ static void substatement(Parser *p)
 {
     open_scope(p, ci(p), 0);
     statement(p);
+    close_scope(p, NULL);
+}
+
+/* A loop body: a braced one may start with invariants; a spec pragma before the
+ * body proper is in no body, and is an error, not a silent skip. */
+static void loop_body(Parser *p)
+{
+    bool braced = at(p, P_LBRACE);
+    uint32_t i, j = ci(p);
+    for (i = p->pos; i < j; i++) {
+        const char *kw, *r;
+        int k = spec_kind(p, &p->toks.data[i].t, &kw);
+        if (!k || !kw)
+            continue;
+        r = srcmgr_ptr(p->sm, p->toks.data[i].t.loc);
+        if (k == SPEC_INVARIANT && !braced)
+            perr_at(p, i, p->toks.data[i].t.loc + (SrcLoc)(kw - r),
+                    "'#pragma cereal invariant' needs a braced loop body");
+        else if (k != SPEC_UNKNOWN)
+            perr_at(p, i, p->toks.data[i].t.loc + (SrcLoc)(kw - r),
+                    "'#pragma cereal %s' must start a %s body", spec_kw[k],
+                    k == SPEC_INVARIANT ? "loop" : "function");
+        p->err.live = false;
+    }
+    open_scope(p, j, 0);
+    p->spec_ctx = braced ? SCTX_LOOP : SCTX_NONE;
+    statement(p);
+    p->spec_ctx = SCTX_NONE;
     close_scope(p, NULL);
 }
 
@@ -2905,14 +3107,17 @@ static void statement(Parser *p)
         adv(p);
         open_scope(p, i, 0);
         paren_expr(p);
-        substatement(p);
+        if (ckw_of(p, &t) == CK_WHILE)
+            loop_body(p);
+        else
+            substatement(p);
         close_scope(p, NULL);
         emit(p, ckw_of(p, &t) == CK_SWITCH ? N_SWITCH : N_WHILE, i, start, 0);
         return;
     case CK_DO:
         adv(p);
         open_scope(p, i, 0);
-        substatement(p);
+        loop_body(p);
         if (ckw(p) == CK_WHILE) {
             adv(p);
             paren_expr(p);
@@ -2956,7 +3161,7 @@ static void statement(Parser *p)
         else
             parse_expr(p);
         expect(p, P_RPAREN);
-        substatement(p);
+        loop_body(p);
         close_scope(p, NULL);
         emit(p, N_FOR, i, start, 0);
         return;
@@ -3113,6 +3318,8 @@ static void block_item(Parser *p)
 static void compound(Parser *p, bool push)
 {
     uint32_t start = nmark(p), lb = adv(p);
+    int ctx = p->spec_ctx;
+    p->spec_ctx = SCTX_NONE;
     unsigned flags = 0;
     bool saved_lbl;
     vec_push(&p->open_braces, lb);
@@ -3125,7 +3332,8 @@ static void compound(Parser *p, bool push)
     for (;;) {
         uint32_t before;
         PTok it;
-        item_pragmas(p);
+        item_pragmas(p, ctx);
+        ctx = SCTX_NONE;
         if (at(p, P_RBRACE) || at_eof(p))
             break;
         before = p->pos;
@@ -3202,6 +3410,7 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
             adv(p);
         } while (depth > 0 && !at_eof(p));
     } else if (at(p, P_LBRACE)) {
+        p->spec_ctx = SCTX_FUNC;
         compound(p, false);
     } else {
         expected_req(p, "'{'");
@@ -3503,9 +3712,15 @@ bool parser_next(Parser *p, ParseUnit *u)
     p->saved.len = 0;
     p->err.have = false;
     if (fill(p, p->pos) && p->toks.data[p->pos].t.kind == TK_PRAGMA) {
+        const char *kw;
+        int sk = spec_kind(p, &p->toks.data[p->pos].t, &kw);
         pch_pragma_check(p);
-        leaf(p, N_PRAGMA, p->pos);
-        p->pos++;
+        if (sk) {                   /* a spec at file scope: an error */
+            spec_pragma(p, p->pos, sk, kw, SCTX_NONE);
+        } else {
+            leaf(p, N_PRAGMA, p->pos);
+            p->pos++;
+        }
     } else {
         uint32_t before = p->pos;
         if (at_eof(p))

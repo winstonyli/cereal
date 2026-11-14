@@ -1251,6 +1251,9 @@ void pp_do_pragma(PP *pp, TokSpan toks, SrcLoc loc)
                             pp_text(pp, msg) + (msg->kind == TK_STRING));
             }
         }
+    } else if (word(pp, toks, 0, "cereal")) {
+        /* a spec (docs/SPEC_DIRECTIVES_DESIGN.md): passed through for the
+         * parser, which lexes the text itself; no macro expansion */
     } else if (word(pp, toks, 0, "push_macro")) {
         TokSpan rest;
         Ident *id;
