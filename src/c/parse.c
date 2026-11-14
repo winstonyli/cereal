@@ -1021,7 +1021,6 @@ static void pch_pragma_check(Parser *p)
 static void parse_expr(Parser *p);
 
 enum { SCTX_NONE, SCTX_FUNC, SCTX_LOOP };   /* what a body's leading specs may be */
-enum { SPEC_REQUIRES = 1, SPEC_ENSURES, SPEC_INVARIANT, SPEC_UNKNOWN };
 static const char *const spec_kw[] = {"", "requires", "ensures", "invariant"};
 
 static bool blank(char c)
@@ -1138,6 +1137,7 @@ static void spec_pragma(Parser *p, uint32_t pt, int k, const char *kw, int ctx)
         p->in_spec = true;
         parse_expr(p);
         p->in_spec = false;
+        p->err.live = false;        /* a bad spec does not hush the next one */
         if (!at_eof(p)) {
             char buf[160];
             perr(p, ci(p), "junk at end of '#pragma cereal %s'%s", spec_kw[k],
@@ -2505,6 +2505,13 @@ static void postfix_tail(Parser *p, uint32_t start)
         case P_LBRACKET: {
             uint32_t lb = adv(p);
             parse_expr(p);
+            if (p->in_spec && at(p, P_COLON)) {     /* a slice p[lo:hi] */
+                adv(p);
+                parse_expr(p);
+                emit(p, N_SLICE, lb, start,
+                     expect_skip(p, P_RBRACKET) ? 0 : NF_CUT);
+                break;
+            }
             emit(p, N_INDEX, lb, start,
                  expect_skip(p, P_RBRACKET) ? 0 : NF_CUT);
             break;
@@ -2737,8 +2744,23 @@ static void primary(Parser *p)
                         p->diag->all.data[k]->oloc = at - 1;
                 }
             }
+            if (p->in_spec && t.t.len == 4 &&
+                !strncmp(tok_text_raw(p->sm, p->in, &t.t), "$len", 4)) {
+                uint32_t kw = adv(p);       /* $len(expr) */
+                expect(p, P_LPAREN);
+                parse_assign(p);
+                expect_skip(p, P_RPAREN);
+                emit(p, N_SPEC_LEN, kw, start, 0);
+                return;
+            }
             leaf(p, N_IDENT, adv(p));
             return;
+        case CK_RETURN:
+            if (p->in_spec) {           /* the function's value */
+                leaf(p, N_SPEC_RESULT, adv(p));
+                return;
+            }
+            break;
         case CK_GENERIC:
             generic_expr(p);
             return;

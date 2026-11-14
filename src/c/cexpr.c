@@ -252,6 +252,7 @@ bool cexpr_is_expr(unsigned tag)
     case N_ASSIGN: case N_COND: case N_STMT_EXPR: case N_VA_ARG:
     case N_OFFSETOF: case N_TYPES_COMPAT: case N_CONVERTVECTOR: case N_GENERIC:
     case N_GENERIC_ASSOC: case N_ADDR_LABEL: case N_HAS_ATTR:
+    case N_SPEC_RESULT: case N_SPEC_LEN: case N_SLICE:
         return true;
     default:
         return false;
@@ -407,6 +408,9 @@ void cexpr_node(Checker *c, uint32_t i)
     case N_GENERIC: e_generic(c, i); break;
     case N_GENERIC_ASSOC: e_generic_assoc(c, i); break;
     case N_ADDR_LABEL: e_addr_label(c, i); break;
+    case N_SPEC_RESULT: e_spec_result(c, i); break;
+    case N_SPEC_LEN: e_spec_len(c, i); break;
+    case N_SLICE: e_slice(c, i); break;
     default: set_err(c, i); break;
     }
     if (ntag(c, i) == N_MEMBER_EXPR || ntag(c, i) == N_INDEX)

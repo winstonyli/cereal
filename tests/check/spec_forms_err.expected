@@ -1,0 +1,36 @@
+spec_forms_err.c:4:24: error: 'return' in an 'ensures' of a function returning void
+    4 | #pragma cereal ensures return == 0
+      |                        ^
+spec_forms_err.c:8:25: error: 'return' is only available in an 'ensures' spec
+    8 | #pragma cereal requires return == 0
+      |                         ^
+spec_forms_err.c:9:26: error: a slice is only an operand of '==' or '!='
+    9 | #pragma cereal requires p[0:n] + 1
+      |                          ^
+spec_forms_err.c:10:27: error: a slice is only an operand of '==' or '!='
+   10 | #pragma cereal requires -p[0:n]
+      |                           ^
+spec_forms_err.c:11:25: error: '$len' of a value that is not a pointer or array
+   11 | #pragma cereal requires $len(n) > 0
+      |                         ^
+spec_forms_err.c:12:31: error: expected ')' before ',' token
+   12 | #pragma cereal requires $len(p, n) > 0
+      |                               ^
+spec_forms_err.c:13:30: error: expected '(' before 'p'
+   13 | #pragma cereal requires $len p
+      |                              ^
+spec_forms_err.c:14:29: error: expected expression before ']' token
+   14 | #pragma cereal requires p[0:] == p
+      |                             ^
+spec_forms_err.c:15:36: error: slice bound is not an integer
+   15 | #pragma cereal requires p[n:n] == p[1.5:2]
+      |                                    ^
+spec_forms_err.c:16:26: error: a slice is only an operand of '==' or '!='
+   16 | #pragma cereal requires p[n:n] > p
+      |                          ^
+spec_forms_err.c:22:13: error: expected ']' before ':' token
+   22 |   return a[0:1] == a;
+      |             ^
+spec_forms_err.c:22:17: warning: comparison between pointer and integer
+   22 |   return a[0:1] == a;
+      |                 ^

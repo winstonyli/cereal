@@ -1,0 +1,48 @@
+FUNC_DEF 'int' 1:1
+  SPECS 'int' 1:1
+    TYPESPEC 'int' 1:1
+  FUNC '(' 1:6
+    NAME 'f' 1:5
+    SCOPE '(' 1:6
+    PARAM 'int' 1:7
+      SPECS 'int' 1:7
+        TYPESPEC 'int' 1:7
+      PTR '*' 1:11
+        NAME 'p' 1:12
+    PARAM 'int' 1:15
+      SPECS 'int' 1:15
+        TYPESPEC 'int' 1:15
+      NAME 'n' 1:19
+    SCOPE_END 'n' 1:19
+  DECLARED 'f' 1:5 [2]
+  SCOPE '{' 2:1 [80]
+  COMPOUND '{' 2:1
+    BODY '{' 2:1
+    PRAGMA 'pragma cereal requires $len(p) >' 3:1 #1
+      BINARY '==' 3:48 #1
+        BINARY '&&' 3:38
+          BINARY '>=' 3:33
+            SPEC_LEN '$len' 3:25
+              IDENT 'p' 3:30
+            IDENT 'n' 3:36
+          BINARY '>=' 3:43
+            IDENT 'n' 3:41
+            NUMBER '0' 3:46
+        BINARY '==' 3:59
+          SLICE '[' 3:53
+            IDENT 'p' 3:52
+            NUMBER '0' 3:54
+            IDENT 'n' 3:56
+          SLICE '[' 3:63
+            IDENT 'p' 3:62
+            NUMBER '1' 3:64
+            BINARY '+' 3:68
+              IDENT 'n' 3:66
+              NUMBER '1' 3:70
+    PRAGMA 'pragma cereal ensures return > 0' 4:1 #2
+      BINARY '>' 4:31
+        SPEC_RESULT 'return' 4:24
+        NUMBER '0' 4:33
+    RETURN 'return' 5:3
+      IDENT 'n' 5:10
+  SCOPE_END '}' 6:1

@@ -364,6 +364,11 @@ unsigned uc_prec(Checker *c, TypeId t);
 bool vector_truth_node(Checker *c, uint32_t e);
 
 void e_logical(Checker *c, uint32_t i, uint32_t a, uint32_t b, int op);
+
+/* cspecform.c: the forms only a spec has */
+void e_spec_result(Checker *c, uint32_t i);
+void e_spec_len(Checker *c, uint32_t i);
+void e_slice(Checker *c, uint32_t i);
 bool is_npc(Checker *c, uint32_t n);
 bool is_boolish(Checker *c, uint32_t n);
 bool nonneg(Checker *c, uint32_t n);

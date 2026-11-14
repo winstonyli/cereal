@@ -26,7 +26,7 @@
     X(STATIC_ASSERT) /* expr string? */                                     \
     X(TOP_ASM)       /* string */                                           \
     X(EMPTY)         /* a stray ';' */                                      \
-    X(PRAGMA)        /* tok: the pragma */                                  \
+    X(PRAGMA)        /* tok: the pragma (a spec: aux SPEC_*, one expr kid) */ \
     X(ERROR)         /* tok: first token skipped; aux: tokens skipped */    \
     X(NONE)          /* placeholder */                                      \
     /* specifiers */                                                        \
@@ -119,6 +119,9 @@
     X(GENERIC_ASSOC) /* (type-name | none) expr */                          \
     X(ADDR_LABEL)    /* tok: the label */                                   \
     X(HAS_ATTR)      /* (expr | type-name) attr-item */                     \
+    X(SPEC_RESULT)   /* `return` in an ensures: the function's value */     \
+    X(SPEC_LEN)      /* expr (tok: `$len`) */                               \
+    X(SLICE)         /* expr expr expr: p[lo:hi], a comparison operand */   \
     /* markers: leaves placing scope events in post-order for the checker */ \
     X(SCOPE)         /* a scope opens (NF_PARAMS: a function body's, with \
                         its parameters) */                                  \
@@ -136,6 +139,9 @@ typedef enum {
 #undef X
     N_COUNT
 } NodeTag;
+
+/* The aux of a PRAGMA node that is a spec (#pragma cereal ...). */
+enum { SPEC_NONE, SPEC_REQUIRES, SPEC_ENSURES, SPEC_INVARIANT, SPEC_UNKNOWN };
 
 enum {
     NF_ERROR = 1 << 0,     /* recovered from a syntax error */
