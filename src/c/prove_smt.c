@@ -1,0 +1,376 @@
+/* prove_smt.c - the prover's term DAG, its rewrites and its solver queries (see prove_smt.h). */
+#include "prove_smt.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "symx.h"
+
+/* ---- the DAG ---- */
+
+void ps_free(Ps *ps) { vec_free(&ps->n); vec_free(&ps->v); }
+
+static PsT mk(Ps *ps, int op, int sort, unsigned w, PsT a, PsT b, PsT c, uint64_t k)
+{
+    PsNode n;
+    n.op = (uint8_t)op; n.sort = (uint8_t)sort; n.w = (uint8_t)w; n.a = a; n.b = b; n.c = c; n.k = k;
+    vec_push(&ps->n, n);
+    return (PsT)ps->n.len;
+}
+
+PsT ps_true(Ps *ps) { return mk(ps, PS_TRUE, PS_BOOL, 0, 0, 0, 0, 0); }
+PsT ps_bvc(Ps *ps, unsigned w, uint64_t v) { return mk(ps, PS_BVC, PS_BV, w, 0, 0, 0, v); }
+PsT ps_intc(Ps *ps, uint64_t v) { return mk(ps, PS_INTC, PS_INT, 0, 0, 0, 0, v); }
+
+PsT ps_var(Ps *ps, const char *name, int sort, unsigned w)
+{
+    size_t i;
+    for (i = 0; i < ps->v.len; i++)
+        if (!strcmp(ps->v.data[i].name, name)) break;
+    if (i == ps->v.len) {
+        PsVar v;
+        memset(&v, 0, sizeof v);
+        snprintf(v.name, sizeof v.name, "%s", name);
+        v.sort = (uint8_t)sort; v.w = (uint8_t)w;
+        vec_push(&ps->v, v);
+    }
+    return mk(ps, PS_VAR, ps->v.data[i].sort, ps->v.data[i].w, 0, 0, 0, i);
+}
+
+PsT ps_op(Ps *ps, int op, PsT a, PsT b)
+{
+    int sort = PS_BOOL;
+    unsigned w = 0;
+    switch (op) {
+    case PS_BVADD: case PS_BVMUL: case PS_BVNOT: sort = PS_BV; w = ps_at(ps, a)->w; break;
+    case PS_IADD: case PS_IMUL: sort = PS_INT; break;
+    case PS_SEL: sort = PS_BV; w = 8; break;
+    default: break;
+    }
+    return mk(ps, op, sort, w, a, b, 0, 0);
+}
+
+PsT ps_store(Ps *ps, PsT arr, PsT idx, PsT val) { return mk(ps, PS_STORE, PS_ARR, 0, arr, idx, val, 0); }
+PsT ps_forall(Ps *ps, PsT var, PsT body) { return mk(ps, PS_FORALL, PS_BOOL, 0, var, body, 0, 0); }
+
+static PsT and_all(Ps *ps, const PsT *t, size_t n)
+{
+    PsT r = 0;
+    size_t i;
+    for (i = 0; i < n; i++) r = r ? ps_op(ps, PS_AND, r, t[i]) : t[i];
+    return r ? r : ps_true(ps);
+}
+
+PsT ps_subst(Ps *ps, PsT t, PsT var, PsT repl)
+{
+    PsNode n = *ps_at(ps, t);               /* a copy: building nodes may move the arena */
+    PsT a, b, c;
+    uint64_t vk = ps_at(ps, var)->k;
+    if (n.op == PS_VAR) return n.k == vk ? repl : t;
+    if (!n.a) return t;                     /* a constant */
+    if (n.op == PS_FORALL) {
+        if (ps_at(ps, n.a)->k == vk) return t;      /* shadowed; repl must not mention the bound variable */
+        b = ps_subst(ps, n.b, var, repl);
+        return b == n.b ? t : ps_forall(ps, n.a, b);
+    }
+    a = ps_subst(ps, n.a, var, repl);
+    b = n.b ? ps_subst(ps, n.b, var, repl) : 0;
+    c = n.c ? ps_subst(ps, n.c, var, repl) : 0;
+    if (a == n.a && b == n.b && c == n.c) return t;
+    return mk(ps, n.op, n.sort, n.w, a, b, c, n.k);
+}
+
+bool ps_has(const Ps *ps, PsT t, int op)
+{
+    const PsNode *n = ps_at(ps, t);
+    if (n->op == op) return true;
+    return (n->a && ps_has(ps, n->a, op)) || (n->b && ps_has(ps, n->b, op)) || (n->c && ps_has(ps, n->c, op));
+}
+
+/* ---- bit-vectors to Int ---- */
+
+void psint_free(PsInt *o) { vec_free(&o->wrapbv); vec_free(&o->wrapint); vec_free(&o->nonneg); }
+
+PsT ps_to_int(Ps *ps, PsT t, PsInt *obl)
+{
+    PsNode n = *ps_at(ps, t);
+    PsT a, b, r;
+    switch (n.op) {
+    case PS_TRUE: case PS_FALSE: return t;
+    case PS_BVC: return n.w == 64 ? ps_intc(ps, n.k) : 0;
+    case PS_VAR:
+        if (n.sort == PS_BOOL) return t;
+        if (n.sort == PS_BV && n.w == 64) {
+            char nm[48];
+            PsT x;
+            snprintf(nm, sizeof nm, "%s.i", ps->v.data[n.k].name);
+            x = ps_var(ps, nm, PS_INT, 0);
+            vec_push(&obl->nonneg, ps_op(ps, PS_ILE, ps_intc(ps, 0), x));   /* repeats per use; the solver does not mind */
+            return x;
+        }
+        return 0;
+    case PS_BVADD: case PS_BVMUL:
+        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
+        r = ps_op(ps, n.op == PS_BVADD ? PS_IADD : PS_IMUL, a, b);
+        if (ps_has(ps, t, PS_BVMUL)) vec_push(&obl->wrapint, ps_op(ps, PS_ILT, r, mk(ps, PS_P64, PS_INT, 0, 0, 0, 0, 0)));
+        else vec_push(&obl->wrapbv, ps_op(ps, PS_BVULE, n.a, ps_op(ps, PS_BVNOT, n.b, 0)));
+        return r;
+    case PS_BVULT: case PS_BVULE:
+        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
+        return ps_op(ps, n.op == PS_BVULT ? PS_ILT : PS_ILE, a, b);
+    case PS_EQ:
+        if (ps_at(ps, n.a)->sort == PS_ARR) return 0;
+        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
+        return ps_op(ps, PS_EQ, a, b);
+    case PS_AND: case PS_OR: case PS_IMP:
+        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
+        return ps_op(ps, n.op, a, b);
+    case PS_NOT:
+        return (a = ps_to_int(ps, n.a, obl)) ? ps_op(ps, PS_NOT, a, 0) : 0;
+    default:
+        return 0;
+    }
+}
+
+/* ---- printing ---- */
+
+static const char *const op_name[] = {
+    [PS_BVADD] = "bvadd", [PS_BVMUL] = "bvmul", [PS_BVNOT] = "bvnot", [PS_BVULT] = "bvult", [PS_BVULE] = "bvule",
+    [PS_IADD] = "+", [PS_IMUL] = "*", [PS_ILT] = "<", [PS_ILE] = "<=",
+    [PS_EQ] = "=", [PS_AND] = "and", [PS_OR] = "or", [PS_NOT] = "not", [PS_IMP] = "=>",
+    [PS_SEL] = "select", [PS_STORE] = "store"
+};
+
+static void put_sort(StrBuf *sb, int sort, unsigned w)
+{
+    switch (sort) {
+    case PS_BOOL: sb_puts(sb, "Bool"); break;
+    case PS_INT: sb_puts(sb, "Int"); break;
+    case PS_BV: sb_printf(sb, "(_ BitVec %u)", w); break;
+    default: sb_puts(sb, "(Array (_ BitVec 64) (_ BitVec 8))"); break;
+    }
+}
+
+void ps_print(const Ps *ps, PsT t, StrBuf *sb)
+{
+    const PsNode *n = ps_at(ps, t);
+    switch (n->op) {
+    case PS_TRUE: sb_puts(sb, "true"); return;
+    case PS_FALSE: sb_puts(sb, "false"); return;
+    case PS_BVC: sb_printf(sb, "(_ bv%llu %u)", (unsigned long long)n->k, (unsigned)n->w); return;
+    case PS_INTC: sb_printf(sb, "%llu", (unsigned long long)n->k); return;
+    case PS_P64: sb_puts(sb, "18446744073709551616"); return;
+    case PS_VAR: sb_puts(sb, ps->v.data[n->k].name); return;
+    case PS_FORALL:
+        sb_puts(sb, "(forall ((");
+        sb_puts(sb, ps->v.data[ps_at(ps, n->a)->k].name);
+        sb_putc(sb, ' ');
+        put_sort(sb, ps_at(ps, n->a)->sort, ps_at(ps, n->a)->w);
+        sb_puts(sb, ")) ");
+        ps_print(ps, n->b, sb);
+        sb_putc(sb, ')');
+        return;
+    default: break;
+    }
+    sb_putc(sb, '(');
+    sb_puts(sb, op_name[n->op]);
+    sb_putc(sb, ' ');
+    ps_print(ps, n->a, sb);
+    if (n->b) { sb_putc(sb, ' '); ps_print(ps, n->b, sb); }
+    if (n->c) { sb_putc(sb, ' '); ps_print(ps, n->c, sb); }
+    sb_putc(sb, ')');
+}
+
+/* ---- the solver ---- */
+
+struct PsSolver {
+    SxSolver *sx;
+    const Ps *ps;               /* the DAG whose variables are declared on the pipe */
+    VEC(uint8_t) declared;      /* per variable of ps */
+};
+
+PsSolver *ps_open(const char *cmd, char *err, size_t errn)
+{
+    PsSolver *s;
+    SxSolver *x = sx_open(cmd, err, errn);
+    if (!x) return NULL;
+    s = xcalloc(1, sizeof *s);
+    s->sx = x;
+    return s;
+}
+
+void ps_close(PsSolver *s)
+{
+    if (!s) return;
+    sx_close(s->sx);
+    vec_free(&s->declared);
+    free(s);
+}
+
+/* Declares, in text, the free variables of t that the pipe has not seen.  A variable a quantifier binds is not free. */
+static void declare(PsSolver *s, const Ps *ps, PsT t, StrBuf *sb)
+{
+    const PsNode *n = ps_at(ps, t);
+    if (n->op == PS_VAR) {
+        while (s->declared.len < ps->v.len) vec_push(&s->declared, 0);
+        if (!s->declared.data[n->k]) {
+            s->declared.data[n->k] = 1;
+            sb_printf(sb, "(declare-const %s ", ps->v.data[n->k].name);
+            put_sort(sb, n->sort, n->w);
+            sb_puts(sb, ")\n");
+        }
+        return;
+    }
+    if (n->op == PS_FORALL) { declare(s, ps, n->b, sb); return; }
+    if (n->a) declare(s, ps, n->a, sb);
+    if (n->b) declare(s, ps, n->b, sb);
+    if (n->c) declare(s, ps, n->c, sb);
+}
+
+/* A bound variable is declared by the pass above too (it is a PS_VAR in the body); undeclare it by never emitting a
+ * declaration that a quantifier shadows: the declaration is harmless, so the caller marks quantified names up front. */
+static void mark_bound(PsSolver *s, const Ps *ps, PsT t)
+{
+    const PsNode *n = ps_at(ps, t);
+    if (n->op == PS_FORALL) {
+        while (s->declared.len < ps->v.len) vec_push(&s->declared, 0);
+        s->declared.data[ps_at(ps, n->a)->k] = 1;       /* never declared as a constant */
+        mark_bound(s, ps, n->b);
+        return;
+    }
+    if (n->a) mark_bound(s, ps, n->a);
+    if (n->b) mark_bound(s, ps, n->b);
+    if (n->c) mark_bound(s, ps, n->c);
+}
+
+int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+{
+    StrBuf q = {0};
+    const char *a;
+    size_t i;
+    int r;
+    if (s->ps != ps) {                      /* another DAG: its variable numbers mean other things */
+        a = sx_raw(s->sx, "(reset)\n(set-option :produce-models true)\n(set-logic ALL)\n");
+        if (!a || strstr(a, "(error")) return PS_ERROR;
+        s->ps = ps;
+        s->declared.len = 0;
+    }
+    for (i = 0; i < n; i++) mark_bound(s, ps, hyps[i]);
+    mark_bound(s, ps, goal);
+    for (i = 0; i < n; i++) declare(s, ps, hyps[i], &q);
+    declare(s, ps, goal, &q);
+    sb_printf(&q, "(push 1)\n(set-option :rlimit %lu)\n", rlimit);
+    for (i = 0; i < n; i++) {
+        sb_puts(&q, "(assert ");
+        ps_print(ps, hyps[i], &q);
+        sb_puts(&q, ")\n");
+    }
+    sb_puts(&q, "(assert (not ");
+    ps_print(ps, goal, &q);
+    sb_puts(&q, "))\n(check-sat)\n(pop 1)\n");
+    a = sx_raw(s->sx, sb_cstr(&q));
+    sb_free(&q);
+    if (!a || strstr(a, "(error")) return PS_ERROR;
+    while (*a == ' ' || *a == '\n' || *a == '\r') a++;
+    r = !strncmp(a, "unsat", 5) ? PS_VALID : !strncmp(a, "sat", 3) ? PS_INVALID : !strncmp(a, "unknown", 7) ? PS_UNKNOWN : PS_ERROR;
+    return r;
+}
+
+int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+{
+    PsInt obl = {0};
+    VEC(PsT) ih = {0}, lin_b = {0}, lin_i = {0};
+    PsT g, cb, h;
+    size_t i;
+    int r = PS_UNKNOWN, rr;
+    if (ps_has(ps, goal, PS_FORALL)) return PS_UNKNOWN;
+    for (i = 0; i < n; i++) {
+        if (ps_has(ps, hyps[i], PS_FORALL)) continue;
+        h = ps_to_int(ps, hyps[i], &obl);
+        if (!h) goto out;                   /* a hypothesis Int cannot say: the tier does not apply */
+        vec_push(&ih, h);
+        if (!ps_has(ps, hyps[i], PS_BVMUL)) { vec_push(&lin_b, hyps[i]); vec_push(&lin_i, h); }
+    }
+    if (!(g = ps_to_int(ps, goal, &obl))) goto out;
+    for (i = 0; i < obl.nonneg.len; i++) { vec_push(&ih, obl.nonneg.data[i]); vec_push(&lin_i, obl.nonneg.data[i]); }
+    /* 1. the adds with no multiply under them do not wrap, in bit-vectors, from the multiply-free hypotheses */
+    if (obl.wrapbv.len) {
+        cb = and_all(ps, obl.wrapbv.data, obl.wrapbv.len);
+        if (ps_valid(s, ps, lin_b.data, lin_b.len, cb, rlimit) != PS_VALID) goto out;
+    }
+    /* 2. every multiply, and add over one, stays below 2^64, as Int facts (one query each: a conjunction is slower) */
+    for (i = 0; i < obl.wrapint.len; i++)
+        if (ps_valid(s, ps, lin_i.data, lin_i.len, obl.wrapint.data[i], rlimit * 25) != PS_VALID) goto out;
+    /* 3. the goal over Int; with no wrap possible, an answer there is the answer in bit-vectors */
+    rr = ps_valid(s, ps, ih.data, ih.len, g, rlimit * 25);
+    r = rr;
+out:
+    psint_free(&obl); vec_free(&ih); vec_free(&lin_b); vec_free(&lin_i);
+    return r;
+}
+
+/* ---- self-test ---- */
+
+static int failures;
+
+static void expect(const char *what, int got, int want)
+{
+    if (got != want) { fprintf(stderr, "prove selftest: %s: got %d, want %d\n", what, got, want); failures++; }
+}
+
+static PsT bv(Ps *ps, const char *nm) { return ps_var(ps, nm, PS_BV, 64); }
+static PsT ult(Ps *ps, PsT a, PsT b) { return ps_op(ps, PS_BVULT, a, b); }
+static PsT ule(Ps *ps, PsT a, PsT b) { return ps_op(ps, PS_BVULE, a, b); }
+
+int prove_selftest(void)
+{
+    Ps ps = {0};
+    char err[200];
+    StrBuf sb = {0};
+    PsSolver *s = ps_open("z3 -in -smt2", err, sizeof err);
+    PsT n, szD, i, j, r, c, k, d, src, zero, h[6], x, one, lim;
+    if (!s) { fprintf(stderr, "prove selftest: %s\n", err); return 1; }
+    n = bv(&ps, "n"); szD = bv(&ps, "szD"); i = bv(&ps, "i"); j = bv(&ps, "j");
+    r = bv(&ps, "r"); c = bv(&ps, "c"); x = bv(&ps, "x");
+    d = ps_var(&ps, "D", PS_ARR, 0); src = ps_var(&ps, "S", PS_ARR, 0);
+    zero = ps_bvc(&ps, 64, 0); one = ps_bvc(&ps, 64, 1); lim = ps_bvc(&ps, 64, 2147483648u);
+
+    /* substitution */
+    ps_print(&ps, ps_subst(&ps, ps_op(&ps, PS_BVADD, x, i), x, ps_bvc(&ps, 64, 3)), &sb);
+    if (strcmp(sb_cstr(&sb), "(bvadd (_ bv3 64) i)")) { fprintf(stderr, "prove selftest: subst: %s\n", sb_cstr(&sb)); failures++; }
+    sb_free(&sb);
+
+    /* the copy loop's write bound, and it with the size fact dropped */
+    h[0] = ule(&ps, n, szD); h[1] = ult(&ps, i, n);
+    expect("copy bound", ps_valid(s, &ps, h, 2, ult(&ps, i, szD), 0), PS_VALID);
+    expect("copy bound without n <= szD", ps_valid(s, &ps, h + 1, 1, ult(&ps, i, szD), 0), PS_INVALID);
+
+    /* the nested loop's write bound: nonlinear as bit-vectors, instant through the Int tier (S7) */
+    h[0] = ule(&ps, r, lim); h[1] = ule(&ps, c, lim); h[2] = ult(&ps, i, r); h[3] = ult(&ps, j, c);
+    h[4] = ule(&ps, ps_op(&ps, PS_BVMUL, r, c), szD);
+    k = ult(&ps, ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVMUL, i, c), j), szD);
+    expect("fill2 bound by Int", ps_valid_int(s, &ps, h, 5, k, 400000), PS_VALID);
+    expect("fill2 bound without r*c <= szD", ps_valid_int(s, &ps, h, 4, k, 400000), PS_INVALID);
+    expect("fill2 bound without r <= 2^31", ps_valid_int(s, &ps, h + 1, 4, k, 400000), PS_UNKNOWN);   /* the no-wrap proof fails */
+
+    /* wrap: x < x + 1 is false at the top, and the Int tier must not say otherwise */
+    k = ult(&ps, x, ps_op(&ps, PS_BVADD, x, one));
+    expect("x < x + 1 in bit-vectors", ps_valid(s, &ps, NULL, 0, k, 0), PS_INVALID);
+    expect("x < x + 1 by Int", ps_valid_int(s, &ps, NULL, 0, k, 400000), PS_UNKNOWN);
+
+    /* arrays and a quantifier: copied below i, so equal at 0 if 0 < i */
+    {
+        PsT kv = ps_var(&ps, "kq", PS_BV, 64);
+        PsT eq = ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, d, kv), ps_op(&ps, PS_SEL, src, kv));
+        PsT all = ps_forall(&ps, kv, ps_op(&ps, PS_IMP, ult(&ps, kv, i), eq));
+        PsT g0 = ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, d, zero), ps_op(&ps, PS_SEL, src, zero));
+        h[0] = all; h[1] = ult(&ps, zero, i);
+        expect("forall instance", ps_valid(s, &ps, h, 2, g0, 0), PS_VALID);
+        expect("forall without 0 < i", ps_valid(s, &ps, h, 1, g0, 0), PS_INVALID);
+        expect("store then select", ps_valid(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, ps_store(&ps, d, zero, ps_bvc(&ps, 8, 7)), zero), ps_bvc(&ps, 8, 7)), 0), PS_VALID);
+    }
+    ps_close(s);
+    ps_free(&ps);
+    return failures != 0;
+}

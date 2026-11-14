@@ -14,6 +14,7 @@
 #include "toks.h"
 #include "c/csymidx.h"
 #include "c/eval.h"
+#include "c/prove_smt.h"
 #include "c/frontend.h"
 #include "compdb.h"
 #include "jobs.h"
@@ -1594,6 +1595,8 @@ int main(int argc, char **argv)
         return indexsum_main(argc - 2, argv + 2);
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "bdd"))
         return bdd_selftest();   /* hidden: run by tests/run.sh */
+    if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "prove"))
+        return prove_selftest();
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "pcq"))
         return pcq_selftest();
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "diag"))

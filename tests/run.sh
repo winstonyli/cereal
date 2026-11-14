@@ -1067,6 +1067,9 @@ if "$CEREAL" selftest punct </dev/null; then ok; else bad "selftest punct"; fi
 if "$CEREAL" selftest intarith </dev/null; then ok; else bad "selftest intarith"; fi
 if "$CEREAL" selftest fparith </dev/null; then ok; else bad "selftest fparith"; fi
 if "$CEREAL" selftest idxset </dev/null; then ok; else bad "selftest idxset"; fi
+if command -v z3 >/dev/null 2>&1; then   # the prover's term DAG and solver pipe (docs/PROVER_DESIGN.md)
+    if "$CEREAL" selftest prove </dev/null; then ok; else bad "selftest prove"; fi
+fi
 # 24. presence conditions (S1c fold): the hidden CEREAL_PCDUMP hook against
 # tests/pc/NAME.pc; NAME.flags adds flags (host macros, a system directory),
 # NAME.dump the hook words (default 1; "why" lists the cheapest ways to enable).

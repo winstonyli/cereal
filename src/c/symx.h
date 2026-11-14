@@ -67,6 +67,9 @@ SxSolver *sx_open(const char *cmd, char *err, size_t errn);
 void sx_close(SxSolver *s);
 /* Resource limit per query for the next sx_begin (0: none); a deterministic budget, not time. */
 void sx_limit(SxSolver *s, unsigned long rlimit);
+/* One raw round trip for another client of the pipe (prove_smt.c): sends text, returns the answer up to the echo that
+ * ends it, valid until the next call; NULL if the pipe broke. */
+const char *sx_raw(SxSolver *s, const char *text);
 /* A new problem over the nodes of sx: forgets everything asserted. */
 void sx_begin(SxSolver *s, const Sx *sx);
 /* Asserts that node a is non-zero (want) or zero (!want), for good. */

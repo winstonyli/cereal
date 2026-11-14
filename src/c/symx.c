@@ -344,6 +344,12 @@ static bool rt(SxSolver *s, const char *text, bool *err) { (void)s; (void)text; 
 
 void sx_limit(SxSolver *s, unsigned long rlimit) { s->rlimit = rlimit; }
 
+const char *sx_raw(SxSolver *s, const char *text) {
+    bool e = false;
+    if (s->broken || !rt(s, text, &e)) return NULL;
+    return sb_cstr(&s->in);
+}
+
 void sx_begin(SxSolver *s, const Sx *sx) {
     StrBuf sb = {0};
     bool e = false;
