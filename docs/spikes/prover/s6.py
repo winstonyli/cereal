@@ -305,7 +305,65 @@ class VC:
             r = z3run(self.decls, hs, gl, self.cap)
             self.nq += 1
             if r == 'unsat': return True
+        if self.facts and 'forall' not in goal and os.environ.get('INT', '1') == '1':
+            return self.int_tier([h for h in self.facts + hyps if 'forall' not in h], goal)
         return False
+
+    def int_tier(self, hs, goal):
+        # S7: nonlinear 64-bit bvmul defeats z3 (no answer in 100 s), the same goal over Int is instant. Sound only if no
+        # add or mul in the query wraps, so that is proved first, in bit-vectors, from the same hypotheses.
+        ops = {'bvadd': '+', 'bvmul': '*', 'bvult': '<', 'bvule': '<=', 'bvugt': '>', 'bvuge': '>=', 'and': 'and',
+               'or': 'or', 'not': 'not', '=>': '=>', '=': '=', 'true': 'true', 'ite': 'ite', 'distinct': 'distinct'}
+        def parse_s(s):
+            toks = re.findall(r'\(|\)|[^\s()]+', s); pos = [0]
+            def rd():
+                t = toks[pos[0]]; pos[0] += 1
+                if t != '(': return t
+                out = []
+                while toks[pos[0]] != ')': out.append(rd())
+                pos[0] += 1; return out
+            return rd()
+        nodes = []
+        def tr(x):
+            if isinstance(x, str):
+                if x in self.decls and self.decls[x] == BV: return x
+                if x in ('true', 'false'): return x
+                raise ValueError(x)
+            if x[0] == '_' and x[1].startswith('bv'): return x[1][2:]
+            if x[0] not in ops: raise ValueError(x[0])
+            if x[0] in ('bvadd', 'bvmul'): nodes.append(x)
+            return '(' + ' '.join([ops[x[0]]] + [tr(a) for a in x[1:]]) + ')'
+        try:
+            ih, ig = [tr(parse_s(h)) for h in hs], tr(parse_s(goal))
+        except ValueError as e:
+            if os.environ.get("V"): print("int tier bail:", e)
+            return False
+        def sx(x):
+            return x if isinstance(x, str) else '(' + ' '.join(sx(a) for a in x) + ')'
+        # no-wrap obligations, from the mul-free hypotheses only (so they do not lean on the nonlinear facts being read right):
+        # an add of mul-free terms is checked in bit-vectors (linear, fast); a mul or an add over a mul is checked as an Int
+        # value below 2^64. The mul-free hypotheses' own adds are checked in bit-vectors too.
+        lin = [h for h in hs if 'bvmul' not in h]
+        lin_adds = [n for n in nodes if n[0] == 'bvadd' and 'bvmul' not in sx(n)]
+        for h in lin:
+            def adds(x):
+                if isinstance(x, str): return []
+                return ([x] if x[0] == 'bvadd' else []) + [a for c in x[1:] for a in adds(c)]
+            lin_adds += adds(parse_s(h))
+        bvchk = ['(bvule %s (bvnot %s))' % (sx(n[1]), sx(n[2])) for n in lin_adds]
+        ids = {k: 'Int' for k, s in self.decls.items() if s == BV}
+        ih_lin = [tr(parse_s(h)) for h in lin]
+        big = [n for n in nodes if 'bvmul' in sx(n)]
+        ichk = ['(< %s %d)' % (tr(n), 1 << 64) for n in big]
+        self.nq += 2
+        r1 = z3run(self.decls, lin, '(and ' + ' '.join(bvchk) + ')', self.cap) if bvchk else 'unsat'
+        r2 = 'unsat'
+        for c1 in ichk:
+            if z3run(ids, ih_lin + [f'(>= {k} 0)' for k in ids], c1, False) != 'unsat': r2 = 'unknown'; break
+        if os.environ.get('V'): print('int tier no-wrap:', r1, r2, ih_lin, ichk)
+        if r1 != 'unsat' or r2 != 'unsat': return False
+        self.nq += 1
+        return z3run(ids, ih + [f'(>= {k} 0)' for k in ids], ig, False) == 'unsat'
 
     def src_hyps(self, src, src_state, live):
         if src is None: return []
@@ -341,7 +399,7 @@ def subq(s, fn):
 
 def z3run(decls, hyps, goal, cap=False):
     global LASTMODEL
-    lines = [f'(set-option :rlimit {RL})', '(set-logic ALL)']
+    lines = [f'(set-option :rlimit {RL * 25 if decls and all(s == "Int" for s in decls.values()) else RL})', '(set-logic QF_NIA)' if decls and all(s == 'Int' for s in decls.values()) else '(set-logic ALL)']
     lines += [f'(declare-const {n} {s})' for n, s in decls.items()]
     lines += [f'(assert {h})' for h in hyps]
     if cap:
