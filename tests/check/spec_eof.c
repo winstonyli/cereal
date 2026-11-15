@@ -1,0 +1,1 @@
+#pragma cereal requires 1

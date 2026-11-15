@@ -1,0 +1,18 @@
+spec_misc.c:9:3: warning: ISO C forbids nested functions [-Wpedantic]
+    9 |   int in(int m)
+      |   ^
+spec_misc.c:18:3: error: a spec must be written as '#pragma cereal'
+   18 |   _Pragma("cereal requires n > 0")
+      |   ^
+spec_misc.c:23:30: error: 'NULL' undeclared (first use in this function)
+   23 | #pragma cereal requires p != NULL
+      |                              ^
+spec_misc.c:1:1: note: 'NULL' is defined in header '<stddef.h>'; did you forget to '#include <stddef.h>'?
+    1 | int kr(n)
+      | ^
+spec_misc.c:23:30: note: each undeclared identifier is reported only once for each function it appears in
+   23 | #pragma cereal requires p != NULL
+      |                              ^
+spec_misc.c:35:16: error: '#pragma cereal requires' must start a function body
+   35 | #pragma cereal requires 1
+      |                ^
