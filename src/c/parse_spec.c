@@ -41,6 +41,26 @@ static bool take_word(const char **s, const char *e, const char *w)
     return true;
 }
 
+/* Past blanks, comments and line splices in the raw source. */
+static const char *trivia(const char *q)
+{
+    for (;;) {
+        if (blank(*q))
+            q++;
+        else if (q[0] == '\\' && q[1] == '\n')
+            q += 2;
+        else if (q[0] == '\\' && q[1] == '\r' && q[2] == '\n')
+            q += 3;
+        else if (q[0] == '/' && q[1] == '*') {
+            const char *e = strstr(q + 2, "*/");
+            if (!e)
+                return q;
+            q = e + 2;
+        } else
+            return q;
+    }
+}
+
 /* The spec a TK_PRAGMA token is (SPEC_*), 0 for any other pragma; *kw is
  * where its keyword starts in the source line (the expression follows it)
  * or NULL when the source is not a plain '#pragma' line. */
@@ -61,11 +81,10 @@ int spec_kind(Parser *p, const Tok *t, const char **kw)
         k = SPEC_UNKNOWN;
     *kw = NULL;
     if (*r == '#') {
-        const char *q = r + 1;
-        while (blank(*q))
-            q++;
-        if (take_word(&q, q + 64, "pragma") && take_word(&q, q + 64, "cereal"))
-            *kw = q;
+        const char *q = trivia(r + 1);
+        if (take_word(&q, q + (1 << 20), "pragma") && (q = trivia(q), true) &&
+            take_word(&q, q + (1 << 20), "cereal"))
+            *kw = trivia(q);
     }
     return k;
 }
@@ -148,21 +167,21 @@ void spec_pragma(Parser *p, uint32_t pt, int k, const char *kw, int ctx)
 }
 
 
-/* A spec pragma between a loop's head and its body proper is in no body, and
- * is an error, not a silent skip (tokens [p->pos, j) lie before the body). */
-void spec_loop_prelude(Parser *p, uint32_t j, bool braced)
+/* adv stepped over tokens [from, to): a spec among them sits in no body's
+ * first slot, and is an error, not a silent skip. */
+void spec_skipped(Parser *p, uint32_t from, uint32_t to)
 {
     uint32_t i;
-    for (i = p->pos; i < j; i++) {
+    for (i = from; i < to; i++) {
         const char *kw, *r;
         int k = spec_kind(p, &p->toks.data[i].t, &kw);
         if (!k || !kw)
             continue;
         r = srcmgr_ptr(p->sm, p->toks.data[i].t.loc);
-        if (k == SPEC_INVARIANT && !braced)
+        if (k == SPEC_UNKNOWN)
             p_err_at(p, i, p->toks.data[i].t.loc + (SrcLoc)(kw - r),
-                     "'#pragma cereal invariant' needs a braced loop body");
-        else if (k != SPEC_UNKNOWN)
+                     "unknown '#pragma cereal' directive");
+        else
             p_err_at(p, i, p->toks.data[i].t.loc + (SrcLoc)(kw - r),
                      "'#pragma cereal %s' must start a %s body", spec_kw[k],
                      k == SPEC_INVARIANT ? "loop" : "function");

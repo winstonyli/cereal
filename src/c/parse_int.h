@@ -21,6 +21,6 @@ void parse_expr(Parser *p);
 enum { SCTX_NONE, SCTX_FUNC, SCTX_LOOP };
 int spec_kind(Parser *p, const Tok *t, const char **kw);
 void spec_pragma(Parser *p, uint32_t pt, int k, const char *kw, int ctx);
-void spec_loop_prelude(Parser *p, uint32_t j, bool braced);
+void spec_skipped(Parser *p, uint32_t from, uint32_t to);
 
 #endif

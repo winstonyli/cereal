@@ -1,0 +1,24 @@
+spec_pos.c:2:16: error: '#pragma cereal requires' must start a function body
+    2 | #pragma cereal requires n > 0
+      |                ^
+spec_pos.c:9:16: error: '#pragma cereal requires' must start a function body
+    9 | #pragma cereal requires n > 0
+      |                ^
+spec_pos.c:16:16: error: '#pragma cereal requires' must start a function body
+   16 | #pragma cereal requires n > 0
+      |                ^
+spec_pos.c:24:16: error: '#pragma cereal requires' must start a function body
+   24 | #pragma cereal requires n > 0
+      |                ^
+spec_pos.c:32:16: error: '#pragma cereal requires' must start a function body
+   32 | #pragma cereal requires n > 0
+      |                ^
+spec_pos.c:41:16: error: '#pragma cereal invariant' must start a loop body
+   41 | #pragma cereal invariant n > 0
+      |                ^
+spec_pos.c:42:5: error: for, while or do statement expected before 'n'
+   42 |     n--;
+      |     ^
+spec_pos.c:49:16: error: '#pragma cereal requires' must start a function body
+   49 | #pragma cereal requires n > 0
+      |                ^

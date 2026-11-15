@@ -635,6 +635,8 @@ static size_t struct_stmts(Cfg *L, uint32_t n)
     size_t c = t->op == TO_LOCAL || t->op == TO_EXPRSTMT || t->op == TO_DATA || t->op == TO_ASM ||
                t->op == TO_SPEC;
     uint32_t j;
+    if (t->op == TO_SPEC)           /* carried verbatim: a statement expression in it is no statement */
+        return c;
     for (j = 0; j < t->nkids; j++)
         c += struct_stmts(L, kid(L, n, j));
     return c;

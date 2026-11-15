@@ -965,6 +965,7 @@ void cstmt_scope_end_post(Checker *c, uint32_t i);
 void cstmt_enter(Checker *c, uint32_t i);
 void cstmt_expr(Checker *c, uint32_t i);
 bool cstmt_cond_identical(Checker *c, uint32_t i, bool immediate);
+void cstmt_cond_check(Checker *c, uint32_t e);   /* a condition: a scalar, not void */
 void cstmt_dup_branches(Checker *c, uint32_t scope, uint32_t end);
 void cstmt_dup_cond(Checker *c, uint32_t scope, uint32_t end);
 SrcLoc cexpr_colon_loc(Checker *c, uint32_t i, uint32_t mid, uint32_t els);

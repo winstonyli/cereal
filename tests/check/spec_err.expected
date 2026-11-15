@@ -13,7 +13,7 @@ spec_err.c:12:16: error: '#pragma cereal requires' must start a function body
 spec_err.c:14:16: error: '#pragma cereal requires' must start a function body
    14 | #pragma cereal requires 1
       |                ^
-spec_err.c:20:16: error: '#pragma cereal invariant' needs a braced loop body
+spec_err.c:20:16: error: '#pragma cereal invariant' must start a loop body
    20 | #pragma cereal invariant n > 0
       |                ^
 spec_err.c:23:16: error: '#pragma cereal invariant' must start a loop body

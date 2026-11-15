@@ -922,7 +922,7 @@ static uint32_t assign_truth(Checker *c, uint32_t e)
     }
 }
 
-static void cond_check(Checker *c, uint32_t e)
+void cstmt_cond_check(Checker *c, uint32_t e)
 {
     TypeId t;
     uint32_t a;
@@ -1022,7 +1022,7 @@ void cstmt_expr(Checker *c, uint32_t i)
         p = c->par[i];     /* an if/while/do condition is still a truth value */
         if (p != NOB && (tg(c, p) == N_IF || tg(c, p) == N_WHILE ||
                          tg(c, p) == N_DO))
-            cond_check(c, i);
+            cstmt_cond_check(c, i);
         return;
     }
     p = c->par[i];
@@ -1030,12 +1030,12 @@ void cstmt_expr(Checker *c, uint32_t i)
         return;
     switch (tg(c, p)) {
     case N_IF: case N_WHILE: case N_DO:
-        cond_check(c, i);
+        cstmt_cond_check(c, i);
         break;
     case N_FOR: {
         uint32_t n, k = child_index(c, p, i, &n);
         if (k == 2)
-            cond_check(c, i);
+            cstmt_cond_check(c, i);
         else if (k == 1 || k == 3)      /* the increment has its own location */
             unused_value(c, i, k == 3 ? first_loc(c, i) : cnode_loc(c, p));
         break;

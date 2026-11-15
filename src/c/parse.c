@@ -130,8 +130,11 @@ static PTok pk(Parser *p, int k)
 static uint32_t adv(Parser *p)
 {
     uint32_t i = p_ci(p);
-    if (!p->unwind && fill(p, i))
+    if (!p->unwind && fill(p, i)) {
+        if (i > p->pos)
+            spec_skipped(p, p->pos, i);
         p->pos = i + 1;
+    }
     return i;
 }
 
@@ -1067,6 +1070,7 @@ static void item_pragmas(Parser *p, int ctx)
             }
         }
         pch_pragma_check(p);
+        ctx = SCTX_NONE;            /* specs come before any other pragma */
         p_leaf(p, N_PRAGMA, p->pos);
         p->pos++;
     }
@@ -2885,14 +2889,11 @@ static void substatement(Parser *p)
     close_scope(p, NULL);
 }
 
-/* A loop body: a braced one may start with invariants; a spec pragma before the
- * body proper is in no body, and is an error, not a silent skip. */
+/* A loop body: a braced one may start with invariants. */
 static void loop_body(Parser *p)
 {
     bool braced = at(p, P_LBRACE);
-    uint32_t j = p_ci(p);
-    spec_loop_prelude(p, j, braced);
-    open_scope(p, j, 0);
+    open_scope(p, p_ci(p), 0);
     p->spec_ctx = braced ? SCTX_LOOP : SCTX_NONE;
     statement(p);
     p->spec_ctx = SCTX_NONE;
