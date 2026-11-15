@@ -922,6 +922,30 @@ out:
     return id;
 }
 
+/* a[lo:hi] == b[lo2:hi2] (or !=) in a spec: one TO_SLICEEQ of the six kids a lo hi b lo2 hi2
+ * (docs/PROVE_OBLIGATIONS_DESIGN.md section 4). */
+static uint32_t slice_eq(El *e, int p, uint32_t a, uint32_t b, TypeId t, SrcLoc loc)
+{
+    Checker *c = e->c;
+    uint32_t s[2], ka[6], sk[3], x, j, m;
+    s[0] = a, s[1] = b;
+    if (ntag(c, a) != N_SLICE || ntag(c, b) != N_SLICE)
+        return tunsup(e, "a slice is compared with a slice");
+    for (j = 0; j < 2; j++) {
+        if (nkids(c, s[j], sk, 3) != 3)
+            return tunsup(e, "malformed slice");
+        for (m = 0; m < 3; m++) {
+            ka[3 * j + m] = rv(e, sk[m]);
+            if (ka[3 * j + m] == TN)
+                return TN;
+        }
+    }
+    if (mainv(c, pointee(c, nty(e, ka[0]))) != mainv(c, pointee(c, nty(e, ka[3]))))
+        return tunsup(e, "slices of different element types");
+    x = mk(e, TO_SLICEEQ, t, loc, 0, 0, 0, ka, 6);
+    return p == P_NE ? mk(e, TO_UNOP, t, loc, 0, 0, P_BANG, &x, 1) : x;
+}
+
 static uint32_t ex(El *e, uint32_t n, bool allow_void)
 {
     Checker *c = e->c;
@@ -1078,6 +1102,8 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             ka[1] = y;
             return mk(e, TO_LOGOR, t, loc, 0, 0, 0, ka, 2);
         }
+        if ((p == P_EQEQ || p == P_NE) && (ntag(c, k[0]) == N_SLICE || ntag(c, k[1]) == N_SLICE))
+            return slice_eq(e, p, k[0], k[1], t, loc);
         switch (p) {
         case P_COMMA:
             x = ex(e, k[0], true);
@@ -1140,6 +1166,15 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             sum = mk(e, TO_BINOP, lt, loc, 0, 0, (unsigned)P_PLUS, ka, 2);
         }
         return sum;
+    }
+    case N_SPEC_RESULT:         /* a spec's `return`: the function's value */
+        return mk(e, TO_RESULT, t, loc, 0, 0, 0, NULL, 0);
+    case N_SPEC_LEN: {          /* $len(p): the extent of p, in elements */
+        uint32_t x;
+        if (nkids(c, i, k, 1) != 1)
+            return tunsup(e, "malformed $len");
+        x = rv(e, k[0]);
+        return x == TN ? TN : mk(e, TO_LEN, t, loc, 0, 0, 0, &x, 1);
     }
     default:
         return tunsup(e, "expression %s", node_names[ntag(c, i)]);
@@ -1983,10 +2018,19 @@ static void verify(El *e, FILE *out)
     uint32_t *tstores = xcalloc(e->ntmp ? e->ntmp : 1, sizeof *tstores);
     TypeId *ttype = xcalloc(e->ntmp ? e->ntmp : 1, sizeof *ttype);
     U32Vec labels = {0};
+    uint8_t *inspec = xcalloc(n ? n : 1, 1);     /* the subtrees of the TO_SPEC nodes */
     uint32_t j;
     for (i = 0; i < n; i++)
         if (e->nodes.data[i].op == TO_LABEL)
             vec_push(&labels, (uint32_t)e->nodes.data[i].val);
+    for (i = n; i-- > 0;) {
+        const TNode *sn = &e->nodes.data[i];
+        if (sn->op == TO_SPEC)
+            inspec[i] = 1;
+        if (inspec[i])
+            for (j = 0; j < sn->nkids; j++)
+                inspec[e->kids.data[sn->kid0 + j]] = 1;
+    }
     for (i = 0; i < n; i++) {
         const TNode *nd = &e->nodes.data[i];
         const uint32_t *k = e->kids.data + nd->kid0;
@@ -2340,6 +2384,28 @@ static void verify(El *e, FILE *out)
             if (!ISVAL(KID(0)))
                 vbad(e, out, i, "operand");
             break;
+        case TO_RESULT: case TO_LEN: case TO_SLICEEQ: {
+            uint32_t m;
+            if (!inspec[i])
+                vbad(e, out, i, "spec operation outside a spec");
+            if (nd->op == TO_RESULT) {
+                NEED(0);
+            } else if (nd->op == TO_LEN) {
+                NEED(1);
+                if (!ISVAL(KID(0)) || KIND(KID(0)->ty) != TY_PTR)
+                    vbad(e, out, i, "operand is not a pointer");
+            } else {
+                NEED(6);
+                for (m = 0; m < 6; m += 3)
+                    if (!ISVAL(KID(m)) || KIND(KID(m)->ty) != TY_PTR ||
+                        !ISVAL(KID(m + 1)) || !ok_int(e, KID(m + 1)->ty) ||
+                        !ISVAL(KID(m + 2)) || !ok_int(e, KID(m + 2)->ty))
+                        vbad(e, out, i, "operands are not pointer, integer, integer");
+                if (mainv(c, pointee(c, KID(0)->ty)) != mainv(c, pointee(c, KID(3)->ty)))
+                    vbad(e, out, i, "slices of different element types");
+            }
+            break;
+        }
         case TO_IF:
             if (nd->nkids < 2 || nd->nkids > 3 || !ISVAL(KID(0)) || !ISSTMT(KID(1)) ||
                 (nd->nkids == 3 && !ISSTMT(KID(2))))
@@ -2424,6 +2490,7 @@ next:;
     vec_free(&labels);
     free(tstores);
     free(ttype);
+    free(inspec);
     free(refs);
 }
 

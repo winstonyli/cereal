@@ -15,6 +15,7 @@
     X(INTRIN, "intrin") X(F2I, "f2i") X(VA, "va") X(LABADDR, "labaddr")                                        \
     X(DEREF, "deref") X(FIELD, "field") X(RFIELD, "rfield") X(ADDR, "addr") X(STR, "str")        \
     X(PTRADD, "ptradd") X(PTRDIFF, "ptrdiff") X(STMTEXPR, "stmtexpr")        \
+    X(RESULT, "result") X(LEN, "len") X(SLICEEQ, "sliceeq")                  \
     X(POST, "post")                                                          \
     X(BLOCK, "block") X(LOCAL, "local") X(EXPRSTMT, "exprstmt")              \
     X(IF, "if") X(WHILE, "while") X(DO, "do") X(FOR, "for")                  \

@@ -1,0 +1,131 @@
+tast 1 target x86_64-linux-gnu
+unit spec_result.c:5:1 func copy char *(char *, const char *, long unsigned int)
+B0:
+  #0 sym n@5:54 long unsigned int
+  #1 load #0 long unsigned int
+  #2 sym dst@5:18 char *
+  #3 load #2 char *
+  #4 len #3 long unsigned int
+  #5 cmp <= #1 #4 int
+  #6 sym n@5:54 long unsigned int
+  #7 load #6 long unsigned int
+  #8 sym src@5:35 const char *
+  #9 load #8 const char *
+  #10 len #9 long unsigned int
+  #11 cmp <= #7 #10 int
+  #12 logand #5 #11 int
+  #13 spec requires #12
+  #14 sym dst@5:18 char *
+  #15 load #14 char *
+  #16 const 0 int
+  #17 sym n@5:54 long unsigned int
+  #18 load #17 long unsigned int
+  #19 sym src@5:35 const char *
+  #20 load #19 const char *
+  #21 const 0 int
+  #22 sym n@5:54 long unsigned int
+  #23 load #22 long unsigned int
+  #24 sliceeq #15 #16 #18 #20 #21 #23 int
+  #25 spec ensures #24
+  #26 local i@9:19 long unsigned int
+  #27 sym i@9:19 long unsigned int
+  #28 const 0 long unsigned int
+  #29 store #27 #28 long unsigned int
+  #30 exprstmt #29
+  jmp B1
+B1:
+  #31 sym i@9:19 long unsigned int
+  #32 load #31 long unsigned int
+  #33 sym n@5:54 long unsigned int
+  #34 load #33 long unsigned int
+  #35 cmp < #32 #34 int
+  br #35 B2 B4
+B2:
+  #44 sym i@9:19 long unsigned int
+  #45 load #44 long unsigned int
+  #46 sym n@5:54 long unsigned int
+  #47 load #46 long unsigned int
+  #48 cmp <= #45 #47 int
+  #49 sym dst@5:18 char *
+  #50 load #49 char *
+  #51 const 0 int
+  #52 sym i@9:19 long unsigned int
+  #53 load #52 long unsigned int
+  #54 sym src@5:35 const char *
+  #55 load #54 const char *
+  #56 const 0 int
+  #57 sym i@9:19 long unsigned int
+  #58 load #57 long unsigned int
+  #59 sliceeq #50 #51 #53 #55 #56 #58 int
+  #60 logand #48 #59 int
+  #61 spec invariant #60
+  #62 sym dst@5:18 char *
+  #63 load #62 char *
+  #64 sym i@9:19 long unsigned int
+  #65 load #64 long unsigned int
+  #66 cast #65 long int
+  #67 ptradd *1 #63 #66 char *
+  #68 deref #67 char
+  #69 sym src@5:35 const char *
+  #70 load #69 const char *
+  #71 sym i@9:19 long unsigned int
+  #72 load #71 long unsigned int
+  #73 cast #72 long int
+  #74 ptradd *1 #70 #73 const char *
+  #75 deref #74 const char
+  #76 load #75 char
+  #77 store #68 #76 char
+  #78 exprstmt #77
+  jmp B3
+B3:
+  #36 sym i@9:19 long unsigned int
+  #37 sym i@9:19 long unsigned int
+  #38 load #37 long unsigned int
+  #39 const 1 long unsigned int
+  #40 binop + #38 #39 long unsigned int
+  #41 store #36 #40 long unsigned int
+  #42 post #41 long unsigned int
+  #43 exprstmt #42
+  jmp B1
+B4:
+  #81 sym dst@5:18 char *
+  #82 load #81 char *
+  ret #82
+cfg: 5 blocks, 0 unreachable
+unit spec_result.c:17:1 func twice int(int)
+B0:
+  #0 result int
+  #1 sym n@17:15 int
+  #2 load #1 int
+  #3 sym n@17:15 int
+  #4 load #3 int
+  #5 binop + #2 #4 int
+  #6 cmp == #0 #5 int
+  #7 spec ensures #6
+  #8 sym n@17:15 int
+  #9 load #8 int
+  #10 sym n@17:15 int
+  #11 load #10 int
+  #12 binop + #9 #11 int
+  ret #12
+cfg: 1 blocks, 0 unreachable
+unit spec_result.c:23:1 func neq int(int *, int *, int)
+B0:
+  #0 sym a@23:14 int *
+  #1 load #0 int *
+  #2 const 0 int
+  #3 sym n@23:29 int
+  #4 load #3 int
+  #5 sym b@23:22 int *
+  #6 load #5 int *
+  #7 const 1 int
+  #8 sym n@23:29 int
+  #9 load #8 int
+  #10 const 1 int
+  #11 binop + #9 #10 int
+  #12 sliceeq #1 #2 #4 #6 #7 #11 int
+  #13 unop ! #12 int
+  #14 spec ensures #13
+  #15 const 0 int
+  ret #15
+cfg: 1 blocks, 0 unreachable

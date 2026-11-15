@@ -190,4 +190,14 @@ B4:
   #28 load #27 int
   ret #28
 cfg: 5 blocks, 0 unreachable
-unit spec.c:52:1 unsupported: expression SPEC_RESULT
+unit spec.c:51:1 func result int(int)
+B0:
+  #0 result int
+  #1 sym n@51:16 int
+  #2 load #1 int
+  #3 cmp == #0 #2 int
+  #4 spec ensures #3
+  #5 sym n@51:16 int
+  #6 load #5 int
+  ret #6
+cfg: 1 blocks, 0 unreachable

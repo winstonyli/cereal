@@ -47,8 +47,7 @@ int forever(int n)
     return i;
 }
 
-/* return, $len and slices are not lowered yet: the function is unsupported
- * (PARKED.md), not silently a function without its contract. */
+/* return is lowered to a `result` operation (spec_result.c has $len and slices). */
 int result(int n)
 {
 #pragma cereal ensures return == n
