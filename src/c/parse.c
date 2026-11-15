@@ -1,5 +1,5 @@
 /* parse.c - recursive-descent C99 + GNU parser (parse.h). */
-#include "c/parse.h"
+#include "c/parse_int.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -101,7 +101,7 @@ static uint32_t skip_prag(Parser *p, uint32_t i)
 }
 
 /* Index of the current token (== toks.len at the end). */
-static uint32_t ci(Parser *p)
+uint32_t p_ci(Parser *p)
 {
     return skip_prag(p, p->pos);
 }
@@ -116,12 +116,12 @@ static PTok tok_at(Parser *p, uint32_t i)
 
 static PTok ct(Parser *p)
 {
-    return tok_at(p, ci(p));
+    return tok_at(p, p_ci(p));
 }
 
 static PTok pk(Parser *p, int k)
 {
-    uint32_t i = ci(p);
+    uint32_t i = p_ci(p);
     while (k-- > 0)
         i = skip_prag(p, i + 1);
     return tok_at(p, i);
@@ -129,7 +129,7 @@ static PTok pk(Parser *p, int k)
 
 static uint32_t adv(Parser *p)
 {
-    uint32_t i = ci(p);
+    uint32_t i = p_ci(p);
     if (!p->unwind && fill(p, i))
         p->pos = i + 1;
     return i;
@@ -146,7 +146,7 @@ static bool at(Parser *p, Punct x)
     return is_p(&t, x);
 }
 
-static bool at_eof(Parser *p)
+bool p_at_eof(Parser *p)
 {
     return ct(p).t.kind == TK_EOF;
 }
@@ -267,7 +267,7 @@ static SrcLoc eof_input_loc(Parser *p)
 const char *cident_ucn(const char *s);   /* c/check.c */
 const char *cident_ucn_to(const char *s, char *out, size_t cap);
 
-static const char *tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
+const char *p_tok_desc(Parser *p, uint32_t i, char *buf, size_t n)
 {
     const Tok *t;
     const char *s;
@@ -475,7 +475,7 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     p->err.live = true;
     p->err.last = i;
     p->errors++;
-    if (i == ci(p))
+    if (i == p_ci(p))
         classify_num(p, i);
     if (!strncmp(fmt, "expected ", 9) && conflict_marker(p, i))
         d = pvreport(p, DL_ERROR, DW_NONE, loc,
@@ -486,7 +486,7 @@ static Diagnostic *vperr(Parser *p, uint32_t i, SrcLoc loc, const char *fmt,
     return d;
 }
 
-static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
+Diagnostic *p_err(Parser *p, uint32_t i, const char *fmt, ...)
 {
     Diagnostic *d;
     va_list ap;
@@ -496,7 +496,7 @@ static Diagnostic *perr(Parser *p, uint32_t i, const char *fmt, ...)
     return d;
 }
 
-static Diagnostic *perr_at(Parser *p, uint32_t i, SrcLoc loc, const char *fmt, ...)
+Diagnostic *p_err_at(Parser *p, uint32_t i, SrcLoc loc, const char *fmt, ...)
 {
     Diagnostic *d;
     va_list ap;
@@ -651,19 +651,19 @@ static void inttypes_hint(Parser *p, Diagnostic *d, uint32_t i)
 static void expected(Parser *p, const char *what)
 {
     char buf[160];
-    uint32_t i = ci(p);
+    uint32_t i = p_ci(p);
     if (p->err.live)
         return;                 /* c_parser_error is silent while parser->error is set */
     if (!fill(p, i) && p->toks.len) {
         /* c_parser_error at the end of input: input_location */
         va_list none;
         (void)none;
-        perr_at(p, i, eof_input_loc(p), "expected %s%s", what,
-                tok_desc(p, i, buf, sizeof buf));
+        p_err_at(p, i, eof_input_loc(p), "expected %s%s", what,
+                p_tok_desc(p, i, buf, sizeof buf));
         return;
     }
-    inttypes_hint(p, perr(p, i, "expected %s%s", what,
-                          tok_desc(p, i, buf, sizeof buf)), i);
+    inttypes_hint(p, p_err(p, i, "expected %s%s", what,
+                          p_tok_desc(p, i, buf, sizeof buf)), i);
 }
 
 /* c_parser_require of a token that never moves "after the previous": at the
@@ -671,10 +671,10 @@ static void expected(Parser *p, const char *what)
 static void expected_req(Parser *p, const char *what)
 {
     char buf[160];
-    uint32_t i = ci(p);
+    uint32_t i = p_ci(p);
     if (!fill(p, i) && p->toks.len)
-        perr_at(p, i, eof_loc(p), "expected %s%s", what,
-                tok_desc(p, i, buf, sizeof buf));
+        p_err_at(p, i, eof_loc(p), "expected %s%s", what,
+                p_tok_desc(p, i, buf, sizeof buf));
     else
         expected(p, what);
 }
@@ -691,20 +691,20 @@ static bool expect(Parser *p, Punct x)
      * ':' after the previous token, unless an error is already pending */
     if (!p->err.live && (x == P_RPAREN || x == P_RBRACKET || x == P_SEMI ||
                          x == P_COMMA || x == P_COLON)) {
-        Diagnostic *d = perr_after_prev(p, ci(p), "expected %s%s", what,
-                                        tok_desc(p, ci(p), buf, sizeof buf));
-        fix_missing(p, d, ci(p), punct_spelling[x],
+        Diagnostic *d = perr_after_prev(p, p_ci(p), "expected %s%s", what,
+                                        p_tok_desc(p, p_ci(p), buf, sizeof buf));
+        fix_missing(p, d, p_ci(p), punct_spelling[x],
                     x == P_SEMI ? FIX_MAYBE : FIX_INFO);
-        inttypes_hint(p, d, ci(p));
-    } else if (!fill(p, ci(p)) && p->toks.len)
-        perr_at(p, ci(p), eof_loc(p), "expected %s%s", what,
-                tok_desc(p, ci(p), buf, sizeof buf));
+        inttypes_hint(p, d, p_ci(p));
+    } else if (!fill(p, p_ci(p)) && p->toks.len)
+        p_err_at(p, p_ci(p), eof_loc(p), "expected %s%s", what,
+                p_tok_desc(p, p_ci(p), buf, sizeof buf));
     else if (x == P_LPAREN) {
         /* a missing '(' is offered before the token found instead */
-        Diagnostic *d = perr(p, ci(p), "expected %s%s", what,
-                             tok_desc(p, ci(p), buf, sizeof buf));
+        Diagnostic *d = p_err(p, p_ci(p), "expected %s%s", what,
+                             p_tok_desc(p, p_ci(p), buf, sizeof buf));
         if (d)
-            fix_insert_before(p->diag, d, 0, &p->toks.data[ci(p)], "(",
+            fix_insert_before(p->diag, d, 0, &p->toks.data[p_ci(p)], "(",
                               FIX_INFO);
     } else
         expected(p, what);
@@ -713,12 +713,12 @@ static bool expect(Parser *p, Punct x)
 
 /* ---- nodes ---------------------------------------------------------------- */
 
-static uint32_t nmark(Parser *p)
+uint32_t p_nmark(Parser *p)
 {
     return (uint32_t)p->nodes.len;
 }
 
-static void emit(Parser *p, NodeTag tag, uint32_t tok, uint32_t start,
+void p_emit(Parser *p, NodeTag tag, uint32_t tok, uint32_t start,
                  unsigned flags)
 {
     Node n;
@@ -730,12 +730,12 @@ static void emit(Parser *p, NodeTag tag, uint32_t tok, uint32_t start,
     vec_push(&p->nodes, n);
 }
 
-static void leaf(Parser *p, NodeTag tag, uint32_t tok)
+void p_leaf(Parser *p, NodeTag tag, uint32_t tok)
 {
-    emit(p, tag, tok, nmark(p), 0);
+    p_emit(p, tag, tok, p_nmark(p), 0);
 }
 
-static void set_aux(Parser *p, uint32_t n)
+void p_set_aux(Parser *p, uint32_t n)
 {
     vec_last(&p->nodes).aux = (uint16_t)(n > 0xFFFF ? 0xFFFF : n);
 }
@@ -745,12 +745,12 @@ static void open_scope(Parser *p, uint32_t tok, unsigned flags)
 {
     scope_push(&p->scope);
     scope_push(&p->tags);
-    emit(p, N_SCOPE, tok, nmark(p), flags);
+    p_emit(p, N_SCOPE, tok, p_nmark(p), flags);
 }
 
 static void close_scope(Parser *p, SymSaveVec *save)
 {
-    leaf(p, N_SCOPE_END, p->pos ? p->pos - 1 : 0);
+    p_leaf(p, N_SCOPE_END, p->pos ? p->pos - 1 : 0);
     scope_pop(&p->scope, save);
     scope_pop(&p->tags, NULL);
 }
@@ -771,7 +771,7 @@ static void sync_stmt(Parser *p)
 {
     int depth = 0;
     p->err.live = false;
-    while (!at_eof(p)) {
+    while (!p_at_eof(p)) {
         PTok t = ct(p);
         if (t.t.kind == TK_PUNCT) {
             if (depth == 0 && t.t.punct == P_SEMI) {
@@ -796,7 +796,7 @@ static void sync_stmt(Parser *p)
 static void skip_until(Parser *p, Punct want)
 {
     int depth = 0;
-    while (!at_eof(p)) {
+    while (!p_at_eof(p)) {
         PTok t = ct(p);
         if (t.t.kind == TK_PUNCT) {
             Punct x = t.t.punct;
@@ -815,7 +815,7 @@ static void skip_until(Parser *p, Punct want)
         }
         skip_tok(p);
     }
-    if (!at_eof(p))             /* gcc returns at EOF with the error set */
+    if (!p_at_eof(p))             /* gcc returns at EOF with the error set */
         p->err.live = false;
 }
 
@@ -835,7 +835,7 @@ static void sync_top(Parser *p)
 {
     int depth = 0;
     p->err.live = false;
-    while (!at_eof(p)) {
+    while (!p_at_eof(p)) {
         PTok t = ct(p);
         skip_tok(p);
         if (t.t.kind != TK_PUNCT)
@@ -1007,150 +1007,9 @@ static void pch_pragma_check(Parser *p)
             s++;
         if (e - s >= 14 && !strncmp(s, "pch_preprocess", 14) &&
             (e - s == 14 || s[14] == ' ' || s[14] == '	'))
-            perr_at(p, p->pos, t->loc + 8, "'#pragma GCC pch_preprocess' "
+            p_err_at(p, p->pos, t->loc + 8, "'#pragma GCC pch_preprocess' "
                     "must be first before '#pragma'");
     }
-}
-
-/* ---- specs: #pragma cereal requires|ensures|invariant EXPR ------------
- * docs/SPEC_DIRECTIVES_DESIGN.md.  The expression is lexed from the
- * pragma's own source text, spliced into the token stream behind the
- * pragma token and parsed in place; the node is the pragma, with the
- * expression as its child and the spec kind in aux. */
-
-static void parse_expr(Parser *p);
-
-enum { SCTX_NONE, SCTX_FUNC, SCTX_LOOP };   /* what a body's leading specs may be */
-static const char *const spec_kw[] = {"", "requires", "ensures", "invariant"};
-
-static bool blank(char c)
-{
-    return c == ' ' || c == '\t';
-}
-
-static bool ident_char(char c)
-{
-    return isalnum((unsigned char)c) || c == '_' || c == '$';
-}
-
-/* s is at word w (not a prefix of a longer word): step over it and the
- * blanks after it. */
-static bool take_word(const char **s, const char *e, const char *w)
-{
-    size_t n = strlen(w);
-    if ((size_t)(e - *s) < n || strncmp(*s, w, n) ||
-        ((size_t)(e - *s) > n && ident_char((*s)[n])))
-        return false;
-    *s += n;
-    while (*s < e && blank(**s))
-        (*s)++;
-    return true;
-}
-
-/* The spec a TK_PRAGMA token is (SPEC_*), 0 for any other pragma; *kw is
- * where its keyword starts in the source line (the expression follows it)
- * or NULL when the source is not a plain '#pragma' line. */
-static int spec_kind(Parser *p, const Tok *t, const char **kw)
-{
-    const char *s = tok_text_raw(p->sm, p->in, t), *e = s + t->len;
-    const char *r = srcmgr_ptr(p->sm, t->loc);
-    int k;
-    while (s < e && blank(*s))
-        s++;
-    (void)take_word(&s, e, "pragma");
-    if (!take_word(&s, e, "cereal"))
-        return 0;
-    for (k = SPEC_REQUIRES; k <= SPEC_INVARIANT; k++)
-        if (take_word(&s, e, spec_kw[k]))
-            break;
-    if (k > SPEC_INVARIANT)
-        k = SPEC_UNKNOWN;
-    *kw = NULL;
-    if (*r == '#') {
-        const char *q = r + 1;
-        while (blank(*q))
-            q++;
-        if (take_word(&q, q + 64, "pragma") && take_word(&q, q + 64, "cereal"))
-            *kw = q;
-    }
-    return k;
-}
-
-/* The pragma at toks[pt] is a spec of kind k in a body of kind ctx (SCTX_*). */
-static void spec_pragma(Parser *p, uint32_t pt, int k, const char *kw, int ctx)
-{
-    SrcLoc loc = p->toks.data[pt].t.loc;
-    const char *r = srcmgr_ptr(p->sm, loc);
-    if (k == SPEC_UNKNOWN || !kw) {
-        perr_at(p, pt, kw ? loc + (SrcLoc)(kw - r) : loc,
-                k == SPEC_UNKNOWN ? "unknown '#pragma cereal' directive"
-                                  : "a spec must be written as '#pragma cereal'");
-        p->err.live = false;
-    } else if (ctx != (k == SPEC_INVARIANT ? SCTX_LOOP : SCTX_FUNC)) {
-        perr_at(p, pt, loc + (SrcLoc)(kw - r), "'#pragma cereal %s' must start a %s body",
-                spec_kw[k], k == SPEC_INVARIANT ? "loop" : "function");
-        p->err.live = false;
-    } else {
-        const char *a = kw + strlen(spec_kw[k]), *q;
-        Lexer L;
-        LexOptions o;
-        Tok t;
-        VEC(PTok) v = {0};
-        size_t i, n, at = pt + 1, old = p->toks.len;
-        uint32_t start;
-        PTok eof;
-        while (blank(*a))
-            a++;
-        q = a;
-        while (*q && *q != '\n') {
-            if (*q == '\\' && (q[1] == '\n' || (q[1] == '\r' && q[2] == '\n')))
-                q += q[1] == '\n' ? 2 : 3;
-            else
-                q++;
-        }
-        memset(&o, 0, sizeof o);
-        o.dollar_idents = true;     /* $len */
-        o.uliterals = true;
-        o.c23 = p->year >= 2023;
-        lexer_init_range(&L, p->sm, p->in, &p->spec_cur, o,
-                         loc + (SrcLoc)(a - r), (uint32_t)(q - a));
-        for (lex_next(&L, &t); t.kind != TK_EOF; lex_next(&L, &t)) {
-            PTok x;
-            memset(&x, 0, sizeof x);
-            x.t = t;
-            x.t.flags &= (uint8_t)~TF_BOL;
-            vec_push(&v, x);
-        }
-        lexer_free(&L);
-        memset(&eof, 0, sizeof eof);
-        eof.t.kind = TK_EOF;
-        eof.t.loc = loc + (SrcLoc)(q - r);
-        vec_push(&v, eof);
-        n = v.len;
-        for (i = 0; i < n; i++)
-            vec_push(&p->toks, p->toks.data[pt]);
-        memmove(&p->toks.data[at + n], &p->toks.data[at], (old - at) * sizeof(PTok));
-        memcpy(&p->toks.data[at], v.data, n * sizeof(PTok));
-        vec_free(&v);
-        start = nmark(p);
-        p->pos = (uint32_t)at;
-        p->in_spec = true;
-        parse_expr(p);
-        p->in_spec = false;
-        p->err.live = false;        /* a bad spec does not hush the next one */
-        if (!at_eof(p)) {
-            char buf[160];
-            perr(p, ci(p), "junk at end of '#pragma cereal %s'%s", spec_kw[k],
-                 tok_desc(p, ci(p), buf, sizeof buf));
-            p->err.live = false;
-        }
-        p->pos = (uint32_t)(at + n);    /* past the sentinel */
-        emit(p, N_PRAGMA, pt, start, 0);
-        set_aux(p, (uint32_t)k);
-        return;
-    }
-    leaf(p, N_PRAGMA, pt);
-    p->pos = pt + 1;
 }
 
 /* Pragmas where an item may start become items; ctx says whether leading
@@ -1199,7 +1058,7 @@ static void item_pragmas(Parser *p, int ctx)
                     a += 6;
                     while (*a == ' ' || *a == '\t')
                         a++;
-                    perr_at(p, p->pos, t->loc + (SrcLoc)(a - r),
+                    p_err_at(p, p->pos, t->loc + (SrcLoc)(a - r),
                             "'#pragma GCC unroll' requires an assignment-"
                             "expression that evaluates to a non-negative "
                             "integral constant less than 65535");
@@ -1208,15 +1067,15 @@ static void item_pragmas(Parser *p, int ctx)
             }
         }
         pch_pragma_check(p);
-        leaf(p, N_PRAGMA, p->pos);
+        p_leaf(p, N_PRAGMA, p->pos);
         p->pos++;
     }
     if (loops && !p->unwind) {
         int k = ckw(p);
         if (k != CK_FOR && k != CK_WHILE && k != CK_DO) {
             char buf[160];
-            perr(p, ci(p), "for, while or do statement expected%s",
-                 tok_desc(p, ci(p), buf, sizeof buf));
+            p_err(p, p_ci(p), "for, while or do statement expected%s",
+                 p_tok_desc(p, p_ci(p), buf, sizeof buf));
             p->loop_pragma = 0;
         }
     }
@@ -1224,7 +1083,6 @@ static void item_pragmas(Parser *p, int ctx)
 
 /* ---- forward declarations ------------------------------------------------ */
 
-static void parse_expr(Parser *p);
 static void parse_assign(Parser *p);
 static void parse_cond(Parser *p);
 static void parse_cast(Parser *p);
@@ -1363,7 +1221,7 @@ static void unknown_type_error(Parser *p, const PTok *t)
         len = (int)strlen(name);
     }
     if (k >= SYM_TAG_STRUCT) {
-        Diagnostic *d = perr(p, ci(p), "unknown type name '%.*s'; use '%s' "
+        Diagnostic *d = p_err(p, p_ci(p), "unknown type name '%.*s'; use '%s' "
                              "keyword to refer to the type", len, name,
                              kw[k - SYM_TAG_STRUCT]);
         if (d)
@@ -1377,25 +1235,25 @@ static void unknown_type_error(Parser *p, const PTok *t)
     hdr = t->t.len < SC_MAXLEN ? std_header(buf) : NULL;
     sug = hdr ? NULL : fuzzy_typename(p, buf);
     if (hdr) {
-        Diagnostic *d = perr(p, ci(p), "unknown type name '%.*s'", len, name);
+        Diagnostic *d = p_err(p, p_ci(p), "unknown type name '%.*s'", len, name);
         if (d)
-            diag_header_note(p->diag, d, spell_loc(p, ci(p)), hdr,
+            diag_header_note(p->diag, d, spell_loc(p, p_ci(p)), hdr,
                              "'%.*s' is defined in header '%s'; did you forget to "
                              "'#include %s'?", len, name, hdr, hdr);
     } else if (sug) {
-        Diagnostic *d = perr(p, ci(p), "unknown type name '%.*s'; did you "
+        Diagnostic *d = p_err(p, p_ci(p), "unknown type name '%.*s'; did you "
                              "mean '%s'?", len, name, sug);
         if (d)
             fix_replace_toks(p->diag, d, 0, p->sm, p->in, t, t,
                              arena_strdup(p->diag->arena, sug), FIX_MAYBE);
     } else
-        perr(p, ci(p), "unknown type name '%.*s'", len, name);
+        p_err(p, p_ci(p), "unknown type name '%.*s'", len, name);
 }
 
 /* Can the token at ci start a declaration (block scope)? */
 static bool is_decl_start_la(Parser *p, const PTok *t)
 {
-    return is_decl_start(p, t) || unknown_type(p, ci(p), LA_DECL);
+    return is_decl_start(p, t) || unknown_type(p, p_ci(p), LA_DECL);
 }
 
 /* Token index just past the attributes starting at i (i if none). */
@@ -1470,15 +1328,15 @@ static bool std_attr_known(Parser *p, uint32_t tok)
 /* [[ name [(args)] , ... ]] (no 'ns::' before C2X) */
 static void std_attribute(Parser *p)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     if (!expect(p, P_LBRACKET)) {
-        emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
+        p_emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
         return;
     }
-    while (!at(p, P_RBRACKET) && !at_eof(p)) {
+    while (!at(p, P_RBRACKET) && !p_at_eof(p)) {
         PTok t = ct(p);
         if (t.t.kind == TK_IDENT) {
-            uint32_t s = nmark(p), name = adv(p);
+            uint32_t s = p_nmark(p), name = adv(p);
             if (p->gnu && at(p, P_COLONCOLON)) {
                 /* scope::name; gnu:: is dropped, any other scope keeps the
                  * attribute unknown */
@@ -1497,7 +1355,7 @@ static void std_attribute(Parser *p)
             if (accept(p, P_LPAREN)) {
                 if (!std_attr_known(p, name)) {
                     int depth = 0;      /* c_parser_balanced_token_sequence */
-                    while (!at_eof(p) && !(depth == 0 && at(p, P_RPAREN))) {
+                    while (!p_at_eof(p) && !(depth == 0 && at(p, P_RPAREN))) {
                         if (at(p, P_LPAREN) || at(p, P_LBRACKET) ||
                             at(p, P_LBRACE))
                             depth++;
@@ -1513,7 +1371,7 @@ static void std_attribute(Parser *p)
                 }
                 expect(p, P_RPAREN);
             }
-            emit(p, N_ATTR_ITEM, name, s, 0);
+            p_emit(p, N_ATTR_ITEM, name, s, 0);
         } else if (!is_p(&t, P_COMMA)) {
             expected(p, "identifier");
             break;
@@ -1526,7 +1384,7 @@ static void std_attribute(Parser *p)
         int depth = 0;
         bool hush = p->hush;
         expect(p, P_RBRACKET);
-        while (!at_eof(p)) {
+        while (!p_at_eof(p)) {
             if (at(p, P_RBRACKET) && depth == 0) {
                 adv(p);
                 break;
@@ -1540,16 +1398,16 @@ static void std_attribute(Parser *p)
             adv(p);
         }
         p->err.live = false;            /* skip_until_found cleared it */
-        p->hush = at_eof(p);
+        p->hush = p_at_eof(p);
         expect(p, P_RBRACKET);
         p->hush = hush;
-        emit(p, N_ATTRIBUTE, kw, start, 0);
+        p_emit(p, N_ATTRIBUTE, kw, start, 0);
         return;
     } else {
         expect(p, P_RBRACKET);
     }
     expect(p, P_RBRACKET);
-    emit(p, N_ATTRIBUTE, kw, start, 0);
+    p_emit(p, N_ATTRIBUTE, kw, start, 0);
 }
 
 /* c_parser_skip_until_found (')'): past the next ')' of the current nesting,
@@ -1557,7 +1415,7 @@ static void std_attribute(Parser *p)
 static void skip_past_rparen(Parser *p)
 {
     int depth = 0;
-    while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
+    while (!p_at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
            !at(p, P_LBRACE)) {
         if (at(p, P_LPAREN))
             depth++;
@@ -1577,16 +1435,16 @@ static void attribute(Parser *p)
         std_attribute(p);
         return;
     }
-    start = nmark(p);
+    start = p_nmark(p);
     kw = adv(p);
     if (!expect(p, P_LPAREN) || !expect(p, P_LPAREN)) {
-        emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
+        p_emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
         return;
     }
-    while (!at(p, P_RPAREN) && !at_eof(p)) {
+    while (!at(p, P_RPAREN) && !p_at_eof(p)) {
         PTok t = ct(p);
         if (t.t.kind == TK_IDENT) {
-            uint32_t s = nmark(p), name = adv(p);
+            uint32_t s = p_nmark(p), name = adv(p);
             if (accept(p, P_LPAREN)) {
                 uint64_t ne = p->errors;
                 if (!at(p, P_RPAREN)) {
@@ -1598,13 +1456,13 @@ static void attribute(Parser *p)
                     /* c_parser_gnu_attribute: skip past the next ')' and
                      * give up on the attribute list */
                     skip_past_rparen(p);
-                    emit(p, N_ATTR_ITEM, name, s, 0);
-                    emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
+                    p_emit(p, N_ATTR_ITEM, name, s, 0);
+                    p_emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
                     return;
                 }
                 expect(p, P_RPAREN);
             }
-            emit(p, N_ATTR_ITEM, name, s, 0);
+            p_emit(p, N_ATTR_ITEM, name, s, 0);
             if (ct(p).t.kind == TK_IDENT) {
                 /* gcc (PR c/67964) takes one more name, with its arguments,
                  * after an attribute; then the list must end, and either way
@@ -1619,12 +1477,12 @@ static void attribute(Parser *p)
                         else if (at(p, P_RPAREN))
                             depth--;
                         adv(p);
-                    } while (depth > 0 && !at_eof(p) && !at(p, P_SEMI));
+                    } while (depth > 0 && !p_at_eof(p) && !at(p, P_SEMI));
                 }
                 if (!at(p, P_RPAREN))
                     expect(p, P_RPAREN);
                 skip_past_rparen(p);
-                emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
+                p_emit(p, N_ATTRIBUTE, kw, start, NF_ERROR);
                 return;
             }
         } else if (!is_p(&t, P_COMMA)) {
@@ -1636,7 +1494,7 @@ static void attribute(Parser *p)
     }
     expect(p, P_RPAREN);
     expect(p, P_RPAREN);
-    emit(p, N_ATTRIBUTE, kw, start, 0);
+    p_emit(p, N_ATTRIBUTE, kw, start, 0);
 }
 
 static void attributes(Parser *p)
@@ -1647,31 +1505,31 @@ static void attributes(Parser *p)
 
 static void string_lit(Parser *p)
 {
-    uint32_t first = ci(p);
+    uint32_t first = p_ci(p);
     if (ct(p).t.kind != TK_STRING) {
         expected(p, "string literal");
-        leaf(p, N_ERROR, first);
+        p_leaf(p, N_ERROR, first);
         return;
     }
     while (ct(p).t.kind == TK_STRING)
         adv(p);
-    leaf(p, N_STRING, first);
+    p_leaf(p, N_STRING, first);
 }
 
 /* asm-label: asm ( string ) */
 static void asm_label(Parser *p)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     expect(p, P_LPAREN);
     string_lit(p);
     expect(p, P_RPAREN);
-    emit(p, N_ASM_LABEL, kw, start, 0);
+    p_emit(p, N_ASM_LABEL, kw, start, 0);
 }
 
 /* asm [qualifiers] ( string [: outputs [: inputs [: clobbers [: labels]]]] ) */
 static void asm_stmt(Parser *p, bool top)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     int section;
     uint32_t half;      /* a '::' whose second colon opens the next section */
     uint32_t seen[3] = { 0, 0, 0 };     /* volatile, inline, goto: token + 1 */
@@ -1680,36 +1538,36 @@ static void asm_stmt(Parser *p, bool top)
         int q = k == CK_VOLATILE ? 0 : k == CK_INLINE ? 1 : 2;
         if (k == CK_CONST || k == CK_RESTRICT) {
             PTok t = ct(p);
-            pdiag(p, DL_ERROR, spell_loc(p, ci(p)),
+            pdiag(p, DL_ERROR, spell_loc(p, p_ci(p)),
                   "'%.*s' is not a valid 'asm' qualifier", (int)t.t.len,
                   tok_text_raw(p->sm, p->in, &t.t));
             p->errors++;
-            leaf(p, N_QUAL, adv(p));
+            p_leaf(p, N_QUAL, adv(p));
             continue;
         }
         if (k != CK_VOLATILE && k != CK_INLINE && k != CK_GOTO)
             break;
         if (seen[q]) {
-            Diagnostic *d = perr(p, ci(p), "duplicate 'asm' qualifier '%s'",
+            Diagnostic *d = p_err(p, p_ci(p), "duplicate 'asm' qualifier '%s'",
                                  q == 0 ? "volatile" : q == 1 ? "inline"
                                                               : "goto");
             if (d)
                 diag_note(p->diag, d, tok_loc(p, seen[q] - 1),
                           "first seen here");
         } else {
-            seen[q] = ci(p) + 1;
+            seen[q] = p_ci(p) + 1;
         }
-        leaf(p, N_QUAL, adv(p));
+        p_leaf(p, N_QUAL, adv(p));
     }
     if (!expect(p, P_LPAREN)) {
         sync_stmt(p);
-        emit(p, N_ASM, kw, start, NF_ERROR);
+        p_emit(p, N_ASM, kw, start, NF_ERROR);
         return;
     }
     string_lit(p);
     half = NO_TOK;
     for (section = 1; section <= 4; section++) {
-        uint32_t s = nmark(p), colon = half != NO_TOK ? half : ci(p);
+        uint32_t s = p_nmark(p), colon = half != NO_TOK ? half : p_ci(p);
         bool empty = false;
         if (half != NO_TOK)
             half = NO_TOK;          /* the second colon of a :: */
@@ -1720,19 +1578,19 @@ static void asm_stmt(Parser *p, bool top)
         } else if (!accept(p, P_COLON))
             break;
         while (!empty && !at(p, P_COLON) && !at(p, P_COLONCOLON) &&
-               !at(p, P_RPAREN) && !at_eof(p)) {
+               !at(p, P_RPAREN) && !p_at_eof(p)) {
             if (section <= 2) {
-                uint32_t o = nmark(p), c;
+                uint32_t o = p_nmark(p), c;
                 if (accept(p, P_LBRACKET)) {
-                    leaf(p, N_NAME, adv(p));
+                    p_leaf(p, N_NAME, adv(p));
                     expect(p, P_RBRACKET);
                 }
-                c = ci(p);
+                c = p_ci(p);
                 string_lit(p);
                 expect(p, P_LPAREN);
                 parse_expr(p);
                 expect(p, P_RPAREN);
-                emit(p, N_ASM_OPERAND, c, o, 0);
+                p_emit(p, N_ASM_OPERAND, c, o, 0);
             } else if (section == 3) {
                 string_lit(p);
             } else {
@@ -1741,18 +1599,18 @@ static void asm_stmt(Parser *p, bool top)
                     expected(p, "label");
                     break;
                 }
-                leaf(p, N_NAME, adv(p));
+                p_leaf(p, N_NAME, adv(p));
             }
             if (!accept(p, P_COMMA))
                 break;
         }
-        emit(p, N_ASM_SECTION, colon, s, 0);
-        set_aux(p, (uint32_t)section);
+        p_emit(p, N_ASM_SECTION, colon, s, 0);
+        p_set_aux(p, (uint32_t)section);
     }
     expect(p, P_RPAREN);
     if (!expect(p, P_SEMI))
         sync_stmt(p);
-    emit(p, top ? N_TOP_ASM : N_ASM, kw, start, 0);
+    p_emit(p, top ? N_TOP_ASM : N_ASM, kw, start, 0);
 }
 
 /* ---- declaration specifiers ------------------------------------------- */
@@ -1778,10 +1636,10 @@ static void enum_spec(Parser *p);
 /* _Alignas ( type-name | constant-expression ), typeof (...) */
 static void paren_type_or_expr(Parser *p, NodeTag tag)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     PTok t;
     if (!expect(p, P_LPAREN)) {
-        emit(p, tag, kw, start, NF_ERROR);
+        p_emit(p, tag, kw, start, NF_ERROR);
         return;
     }
     t = ct(p);
@@ -1789,13 +1647,13 @@ static void paren_type_or_expr(Parser *p, NodeTag tag)
         if (!type_name_ok(p)) {
             skip_past_rparen(p);
             p->nodes.len = start;
-            emit(p, tag, kw, start, NF_ERROR);
+            p_emit(p, tag, kw, start, NF_ERROR);
             return;
         }
     } else
         parse_expr(p);
     expect(p, P_RPAREN);
-    emit(p, tag, kw, start, 0);
+    p_emit(p, tag, kw, start, 0);
 }
 
 /* alignas_ok: gcc's alignas_ok, false in a type name unless sizeof, _Alignof
@@ -1803,7 +1661,7 @@ static void paren_type_or_expr(Parser *p, NodeTag tag)
  * in struct members and type names (inline, _Noreturn). */
 static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec_ok)
 {
-    uint32_t start = nmark(p), first = ci(p);
+    uint32_t start = p_nmark(p), first = p_ci(p);
     memset(s, 0, sizeof *s);
     for (;;) {
         PTok t = ct(p);
@@ -1821,39 +1679,39 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
             else if (k != CK_STATIC && k != CK_REGISTER)
                 s->cx_clash = true;
             s->constexpr_ = s->cx_seen && !s->cx_clash;
-            leaf(p, N_STORAGE, adv(p));
+            p_leaf(p, N_STORAGE, adv(p));
             break;
         case CK_CONST: case CK_VOLATILE: case CK_RESTRICT:
-            leaf(p, N_QUAL, adv(p));
+            p_leaf(p, N_QUAL, adv(p));
             break;
         case CK_ATOMIC: {
             PTok n = pk(p, 1);
             if (is_p(&n, P_LPAREN)) {
-                uint32_t s0 = nmark(p), kw = adv(p);
+                uint32_t s0 = p_nmark(p), kw = adv(p);
                 adv(p);
                 if (!type_name_ok(p)) { /* as gcc: skip to the close paren */
                     skip_past_rparen(p);
-                    emit(p, N_TYPEDEF_NAME, kw, s0, NF_ERROR);
+                    p_emit(p, N_TYPEDEF_NAME, kw, s0, NF_ERROR);
                     s->err = true;
                 } else {
                     expect(p, P_RPAREN);
-                    emit(p, N_ATOMIC_TYPE, kw, s0, 0);
+                    p_emit(p, N_ATOMIC_TYPE, kw, s0, 0);
                 }
                 s->type = true;
             } else {
-                leaf(p, N_QUAL, adv(p));
+                p_leaf(p, N_QUAL, adv(p));
             }
             break;
         }
         case CK_INLINE: case CK_NORETURN:
             if (!fspec_ok)      /* members and type names: gcc's fspec_ok */
                 goto done;
-            leaf(p, N_FUNCSPEC, adv(p));
+            p_leaf(p, N_FUNCSPEC, adv(p));
             break;
         case CK_GIMPLE:
             /* gcc diagnoses it without -fgimple and goes on; the pass
              * list is skipped and the body is not parsed as C */
-            perr(p, ci(p), "'__GIMPLE' only valid with '-fgimple'");
+            p_err(p, p_ci(p), "'__GIMPLE' only valid with '-fgimple'");
             adv(p);
             s->gimple = true;
             if (at(p, P_LPAREN)) {
@@ -1864,7 +1722,7 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
                     else if (at(p, P_RPAREN))
                         depth--;
                     adv(p);
-                } while (depth > 0 && !at_eof(p));
+                } while (depth > 0 && !p_at_eof(p));
             }
             break;
         case CK_VOID: case CK_CHAR: case CK_SHORT: case CK_INT: case CK_LONG:
@@ -1874,7 +1732,7 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
         case CK_AUTO_TYPE:
             if (ckw(p) == CK_AUTO_TYPE)
                 s->auto_type = true;
-            leaf(p, N_TYPESPEC, adv(p));
+            p_leaf(p, N_TYPESPEC, adv(p));
             s->type = true;
             break;
         case CK_STRUCT: case CK_UNION:
@@ -1895,7 +1753,7 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
             if (!alignas_ok)
                 goto done;
             s->has_align = true;
-            s->align_tok = ci(p);
+            s->align_tok = p_ci(p);
             paren_type_or_expr(p, N_ALIGNAS);
             break;
         case CK_ATTRIBUTE:
@@ -1908,18 +1766,18 @@ static void specs(Parser *p, Specs *s, Lookahead la, bool alignas_ok, bool fspec
             /* a typedef name is a type specifier only where no other
              * type specifier came before: `T T;` declares a T */
             if (!s->type && is_typedef_name(p, &t)) {
-                leaf(p, N_TYPEDEF_NAME, adv(p));
+                p_leaf(p, N_TYPEDEF_NAME, adv(p));
                 s->type = true;
                 break;
             }
-            if (!s->type && unknown_type(p, ci(p), la)) {
+            if (!s->type && unknown_type(p, p_ci(p), la)) {
                 /* as gcc: diagnosed, then parsed as if it were a type */
                 bool pending = p->err.live;
-                if (p->err.have && p->err.last == ci(p))
+                if (p->err.have && p->err.last == p_ci(p))
                     p->err.have = false;    /* error_at: not one per place */
                 unknown_type_error(p, &t);
                 p->err.live = pending;  /* error_at, not c_parser_error */
-                emit(p, N_TYPEDEF_NAME, adv(p), nmark(p), NF_ERROR);
+                p_emit(p, N_TYPEDEF_NAME, adv(p), p_nmark(p), NF_ERROR);
                 s->type = true;
                 s->err = true;
                 break;
@@ -1940,23 +1798,23 @@ done:
             s->cx_clash |= s->cx_seen;
         s->constexpr_ = s->cx_seen && !s->cx_clash;
     }
-    emit(p, N_SPECS, first, start, 0);
+    p_emit(p, N_SPECS, first, start, 0);
 }
 
 static void member_decl(Parser *p)
 {
-    uint32_t start = nmark(p), first = ci(p);
+    uint32_t start = p_nmark(p), first = p_ci(p);
     Specs s;
     specs(p, &s, LA_DECL, true, false);
     if (!s.any) {
         expected(p, "specifier-qualifier-list");
         sync_stmt(p);
-        emit(p, N_MEMBER_DECL, first, start, NF_ERROR);
+        p_emit(p, N_MEMBER_DECL, first, start, NF_ERROR);
         return;
     }
     if (!at(p, P_SEMI) && !at(p, P_RBRACE))
         for (;;) {
-            uint32_t m = nmark(p), mfirst = ci(p);
+            uint32_t m = p_nmark(p), mfirst = p_ci(p);
             unsigned flags = 0;
             PTok t;
             if (!at(p, P_COLON))
@@ -1966,7 +1824,7 @@ static void member_decl(Parser *p)
                   at(p, P_RBRACE) ||
                   (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) {
                 expected(p, "':', ',', ';', '}' or '__attribute__'");
-                emit(p, N_MEMBER, mfirst, m, flags);
+                p_emit(p, N_MEMBER, mfirst, m, flags);
                 break;
             }
             if (accept(p, P_COLON)) {
@@ -1974,7 +1832,7 @@ static void member_decl(Parser *p)
                 parse_cond(p);
             }
             attributes(p);
-            emit(p, N_MEMBER, mfirst, m, flags);
+            p_emit(p, N_MEMBER, mfirst, m, flags);
             if (accept(p, P_COMMA))
                 continue;
             if (!at(p, P_SEMI) && !at(p, P_RBRACE))
@@ -1982,21 +1840,21 @@ static void member_decl(Parser *p)
             break;
         }
     if (at(p, P_RBRACE)) { /* GCC: a warning */
-        pwarn(p, ci(p), "no semicolon at end of struct or union");
+        pwarn(p, p_ci(p), "no semicolon at end of struct or union");
     } else if (!expect(p, P_SEMI)) {
         sync_stmt(p);
-        emit(p, N_MEMBER_DECL, first, start, NF_ERROR);
+        p_emit(p, N_MEMBER_DECL, first, start, NF_ERROR);
         return;
     }
-    emit(p, N_MEMBER_DECL, first, start, 0);
+    p_emit(p, N_MEMBER_DECL, first, start, 0);
 }
 
 static void static_assert_decl(Parser *p, unsigned flags)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     if (!expect(p, P_LPAREN)) {
         sync_stmt(p);
-        emit(p, N_STATIC_ASSERT, kw, start, flags | NF_ERROR);
+        p_emit(p, N_STATIC_ASSERT, kw, start, flags | NF_ERROR);
         return;
     }
     parse_cond(p);
@@ -2005,7 +1863,7 @@ static void static_assert_decl(Parser *p, unsigned flags)
     expect(p, P_RPAREN);
     if (!expect(p, P_SEMI))
         sync_stmt(p);
-    emit(p, N_STATIC_ASSERT, kw, start, flags);
+    p_emit(p, N_STATIC_ASSERT, kw, start, flags);
 }
 
 /* A tag is declared where first seen (a use declares it too); a visible
@@ -2018,7 +1876,7 @@ static void tag_declare(Parser *p, uint32_t ident, SymKind kind)
 
 static void struct_spec(Parser *p)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     unsigned flags = 0;
     PTok t;
     attributes(p);
@@ -2026,16 +1884,16 @@ static void struct_spec(Parser *p)
     if (is_name(p, &t)) {
         tag_declare(p, t.t.aux, ckw_of(p, &p->toks.data[kw]) == CK_UNION
                                     ? SYM_TAG_UNION : SYM_TAG_STRUCT);
-        leaf(p, N_TAG, adv(p));
+        p_leaf(p, N_TAG, adv(p));
     }
     attributes(p);
     if (at(p, P_LBRACE)) {
-        leaf(p, N_OPEN, adv(p));
-        set_aux(p, ckw_of(p, &p->toks.data[kw]) == CK_UNION);
+        p_leaf(p, N_OPEN, adv(p));
+        p_set_aux(p, ckw_of(p, &p->toks.data[kw]) == CK_UNION);
         flags |= NF_BODY;
         for (;;) {
             item_pragmas(p, SCTX_NONE);
-            if (at(p, P_RBRACE) || at_eof(p))
+            if (at(p, P_RBRACE) || p_at_eof(p))
                 break;
             if (accept(p, P_SEMI))
                 continue; /* GNU: stray ';' */
@@ -2051,19 +1909,19 @@ static void struct_spec(Parser *p)
         expected(p, "'{'");
         flags |= NF_ERROR;
     }
-    emit(p, N_STRUCT, kw, start, flags);
+    p_emit(p, N_STRUCT, kw, start, flags);
 }
 
 static void enum_spec(Parser *p)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     unsigned flags = 0;
     PTok t;
     attributes(p);
     t = ct(p);
     if (is_name(p, &t)) {
         tag_declare(p, t.t.aux, SYM_TAG_ENUM);
-        leaf(p, N_TAG, adv(p));
+        p_leaf(p, N_TAG, adv(p));
     }
     attributes(p);
     {   /* enum e : type (C2X underlying type) */
@@ -2074,15 +1932,15 @@ static void enum_spec(Parser *p)
         }
     }
     if (at(p, P_LBRACE)) {
-        leaf(p, N_OPEN, adv(p));
-        set_aux(p, 2);
+        p_leaf(p, N_OPEN, adv(p));
+        p_set_aux(p, 2);
         flags |= NF_BODY;
         if (at(p, P_RBRACE)) {
             /* gcc: "nicer error for enum {}" */
-            perr(p, ci(p), "empty enum is invalid");
+            p_err(p, p_ci(p), "empty enum is invalid");
             flags |= NF_ERROR;
         }
-        while (!at(p, P_RBRACE) && !at_eof(p)) {
+        while (!at(p, P_RBRACE) && !p_at_eof(p)) {
             PTok e = ct(p);
             uint32_t s, name;
             if (!is_name(p, &e)) {
@@ -2091,12 +1949,12 @@ static void enum_spec(Parser *p)
                 flags |= NF_ERROR;
                 break;
             }
-            s = nmark(p);
+            s = p_nmark(p);
             name = adv(p);
             attributes(p);
             if (accept(p, P_ASSIGN))
                 parse_cond(p);
-            emit(p, N_ENUMERATOR, name, s, 0);
+            p_emit(p, N_ENUMERATOR, name, s, 0);
             /* in scope after its enumerator (value included) */
             scope_declare(&p->scope, e.t.aux, SYM_ENUMERATOR);
             if (!accept(p, P_COMMA))
@@ -2109,7 +1967,7 @@ static void enum_spec(Parser *p)
         expected(p, "'{'");
         flags |= NF_ERROR;
     }
-    emit(p, N_ENUM, kw, start, flags);
+    p_emit(p, N_ENUM, kw, start, flags);
 }
 
 /* ---- declarators ---------------------------------------------------------- */
@@ -2135,7 +1993,7 @@ static void declarator_init(DeclInfo *d);
 static void auto_type_error(Parser *p, uint32_t first, const char *what,
                             bool top, const Specs *s)
 {
-    perr(p, first, "'%s' %s", s->auto_c23 ? "auto" : s->auto_type ? "__auto_type"
+    p_err(p, first, "'%s' %s", s->auto_c23 ? "auto" : s->auto_type ? "__auto_type"
                                                                   : "constexpr", what);
     if (top || p->kr_params)
         sync_top(p);
@@ -2147,7 +2005,7 @@ static void auto_type_error(Parser *p, uint32_t first, const char *what,
  * nested declarator)?  C99 6.7.5.3p11: a typedef name there is a type. */
 static bool paren_is_params(Parser *p)
 {
-    uint32_t i = skip_attrs_ahead(p, skip_prag(p, ci(p) + 1));
+    uint32_t i = skip_attrs_ahead(p, skip_prag(p, p_ci(p) + 1));
     PTok t = tok_at(p, i);
     if (is_p(&t, P_RPAREN) || is_p(&t, P_ELLIPSIS))
         return true;
@@ -2181,16 +2039,16 @@ static void params(Parser *p, unsigned *flags)
                 }
                 break;
             }
-            leaf(p, N_KR_IDENT, adv(p));
+            p_leaf(p, N_KR_IDENT, adv(p));
             scope_declare(&p->scope, x.t.aux, SYM_ORDINARY);
             if (!accept(p, P_COMMA))
                 break;
         }
         return;
     }
-    list0 = nmark(p);
+    list0 = p_nmark(p);
     for (;;) {
-        uint32_t s = nmark(p), first = ci(p);
+        uint32_t s = p_nmark(p), first = p_ci(p);
         Specs sp;
         DeclInfo d;
         if (accept(p, P_ELLIPSIS)) {
@@ -2204,7 +2062,7 @@ static void params(Parser *p, unsigned *flags)
             p->nodes.len = s;
             /* gcc skips to the end of the parameter and goes on after a
              * comma */
-            while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE)) {
+            while (!p_at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE)) {
                 if (!depth && (at(p, P_COMMA) || at(p, P_RPAREN)))
                     break;
                 if (at(p, P_LPAREN) || at(p, P_LBRACKET) || at(p, P_LBRACE))
@@ -2226,10 +2084,10 @@ static void params(Parser *p, unsigned *flags)
         if (d.name != NO_TOK)
             scope_declare(&p->scope, p->toks.data[d.name].t.aux,
                           sp.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
-        emit(p, N_PARAM, first, s, 0);
+        p_emit(p, N_PARAM, first, s, 0);
         if (at(p, P_SEMI)) {
             /* GNU forward declarations: everything so far in this list */
-            uint32_t i = nmark(p);
+            uint32_t i = p_nmark(p);
             p->nodes.data[i - 1].flags |= NF_SEMI;
             while (i > list0) {
                 Node *nd = &p->nodes.data[i - 1];
@@ -2249,11 +2107,11 @@ static void params(Parser *p, unsigned *flags)
 
 static void direct_declarator(Parser *p, int mode, DeclInfo *di)
 {
-    uint32_t start = nmark(p);
+    uint32_t start = p_nmark(p);
     PTok t = ct(p);
     if (is_name(p, &t) && mode != DCL_ABSTRACT) {
         di->name = adv(p);
-        leaf(p, N_NAME, di->name);
+        p_leaf(p, N_NAME, di->name);
         di->any = true;
     } else if (is_p(&t, P_LPAREN) &&
                (mode == DCL_NAMED || !paren_is_params(p))) {
@@ -2278,7 +2136,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
                     flags |= NF_STATIC;
                 } else if (k == CK_CONST || k == CK_VOLATILE ||
                            k == CK_RESTRICT || k == CK_ATOMIC) {
-                    leaf(p, N_QUAL, adv(p));
+                    p_leaf(p, N_QUAL, adv(p));
                 } else if (k == CK_ATTRIBUTE) {
                     attribute(p);
                 } else {
@@ -2298,7 +2156,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             else
                 p->bound_errors += bound_errs; /* gcc goes on with an
                                                   erroneous bound */
-            emit(p, N_ARRAY, lb, start, flags);
+            p_emit(p, N_ARRAY, lb, start, flags);
             if (di->inner == DK_NONE)
                 di->inner = DK_ARRAY;
             di->any = true;
@@ -2316,7 +2174,7 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
             expect(p, P_RPAREN);
             if (p->errors - nerrs > p->bound_errors - nbound)
                 di->failed = true;
-            emit(p, N_FUNC, lp, start, flags);
+            p_emit(p, N_FUNC, lp, start, flags);
             if (adjacent) {
                 di->inner = DK_FUNC;
                 di->kr = (flags & NF_KR) != 0;
@@ -2333,19 +2191,19 @@ static void direct_declarator(Parser *p, int mode, DeclInfo *di)
 static void declarator(Parser *p, int mode, DeclInfo *di)
 {
     if (at(p, P_STAR)) {
-        uint32_t start = nmark(p), star = adv(p);
+        uint32_t start = p_nmark(p), star = adv(p);
         for (;;) {
             int k = ckw(p);
             if (k == CK_CONST || k == CK_VOLATILE || k == CK_RESTRICT ||
                 k == CK_ATOMIC)
-                leaf(p, N_QUAL, adv(p));
+                p_leaf(p, N_QUAL, adv(p));
             else if (k == CK_ATTRIBUTE)
                 attribute(p);
             else
                 break;
         }
         declarator(p, mode, di);
-        emit(p, N_PTR, star, start, 0);
+        p_emit(p, N_PTR, star, start, 0);
         if (di->inner == DK_NONE)
             di->inner = DK_PTR;
         di->any = true;
@@ -2374,7 +2232,7 @@ static void member_declarator(Parser *p)
  * the ')' (DR#444). */
 static uint32_t type_name(Parser *p, bool alignas_ok)
 {
-    uint32_t start = nmark(p), first = ci(p);
+    uint32_t start = p_nmark(p), first = p_ci(p);
     Specs s;
     DeclInfo d;
     specs(p, &s, LA_TYPE, alignas_ok, false);
@@ -2382,7 +2240,7 @@ static uint32_t type_name(Parser *p, bool alignas_ok)
         expected(p, "specifier-qualifier-list");
     declarator_init(&d);
     declarator(p, DCL_ABSTRACT, &d);
-    emit(p, N_TYPE_NAME, first, start, 0);
+    p_emit(p, N_TYPE_NAME, first, start, 0);
     return s.has_align ? s.align_tok : NO_TOK;
 }
 
@@ -2390,10 +2248,10 @@ static uint32_t type_name(Parser *p, bool alignas_ok)
 
 static void init_list(Parser *p)
 {
-    uint32_t start = nmark(p), lb = adv(p);
+    uint32_t start = p_nmark(p), lb = adv(p);
     unsigned flags = 0;
-    while (!at(p, P_RBRACE) && !at_eof(p)) {
-        uint32_t s = nmark(p), first = ci(p);
+    while (!at(p, P_RBRACE) && !p_at_eof(p)) {
+        uint32_t s = p_nmark(p), first = p_ci(p);
         bool desig = false, old = false;
         int nd = 0;
         bool dot = false;
@@ -2407,21 +2265,21 @@ static void init_list(Parser *p)
                     expected(p, "identifier");
                     break;
                 }
-                leaf(p, N_DESIG_FIELD, adv(p));
+                p_leaf(p, N_DESIG_FIELD, adv(p));
             } else if (is_p(&t, P_LBRACKET)) {
-                uint32_t d = nmark(p), lbk = adv(p);
+                uint32_t d = p_nmark(p), lbk = adv(p);
                 parse_cond(p);
                 if (accept(p, P_ELLIPSIS)) {
                     parse_cond(p);
                     expect_skip(p, P_RBRACKET);
-                    emit(p, N_DESIG_RANGE, lbk, d, 0);
+                    p_emit(p, N_DESIG_RANGE, lbk, d, 0);
                 } else {
                     expect_skip(p, P_RBRACKET);
-                    emit(p, N_DESIG_INDEX, lbk, d, 0);
+                    p_emit(p, N_DESIG_INDEX, lbk, d, 0);
                 }
             } else if (!desig && is_name(p, &t) &&
                        (n = pk(p, 1), is_p(&n, P_COLON))) {
-                leaf(p, N_DESIG_FIELD, adv(p)); /* GNU: field: value */
+                p_leaf(p, N_DESIG_FIELD, adv(p)); /* GNU: field: value */
                 adv(p);
                 old = true;
                 desig = true;
@@ -2434,10 +2292,10 @@ static void init_list(Parser *p)
         }
         if (desig && !old && !accept(p, P_ASSIGN) && (dot || nd > 1)) {
             /* only a single array designator may omit the '=' */
-            uint32_t at0 = ci(p);
+            uint32_t at0 = p_ci(p);
             int depth = 0;
             expected(p, "'='");
-            while (!at_eof(p)) {
+            while (!p_at_eof(p)) {
                 PTok t = ct(p);
                 if (t.t.kind == TK_PUNCT) {
                     if (depth == 0 && (t.t.punct == P_COMMA ||
@@ -2454,13 +2312,13 @@ static void init_list(Parser *p)
                 adv(p);
             }
             p->err.live = false;
-            leaf(p, N_ERROR, at0);
+            p_leaf(p, N_ERROR, at0);
             flags |= NF_ERROR;
         } else {
             initializer(p);
         }
         if (desig)
-            emit(p, N_DESIGNATED, first, s, 0);
+            p_emit(p, N_DESIGNATED, first, s, 0);
         if (!accept(p, P_COMMA))
             break;
     }
@@ -2472,7 +2330,7 @@ static void init_list(Parser *p)
         flags |= NF_ERROR;
         skip_until(p, P_RBRACE);
     }
-    emit(p, N_INIT_LIST, lb, start, flags);
+    p_emit(p, N_INIT_LIST, lb, start, flags);
 }
 
 static void initializer(Parser *p)
@@ -2508,11 +2366,11 @@ static void postfix_tail(Parser *p, uint32_t start)
             if (p->in_spec && at(p, P_COLON)) {     /* a slice p[lo:hi] */
                 adv(p);
                 parse_expr(p);
-                emit(p, N_SLICE, lb, start,
+                p_emit(p, N_SLICE, lb, start,
                      expect_skip(p, P_RBRACKET) ? 0 : NF_CUT);
                 break;
             }
-            emit(p, N_INDEX, lb, start,
+            p_emit(p, N_INDEX, lb, start,
                  expect_skip(p, P_RBRACKET) ? 0 : NF_CUT);
             break;
         }
@@ -2525,7 +2383,7 @@ static void postfix_tail(Parser *p, uint32_t start)
                     parse_assign(p);
             }
             /* a call cut short by a syntax error is checked after it */
-            emit(p, N_CALL, lp, start,
+            p_emit(p, N_CALL, lp, start,
                  expect_skip(p, P_RPAREN) && p->errors == e0 ? 0 : NF_CUT);
             break;
         }
@@ -2535,15 +2393,15 @@ static void postfix_tail(Parser *p, uint32_t start)
             f = ct(p);
             if (f.t.kind != TK_IDENT) {
                 expected(p, "identifier");
-                emit(p, N_MEMBER_EXPR, ci(p), start, NF_ERROR);
+                p_emit(p, N_MEMBER_EXPR, p_ci(p), start, NF_ERROR);
                 return;
             }
-            emit(p, N_MEMBER_EXPR, adv(p), start,
+            p_emit(p, N_MEMBER_EXPR, adv(p), start,
                  t.t.punct == P_ARROW ? NF_ARROW : 0);
             break;
         }
         case P_INC: case P_DEC:
-            emit(p, N_POSTFIX, adv(p), start, 0);
+            p_emit(p, N_POSTFIX, adv(p), start, 0);
             break;
         default:
             return;
@@ -2556,7 +2414,7 @@ static void postfix_tail(Parser *p, uint32_t start)
  * had a syntax error. */
 static bool type_name_ok(Parser *p)
 {
-    uint32_t s = nmark(p);
+    uint32_t s = p_nmark(p);
     uint64_t e0 = p->errors;
     type_name(p, false);
     if (p->errors == e0)
@@ -2567,40 +2425,40 @@ static bool type_name_ok(Parser *p)
 
 static void offsetof_expr(Parser *p)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     PTok t;
     if (!expect(p, P_LPAREN) || !type_name_ok(p) || !expect(p, P_COMMA)) {
         skip_past_rparen(p);        /* gcc: c_parser_skip_until_found */
-        emit(p, N_OFFSETOF, kw, start, 0);
+        p_emit(p, N_OFFSETOF, kw, start, 0);
         return;
     }
     t = ct(p);
     if (t.t.kind == TK_IDENT)
-        leaf(p, N_NAME, adv(p));
+        p_leaf(p, N_NAME, adv(p));
     else
         expected(p, "identifier");
     for (;;) {
         if (at(p, P_DOT) || at(p, P_ARROW)) {
             bool arrow = at(p, P_ARROW);    /* gcc: 'a->b' is 'a[0].b' */
-            uint32_t d = nmark(p);
+            uint32_t d = p_nmark(p);
             adv(p);
             t = ct(p);
             if (t.t.kind != TK_IDENT) {
                 expected(p, "identifier");
                 break;
             }
-            emit(p, N_DESIG_FIELD, adv(p), d, arrow);
+            p_emit(p, N_DESIG_FIELD, adv(p), d, arrow);
         } else if (at(p, P_LBRACKET)) {
-            uint32_t d = nmark(p), lb = adv(p);
+            uint32_t d = p_nmark(p), lb = adv(p);
             parse_expr(p);
             expect_skip(p, P_RBRACKET);
-            emit(p, N_DESIG_INDEX, lb, d, 0);
+            p_emit(p, N_DESIG_INDEX, lb, d, 0);
         } else {
             break;
         }
     }
     expect(p, P_RPAREN);
-    emit(p, N_OFFSETOF, kw, start, 0);
+    p_emit(p, N_OFFSETOF, kw, start, 0);
 }
 
 static void convertvector_expr(Parser *p, NodeTag tag);
@@ -2613,7 +2471,7 @@ static void builtin2(Parser *p, NodeTag tag, bool first_type)
         convertvector_expr(p, tag);
         return;
     }
-    start = nmark(p);
+    start = p_nmark(p);
     kw = adv(p);
     /* gcc leaves the ) of a failed type name behind (the statement parser
      * then complains about it) and skips past it after any other failure */
@@ -2624,7 +2482,7 @@ static void builtin2(Parser *p, NodeTag tag, bool first_type)
             skip_past_rparen(p);
     } else {
         int depth = 0;
-        while (!at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
+        while (!p_at_eof(p) && !at(p, P_SEMI) && !at(p, P_RBRACE) &&
                !at(p, P_LBRACE) && !(at(p, P_RPAREN) && depth <= 0)) {
             if (at(p, P_LPAREN))
                 depth++;
@@ -2633,39 +2491,39 @@ static void builtin2(Parser *p, NodeTag tag, bool first_type)
             adv(p);
         }
     }
-    emit(p, tag, kw, start, 0);
+    p_emit(p, tag, kw, start, 0);
 }
 
 /* __builtin_convertvector ( assignment-expression , type-name ): gcc skips
  * to the closing parenthesis after any failure and builds an error. */
 static void convertvector_expr(Parser *p, NodeTag tag)
 {
-    uint32_t start = nmark(p), kw = adv(p), s;
+    uint32_t start = p_nmark(p), kw = adv(p), s;
     uint64_t e0;
     if (!expect(p, P_LPAREN)) {
-        emit(p, tag, kw, start, 0);
+        p_emit(p, tag, kw, start, 0);
         return;
     }
     parse_assign(p);
     if (!expect(p, P_COMMA)) {
         skip_past_rparen(p);
-        emit(p, tag, kw, start, 0);
+        p_emit(p, tag, kw, start, 0);
         return;
     }
-    s = nmark(p);
+    s = p_nmark(p);
     e0 = p->errors;
     type_name(p, false);
     if (p->errors != e0)
         p->nodes.len = s;
     if (!expect(p, P_RPAREN))
         skip_past_rparen(p);
-    emit(p, tag, kw, start, 0);
+    p_emit(p, tag, kw, start, 0);
 }
 
 /* __builtin_has_attribute ( expr | type-name , attribute ) */
 static void has_attr_expr(Parser *p)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     PTok n = ct(p), n1 = pk(p, 1);
     expect(p, P_LPAREN);
     n = ct(p);
@@ -2678,7 +2536,7 @@ static void has_attr_expr(Parser *p)
     {
         PTok t = ct(p);
         if (t.t.kind == TK_IDENT) {
-            uint32_t s = nmark(p), name = adv(p);
+            uint32_t s = p_nmark(p), name = adv(p);
             if (accept(p, P_LPAREN)) {
                 if (!at(p, P_RPAREN)) {
                     parse_assign(p);
@@ -2687,44 +2545,44 @@ static void has_attr_expr(Parser *p)
                 }
                 expect(p, P_RPAREN);
             }
-            emit(p, N_ATTR_ITEM, name, s, 0);
+            p_emit(p, N_ATTR_ITEM, name, s, 0);
         } else {
             expected(p, "identifier");
             skip_past_rparen(p);
-            emit(p, N_HAS_ATTR, kw, start, 0);
+            p_emit(p, N_HAS_ATTR, kw, start, 0);
             return;
         }
     }
     expect(p, P_RPAREN);
-    emit(p, N_HAS_ATTR, kw, start, 0);
+    p_emit(p, N_HAS_ATTR, kw, start, 0);
 }
 
 static void generic_expr(Parser *p)
 {
-    uint32_t start = nmark(p), kw = adv(p);
+    uint32_t start = p_nmark(p), kw = adv(p);
     expect(p, P_LPAREN);
     parse_assign(p);
     while (accept(p, P_COMMA)) {
-        uint32_t s = nmark(p), first = ci(p);
+        uint32_t s = p_nmark(p), first = p_ci(p);
         if (ckw(p) == CK_DEFAULT)
-            leaf(p, N_NONE, adv(p));
+            p_leaf(p, N_NONE, adv(p));
         else if (!type_name_ok(p)) {
             skip_past_rparen(p);
             p->nodes.len = start;
-            emit(p, N_GENERIC, kw, start, NF_ERROR);
+            p_emit(p, N_GENERIC, kw, start, NF_ERROR);
             return;
         }
         expect(p, P_COLON);
         parse_assign(p);
-        emit(p, N_GENERIC_ASSOC, first, s, 0);
+        p_emit(p, N_GENERIC_ASSOC, first, s, 0);
     }
     expect(p, P_RPAREN);
-    emit(p, N_GENERIC, kw, start, 0);
+    p_emit(p, N_GENERIC, kw, start, 0);
 }
 
 static void primary(Parser *p)
 {
-    uint32_t start = nmark(p), i = ci(p);
+    uint32_t start = p_nmark(p), i = p_ci(p);
     PTok t = ct(p);
     switch (t.t.kind) {
     case TK_IDENT:
@@ -2734,7 +2592,7 @@ static void primary(Parser *p)
                 break;          /* c_parser_postfix_expression: a type name */
             {   /* gcc lexes the next token to look for a postfix, so its
                  * lexing diagnostics come before the identifier's own */
-                uint32_t ni = skip_prag(p, ci(p) + 1);
+                uint32_t ni = skip_prag(p, p_ci(p) + 1);
                 if (ni < p->toks.len && (p->toks.data[ni].t.kind == TK_CHAR ||
                                          p->toks.data[ni].t.kind == TK_PPNUM)) {
                     size_t n0 = p->diag->all.len, k;
@@ -2750,14 +2608,14 @@ static void primary(Parser *p)
                 expect(p, P_LPAREN);
                 parse_assign(p);
                 expect_skip(p, P_RPAREN);
-                emit(p, N_SPEC_LEN, kw, start, 0);
+                p_emit(p, N_SPEC_LEN, kw, start, 0);
                 return;
             }
-            leaf(p, N_IDENT, adv(p));
+            p_leaf(p, N_IDENT, adv(p));
             return;
         case CK_RETURN:
             if (p->in_spec) {           /* the function's value */
-                leaf(p, N_SPEC_RESULT, adv(p));
+                p_leaf(p, N_SPEC_RESULT, adv(p));
                 return;
             }
             break;
@@ -2780,17 +2638,17 @@ static void primary(Parser *p)
             offsetof_expr(p);
             return;
         case CK_TRUE: case CK_FALSE: case CK_NULLPTR:  /* a constant: the checker reads the spelling */
-            leaf(p, N_NUMBER, adv(p));
+            p_leaf(p, N_NUMBER, adv(p));
             return;
         default:
             break;
         }
         break;
     case TK_PPNUM:
-        leaf(p, N_NUMBER, adv(p));
+        p_leaf(p, N_NUMBER, adv(p));
         return;
     case TK_CHAR:
-        leaf(p, N_CHAR, adv(p));
+        p_leaf(p, N_CHAR, adv(p));
         return;
     case TK_STRING:
         string_lit(p);
@@ -2801,17 +2659,17 @@ static void primary(Parser *p)
             uint32_t lp = adv(p);
             if (is_p(&n, P_LBRACE) && !p->fn_depth) {
                 /* gcc: !building_stmt_list_p () */
-                perr(p, lp, "braced-group within expression allowed only "
+                p_err(p, lp, "braced-group within expression allowed only "
                      "inside a function");
                 skip_until(p, P_RBRACE);
                 skip_until(p, P_RPAREN);
-                emit(p, N_STMT_EXPR, lp, start, NF_ERROR);
+                p_emit(p, N_STMT_EXPR, lp, start, NF_ERROR);
                 return;
             }
             if (is_p(&n, P_LBRACE)) { /* GNU statement expression */
                 compound(p, true);
                 expect(p, P_RPAREN);
-                emit(p, N_STMT_EXPR, lp, start, 0);
+                p_emit(p, N_STMT_EXPR, lp, start, 0);
                 return;
             }
             p->hushed = false;
@@ -2823,11 +2681,11 @@ static void primary(Parser *p)
                 expect(p, P_RPAREN);
                 p->hush = hush;
                 skip_until(p, P_RPAREN);        /* clears parser->error */
-                emit(p, N_PAREN, lp, start, 0);
+                p_emit(p, N_PAREN, lp, start, 0);
                 return;
             }
             expect(p, P_RPAREN);
-            emit(p, N_PAREN, lp, start, 0);
+            p_emit(p, N_PAREN, lp, start, 0);
             return;
         }
         break;
@@ -2836,15 +2694,15 @@ static void primary(Parser *p)
     }
     /* c_parser_error is silent while parser->error is set */
     if (!p->err.live) {
-        p->err.expr_tok = ci(p) + 1; /* gcc sets input_location here */
+        p->err.expr_tok = p_ci(p) + 1; /* gcc sets input_location here */
         expected(p, "expression");
     }
-    emit(p, N_ERROR, i, start, NF_ERROR);
+    p_emit(p, N_ERROR, i, start, NF_ERROR);
 }
 
 static void unary(Parser *p)
 {
-    uint32_t start = nmark(p);
+    uint32_t start = p_nmark(p);
     PTok t = ct(p);
     int k = ckw_of(p, &t);
     if (t.t.kind == TK_PUNCT) {
@@ -2852,21 +2710,21 @@ static void unary(Parser *p)
         case P_INC: case P_DEC: {
             uint32_t op = adv(p);
             parse_cast(p);   /* gcc: c_parser_cast_expression, so ++(T){...} parses */
-            emit(p, N_UNARY, op, start, 0);
+            p_emit(p, N_UNARY, op, start, 0);
             return;
         }
         case P_AMP: case P_STAR: case P_PLUS: case P_MINUS: case P_TILDE:
         case P_BANG: {
             uint32_t op = adv(p);
             parse_cast(p);
-            emit(p, N_UNARY, op, start, 0);
+            p_emit(p, N_UNARY, op, start, 0);
             return;
         }
         case P_ANDAND: { /* GNU: &&label */
             PTok n = pk(p, 1);
             if (is_name(p, &n)) {
                 adv(p);
-                emit(p, N_ADDR_LABEL, adv(p), start, 0);
+                p_emit(p, N_ADDR_LABEL, adv(p), start, 0);
                 return;
             }
             break;
@@ -2880,32 +2738,32 @@ static void unary(Parser *p)
         PTok n0 = ct(p), n1 = pk(p, 1);
         if (is_p(&n0, P_LPAREN) &&
             (is_typename_start(p, &n1) || is_clit_storage(p, &n1))) {
-            uint32_t s2 = nmark(p), lp = adv(p);
+            uint32_t s2 = p_nmark(p), lp = adv(p);
             uint32_t al = type_name(p, true);
             expect_skip(p, P_RPAREN);
             if (at(p, P_LBRACE)) { /* sizeof (T){...}: a compound literal */
                 init_list(p);
-                emit(p, N_COMPOUND_LIT, lp, s2, 0);
+                p_emit(p, N_COMPOUND_LIT, lp, s2, 0);
                 postfix_tail(p, s2);
-                emit(p, k == CK_SIZEOF ? N_SIZEOF_EXPR : N_ALIGNOF_EXPR, kw,
+                p_emit(p, k == CK_SIZEOF ? N_SIZEOF_EXPR : N_ALIGNOF_EXPR, kw,
                      start, 0);
                 return;
             }
             if (al != NO_TOK)
-                perr(p, al, "alignment specified for type name in %s",
+                p_err(p, al, "alignment specified for type name in %s",
                      k == CK_SIZEOF ? "'sizeof'" : "'_Alignof'");
-            emit(p, k == CK_SIZEOF ? N_SIZEOF_TYPE : N_ALIGNOF_TYPE, kw, start,
+            p_emit(p, k == CK_SIZEOF ? N_SIZEOF_TYPE : N_ALIGNOF_TYPE, kw, start,
                  0);
             return;
         }
         unary(p);
-        emit(p, k == CK_SIZEOF ? N_SIZEOF_EXPR : N_ALIGNOF_EXPR, kw, start, 0);
+        p_emit(p, k == CK_SIZEOF ? N_SIZEOF_EXPR : N_ALIGNOF_EXPR, kw, start, 0);
         return;
     }
     if (k == CK_EXTENSION || k == CK_REAL || k == CK_IMAG) {
         uint32_t op = adv(p);
         parse_cast(p);
-        emit(p, N_UNARY, op, start, 0);
+        p_emit(p, N_UNARY, op, start, 0);
         return;
     }
     primary(p);
@@ -2916,19 +2774,19 @@ static void parse_cast(Parser *p)
 {
     PTok n = pk(p, 1);
     if (at(p, P_LPAREN) && (is_typename_start(p, &n) || is_clit_storage(p, &n))) {
-        uint32_t start = nmark(p), lp = adv(p);
+        uint32_t start = p_nmark(p), lp = adv(p);
         uint32_t al = type_name(p, true);
         expect_skip(p, P_RPAREN);
         if (at(p, P_LBRACE)) {
             init_list(p);
-            emit(p, N_COMPOUND_LIT, lp, start, 0);
+            p_emit(p, N_COMPOUND_LIT, lp, start, 0);
             postfix_tail(p, start);
             return;
         }
         if (al != NO_TOK)
-            perr(p, al, "alignment specified for type name in cast");
+            p_err(p, al, "alignment specified for type name in cast");
         parse_cast(p);
-        emit(p, N_CAST, lp, start, 0);
+        p_emit(p, N_CAST, lp, start, 0);
         return;
     }
     unary(p);
@@ -2947,7 +2805,7 @@ static bool at_implies(Parser *p)
 
 static void binary(Parser *p, int min)
 {
-    uint32_t start = nmark(p);
+    uint32_t start = p_nmark(p);
     parse_cast(p);
     for (;;) {
         PTok t = ct(p);
@@ -2957,7 +2815,7 @@ static void binary(Parser *p, int min)
             return;
         op = adv(p);
         binary(p, prec + 1);
-        emit(p, N_BINARY, op, start, 0);
+        p_emit(p, N_BINARY, op, start, 0);
     }
 }
 
@@ -2965,20 +2823,20 @@ static void binary(Parser *p, int min)
  * "==" token with aux 1 */
 static void implies(Parser *p)
 {
-    uint32_t start = nmark(p);
+    uint32_t start = p_nmark(p);
     binary(p, PR_LOR);
     if (at_implies(p)) {
         uint32_t op = adv(p);
         adv(p);
         implies(p);
-        emit(p, N_BINARY, op, start, 0);
-        set_aux(p, 1);
+        p_emit(p, N_BINARY, op, start, 0);
+        p_set_aux(p, 1);
     }
 }
 
 static void parse_cond(Parser *p)
 {
-    uint32_t start = nmark(p);
+    uint32_t start = p_nmark(p);
     implies(p);
     if (at(p, P_QUESTION)) {
         uint32_t q = adv(p);
@@ -2989,31 +2847,31 @@ static void parse_cond(Parser *p)
             parse_expr(p);
         expect(p, P_COLON);
         parse_cond(p);
-        emit(p, N_COND, q, start, flags);
+        p_emit(p, N_COND, q, start, flags);
     }
 }
 
 static void parse_assign(Parser *p)
 {
-    uint32_t start = nmark(p);
+    uint32_t start = p_nmark(p);
     PTok t;
     parse_cond(p);
     t = ct(p);
     if (t.t.kind == TK_PUNCT && punct_is_assign(t.t.punct)) {
         uint32_t op = adv(p);
         parse_assign(p);
-        emit(p, N_ASSIGN, op, start, 0);
+        p_emit(p, N_ASSIGN, op, start, 0);
     }
 }
 
-static void parse_expr(Parser *p)
+void parse_expr(Parser *p)
 {
-    uint32_t start = nmark(p);
+    uint32_t start = p_nmark(p);
     parse_assign(p);
     while (at(p, P_COMMA)) {
         uint32_t op = adv(p);
         parse_assign(p);
-        emit(p, N_BINARY, op, start, 0);
+        p_emit(p, N_BINARY, op, start, 0);
     }
 }
 
@@ -3022,7 +2880,7 @@ static void parse_expr(Parser *p)
 /* A substatement: a block of its own (C99 6.8.4p3, 6.8.5p5). */
 static void substatement(Parser *p)
 {
-    open_scope(p, ci(p), 0);
+    open_scope(p, p_ci(p), 0);
     statement(p);
     close_scope(p, NULL);
 }
@@ -3032,22 +2890,8 @@ static void substatement(Parser *p)
 static void loop_body(Parser *p)
 {
     bool braced = at(p, P_LBRACE);
-    uint32_t i, j = ci(p);
-    for (i = p->pos; i < j; i++) {
-        const char *kw, *r;
-        int k = spec_kind(p, &p->toks.data[i].t, &kw);
-        if (!k || !kw)
-            continue;
-        r = srcmgr_ptr(p->sm, p->toks.data[i].t.loc);
-        if (k == SPEC_INVARIANT && !braced)
-            perr_at(p, i, p->toks.data[i].t.loc + (SrcLoc)(kw - r),
-                    "'#pragma cereal invariant' needs a braced loop body");
-        else if (k != SPEC_UNKNOWN)
-            perr_at(p, i, p->toks.data[i].t.loc + (SrcLoc)(kw - r),
-                    "'#pragma cereal %s' must start a %s body", spec_kw[k],
-                    k == SPEC_INVARIANT ? "loop" : "function");
-        p->err.live = false;
-    }
+    uint32_t j = p_ci(p);
+    spec_loop_prelude(p, j, braced);
     open_scope(p, j, 0);
     p->spec_ctx = braced ? SCTX_LOOP : SCTX_NONE;
     statement(p);
@@ -3060,7 +2904,7 @@ static void end_stmt(Parser *p, NodeTag tag, uint32_t tok, uint32_t start)
     unsigned flags = 0;
     if (!expect_skip(p, P_SEMI))
         flags = NF_ERROR;
-    emit(p, tag, tok, start, flags);
+    p_emit(p, tag, tok, start, flags);
 }
 
 static void paren_expr(Parser *p)
@@ -3086,11 +2930,11 @@ static void label_body(Parser *p)
     }
     if (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr) {
         /* an attribute list starts a declaration unless it ends the statement */
-        PTok x = tok_at(p, skip_attrs_ahead(p, ci(p)));
+        PTok x = tok_at(p, skip_attrs_ahead(p, p_ci(p)));
         if (is_p(&x, P_SEMI))
             statement(p);
         else {
-            fallthrough_not_followed(p, ci(p));
+            fallthrough_not_followed(p, p_ci(p));
             declaration(p, false);
         }
         return;
@@ -3104,14 +2948,14 @@ static void label_body(Parser *p)
 
 static void statement(Parser *p)
 {
-    uint32_t start = nmark(p), i = ci(p);
+    uint32_t start = p_nmark(p), i = p_ci(p);
     PTok t = ct(p), n;
     switch (ckw_of(p, &t)) {
     case CK_NONE:
         break;
     case CK_ELSE:
-        perr(p, i, "'else' without a previous 'if'");
-        emit(p, N_EMPTY, adv(p), start, NF_ERROR);
+        p_err(p, i, "'else' without a previous 'if'");
+        p_emit(p, N_EMPTY, adv(p), start, NF_ERROR);
         return;
     case CK_IF:
         adv(p);
@@ -3123,7 +2967,7 @@ static void statement(Parser *p)
             substatement(p);
         }
         close_scope(p, NULL);
-        emit(p, N_IF, i, start, 0);
+        p_emit(p, N_IF, i, start, 0);
         return;
     case CK_SWITCH: case CK_WHILE:
         adv(p);
@@ -3134,7 +2978,7 @@ static void statement(Parser *p)
         else
             substatement(p);
         close_scope(p, NULL);
-        emit(p, ckw_of(p, &t) == CK_SWITCH ? N_SWITCH : N_WHILE, i, start, 0);
+        p_emit(p, ckw_of(p, &t) == CK_SWITCH ? N_SWITCH : N_WHILE, i, start, 0);
         return;
     case CK_DO:
         adv(p);
@@ -3158,7 +3002,7 @@ static void statement(Parser *p)
         expect(p, P_LPAREN);
         c = ct(p);
         if (accept(p, P_SEMI)) {
-            leaf(p, N_NONE, i);
+            p_leaf(p, N_NONE, i);
         } else if (is_decl_start_la(p, &c) || ckw_of(p, &c) == CK_EXTENSION) {
             declaration(p, false);
         } else {
@@ -3168,24 +3012,24 @@ static void statement(Parser *p)
         }
         if (at(p, P_SEMI) && lp) {
             char buf[160];
-            perr(p, ci(p), "missing loop condition in loop with 'GCC %s' "
+            p_err(p, p_ci(p), "missing loop condition in loop with 'GCC %s' "
                  "pragma%s", lp & 1 ? "ivdep" : "unroll",
-                 tok_desc(p, ci(p), buf, sizeof buf));
-            leaf(p, N_ERROR, ci(p));
+                 p_tok_desc(p, p_ci(p), buf, sizeof buf));
+            p_leaf(p, N_ERROR, p_ci(p));
         } else if (at(p, P_SEMI))
-            leaf(p, N_NONE, i);
+            p_leaf(p, N_NONE, i);
         else
             parse_expr(p);
         if (!expect(p, P_SEMI))
             skip_until(p, P_SEMI);
         if (at(p, P_RPAREN))
-            leaf(p, N_NONE, i);
+            p_leaf(p, N_NONE, i);
         else
             parse_expr(p);
         expect(p, P_RPAREN);
         loop_body(p);
         close_scope(p, NULL);
-        emit(p, N_FOR, i, start, 0);
+        p_emit(p, N_FOR, i, start, 0);
         return;
     }
     case CK_GOTO:
@@ -3229,20 +3073,20 @@ static void statement(Parser *p)
         } else if (!accept(p, P_COLON))
             expected(p, "':' or '...'");   /* gcc: at the next token, no fix-it */
         label_body(p);
-        emit(p, N_CASE, i, start, flags);
+        p_emit(p, N_CASE, i, start, flags);
         return;
     }
     case CK_DEFAULT:
         adv(p);
         expect(p, P_COLON);
         label_body(p);
-        emit(p, N_DEFAULT, i, start, 0);
+        p_emit(p, N_DEFAULT, i, start, 0);
         return;
     case CK_ASM:
         asm_stmt(p, false);
         return;
     case CK_ATTRIBUTE: /* __attribute__((fallthrough)); */
-        fallthrough_not_followed(p, ci(p));
+        fallthrough_not_followed(p, p_ci(p));
         attributes(p);
         end_stmt(p, N_ATTR_STMT, i, start);
         return;
@@ -3255,7 +3099,7 @@ static void statement(Parser *p)
     }
     if (is_p(&t, P_SEMI)) {
         adv(p);
-        emit(p, N_EXPR_STMT, i, start, 0);
+        p_emit(p, N_EXPR_STMT, i, start, 0);
         return;
     }
     n = pk(p, 1);
@@ -3264,7 +3108,7 @@ static void statement(Parser *p)
         adv(p);
         attributes(p);
         label_body(p);
-        emit(p, N_LABEL, i, start, 0);
+        p_emit(p, N_LABEL, i, start, 0);
         return;
     }
     if (is_p(&t, P_RPAREN) || is_p(&t, P_RBRACKET)) {
@@ -3272,7 +3116,7 @@ static void statement(Parser *p)
          * block goes on with the next item */
         expected(p, "statement");
         adv(p);
-        emit(p, N_EXPR_STMT, i, start, NF_ERROR);
+        p_emit(p, N_EXPR_STMT, i, start, NF_ERROR);
         return;
     }
     parse_expr(p);
@@ -3281,7 +3125,7 @@ static void statement(Parser *p)
 
 static void block_item(Parser *p)
 {
-    uint32_t start = nmark(p), i = ci(p);
+    uint32_t start = p_nmark(p), i = p_ci(p);
     PTok t = ct(p), n;
     int k = ckw_of(p, &t);
     if (k == CK_STATIC_ASSERT) {
@@ -3296,7 +3140,7 @@ static void block_item(Parser *p)
                 expected(p, "identifier");
                 break;
             }
-            leaf(p, N_NAME, adv(p));
+            p_leaf(p, N_NAME, adv(p));
             if (!accept(p, P_COMMA))
                 break;
         }
@@ -3339,7 +3183,7 @@ static void block_item(Parser *p)
 
 static void compound(Parser *p, bool push)
 {
-    uint32_t start = nmark(p), lb = adv(p);
+    uint32_t start = p_nmark(p), lb = adv(p);
     int ctx = p->spec_ctx;
     p->spec_ctx = SCTX_NONE;
     unsigned flags = 0;
@@ -3348,7 +3192,7 @@ static void compound(Parser *p, bool push)
     if (push)
         open_scope(p, lb, 0);
     else
-        leaf(p, N_BODY, lb);
+        p_leaf(p, N_BODY, lb);
     saved_lbl = p->lbl_ok;
     p->lbl_ok = true;           /* only before the first declaration or statement */
     for (;;) {
@@ -3356,7 +3200,7 @@ static void compound(Parser *p, bool push)
         PTok it;
         item_pragmas(p, ctx);
         ctx = SCTX_NONE;
-        if (at(p, P_RBRACE) || at_eof(p))
+        if (at(p, P_RBRACE) || p_at_eof(p))
             break;
         before = p->pos;
         it = ct(p);
@@ -3376,7 +3220,7 @@ static void compound(Parser *p, bool push)
              * reports the unclosed body once, at input_location */
             p->err.eof_stmt = true;
             p->err.have = false;
-            perr_at(p, ci(p), eof_input_loc(p), "expected declaration or "
+            p_err_at(p, p_ci(p), eof_input_loc(p), "expected declaration or "
                     "statement at end of input");
             diag_mark_last(p->diag, ORD_EOF);
         }
@@ -3385,7 +3229,7 @@ static void compound(Parser *p, bool push)
         close_scope(p, NULL);
     p->open_braces.len--;
     p->lbl_ok = saved_lbl;
-    emit(p, N_COMPOUND, lb, start, flags);
+    p_emit(p, N_COMPOUND, lb, start, flags);
 }
 
 /* ---- declarations -------------------------------------------------------- */
@@ -3396,15 +3240,15 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
     uint32_t i;
     /* the function is in scope in its body (recursion) */
     scope_declare(&p->scope, p->toks.data[d->name].t.aux, SYM_ORDINARY);
-    emit(p, N_DECLARED, d->name, nmark(p), NF_BODY);
-    open_scope(p, ci(p), NF_PARAMS);
+    p_emit(p, N_DECLARED, d->name, p_nmark(p), NF_BODY);
+    open_scope(p, p_ci(p), NF_PARAMS);
     for (i = 0; i < d->save_len; i++) {
         const SymSave *s = &p->saved.data[d->save_start + i];
         scope_declare(&p->scope, s->ident, (SymKind)s->kind);
     }
     /* as gcc, whatever follows the declarator up to the '{' is a
      * declaration of a parameter (K&R), diagnosed as such */
-    while (!at(p, P_LBRACE) && !at_eof(p)) {
+    while (!at(p, P_LBRACE) && !p_at_eof(p)) {
         PTok t = ct(p);
         /* start_attr_ok and static_assert_ok are false */
         if (is_decl_start_la(p, &t) && ckw(p) != CK_ATTRIBUTE &&
@@ -3430,25 +3274,25 @@ static void function_def(Parser *p, const DeclInfo *d, uint32_t start,
             else if (at(p, P_RBRACE))
                 depth--;
             adv(p);
-        } while (depth > 0 && !at_eof(p));
+        } while (depth > 0 && !p_at_eof(p));
     } else if (at(p, P_LBRACE)) {
         p->spec_ctx = SCTX_FUNC;
         compound(p, false);
     } else {
         expected_req(p, "'{'");
         diag_mark_last(p->diag, ORD_EOF);   /* only at end of input */
-        leaf(p, N_BODY, p->pos ? p->pos - 1 : 0); /* store_parm_decls still runs */
+        p_leaf(p, N_BODY, p->pos ? p->pos - 1 : 0); /* store_parm_decls still runs */
         flags |= NF_ERROR;
     }
     p->fn_depth--;
     close_scope(p, NULL);
     p->saved.len = d->save_start;
-    emit(p, N_FUNC_DEF, first, start, flags);
+    p_emit(p, N_FUNC_DEF, first, start, flags);
 }
 
 static void declaration(Parser *p, bool top)
 {
-    uint32_t start = nmark(p), first = ci(p);
+    uint32_t start = p_nmark(p), first = p_ci(p);
     unsigned flags = 0;
     Specs s;
     PTok t;
@@ -3473,7 +3317,7 @@ static void declaration(Parser *p, bool top)
         break;
     }
     if (top && is_p(&t, P_SEMI)) { /* GNU: stray ';' at file scope */
-        emit(p, N_EMPTY, adv(p), start, 0);
+        p_emit(p, N_EMPTY, adv(p), start, 0);
         return;
     }
     specs(p, &s, top ? LA_DECL_TOP : LA_DECL, true, true);
@@ -3485,8 +3329,8 @@ static void declaration(Parser *p, bool top)
             sync_top(p);
         else
             sync_stmt(p);
-        emit(p, N_ERROR, first, start, NF_ERROR);
-        set_aux(p, p->pos - first);
+        p_emit(p, N_ERROR, first, start, NF_ERROR);
+        p_set_aux(p, p->pos - first);
         return;
     }
     if (!s.any) {
@@ -3503,17 +3347,17 @@ static void declaration(Parser *p, bool top)
                 sync_top(p);
             else
                 sync_stmt(p);
-            emit(p, N_ERROR, first, start, NF_ERROR);
-            set_aux(p, p->pos - first);
+            p_emit(p, N_ERROR, first, start, NF_ERROR);
+            p_set_aux(p, p->pos - first);
             return;
         }
     }
     if (accept(p, P_SEMI)) {
-        emit(p, N_DECL, first, start, flags);
+        p_emit(p, N_DECL, first, start, flags);
         return;
     }
     for (n = 0;; n++) {
-        uint32_t is = nmark(p);
+        uint32_t is = p_nmark(p);
         DeclInfo d;
         declarator_init(&d);
         declarator(p, DCL_NAMED, &d);
@@ -3522,7 +3366,7 @@ static void declaration(Parser *p, bool top)
                 sync_top(p);
             else
                 sync_stmt(p);
-            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            p_emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
         if (d.name == NO_TOK) {
@@ -3531,7 +3375,7 @@ static void declaration(Parser *p, bool top)
                 sync_top(p);
             else
                 sync_stmt(p);
-            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            p_emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
         if (s.auto_type && d.inner != DK_NONE) {
@@ -3539,7 +3383,7 @@ static void declaration(Parser *p, bool top)
                             "possibly with attributes, as declarator"
                             : "requires a plain identifier as declarator",
                             top, &s);
-            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            p_emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
         /* a definition: '{', or a K&R declaration list (attributes
@@ -3550,13 +3394,13 @@ static void declaration(Parser *p, bool top)
              (top && !(at(p, P_ASSIGN) || at(p, P_COMMA) || at(p, P_SEMI) ||
                        ckw_of(p, &t) == CK_ASM ||
                        (ckw_of(p, &t) == CK_ATTRIBUTE && !t.stdattr))) ||
-             (d.kr && (t = tok_at(p, skip_attrs_ahead(p, ci(p))),
+             (d.kr && (t = tok_at(p, skip_attrs_ahead(p, p_ci(p))),
                        ckw_of(p, &t) != CK_ATTRIBUTE &&
                        is_decl_start(p, &t))))) {
             if (!top && at_col0(p, first)) {
                 /* a function definition in column 0 inside a body: the
                  * body was not closed; end it here */
-                Diagnostic *e = perr(p, first,
+                Diagnostic *e = p_err(p, first,
                                      "function definition inside a function "
                                      "body: missing '}'?");
                 if (p->open_braces.len)
@@ -3571,7 +3415,7 @@ static void declaration(Parser *p, bool top)
             if (s.constexpr_) {
                 auto_type_error(p, first, "requires an initialized data "
                                 "declaration", top, &s);
-                emit(p, N_DECL, first, start, flags | NF_ERROR);
+                p_emit(p, N_DECL, first, start, flags | NF_ERROR);
                 return;
             }
             p->gimple_body = s.gimple;
@@ -3591,10 +3435,10 @@ static void declaration(Parser *p, bool top)
             } else if (n == 0 && !p->kr_params &&
                 is_decl_start(p, &t)) { /* a missing ';' */
                 char buf[160];
-                fix_missing(p, perr_after_prev(p, ci(p), "expected ';'%s",
-                                               tok_desc(p, ci(p), buf,
+                fix_missing(p, perr_after_prev(p, p_ci(p), "expected ';'%s",
+                                               p_tok_desc(p, p_ci(p), buf,
                                                         sizeof buf)),
-                            ci(p), ";", FIX_MAYBE);
+                            p_ci(p), ";", FIX_MAYBE);
                 p->err.live = false;    /* the next item starts at this token */
             } else {
                 expected(p, "'=', ',', ';', 'asm' or '__attribute__'");
@@ -3610,7 +3454,7 @@ static void declaration(Parser *p, bool top)
             /* gcc has not declared the name yet */
             if (!top && !p->kr_params && n == 0 && !s.err && !is_decl_start(p, &t))
                 flags |= NF_NESTED; /* ... but warned of a nested function */
-            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            p_emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
         attributes(p);
@@ -3622,7 +3466,7 @@ static void declaration(Parser *p, bool top)
         if ((s.auto_type || s.constexpr_) && !at(p, P_ASSIGN)) {
             auto_type_error(p, first, "requires an initialized data "
                             "declaration", top, &s);
-            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            p_emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
         {
@@ -3631,29 +3475,29 @@ static void declaration(Parser *p, bool top)
                 /* gcc parses the initializer as an expression: no braces */
                 int depth = 0;
                 adv(p);
-                perr(p, ci(p), "expected expression before '{' token");
+                p_err(p, p_ci(p), "expected expression before '{' token");
                 do {
                     if (at(p, P_LBRACE))
                         depth++;
                     else if (at(p, P_RBRACE))
                         depth--;
                     adv(p);
-                } while (depth > 0 && !at_eof(p));
+                } while (depth > 0 && !p_at_eof(p));
                 p->err.live = false;
-                emit(p, N_DECL, first, start, flags | NF_ERROR);
+                p_emit(p, N_DECL, first, start, flags | NF_ERROR);
                 return;
             }
         }
         scope_declare(&p->scope, p->toks.data[d.name].t.aux,
                       s.is_typedef ? SYM_TYPEDEF : SYM_ORDINARY);
-        leaf(p, N_DECLARED, d.name);
+        p_leaf(p, N_DECLARED, d.name);
         if (accept(p, P_ASSIGN))
             initializer(p);
-        emit(p, N_INIT_DECL, d.name, is, 0);
+        p_emit(p, N_INIT_DECL, d.name, is, 0);
         if ((s.auto_type || s.constexpr_) && at(p, P_COMMA)) {
             auto_type_error(p, first, "may only be used with a single "
                             "declarator", top, &s);
-            emit(p, N_DECL, first, start, flags | NF_ERROR);
+            p_emit(p, N_DECL, first, start, flags | NF_ERROR);
             return;
         }
         if (!accept(p, P_COMMA))
@@ -3661,7 +3505,7 @@ static void declaration(Parser *p, bool top)
     }
     if (fn_attr && at(p, P_LBRACE)) {
         /* gcc: attributes after the declarator of a function definition */
-        perr(p, first, "attributes should be specified before the "
+        p_err(p, first, "attributes should be specified before the "
              "declarator in a function definition");
         flags |= NF_ERROR;
         if (top || p->kr_params)
@@ -3678,7 +3522,7 @@ static void declaration(Parser *p, bool top)
         else
             sync_stmt(p);
     }
-    emit(p, N_DECL, first, start, flags);
+    p_emit(p, N_DECL, first, start, flags);
 }
 
 /* ---- units ------------------------------------------------------------------ */
@@ -3740,12 +3584,12 @@ bool parser_next(Parser *p, ParseUnit *u)
         if (sk) {                   /* a spec at file scope: an error */
             spec_pragma(p, p->pos, sk, kw, SCTX_NONE);
         } else {
-            leaf(p, N_PRAGMA, p->pos);
+            p_leaf(p, N_PRAGMA, p->pos);
             p->pos++;
         }
     } else {
         uint32_t before = p->pos;
-        if (at_eof(p))
+        if (p_at_eof(p))
             return false;
         declaration(p, true);
         if (p->unwind) {
@@ -3756,8 +3600,8 @@ bool parser_next(Parser *p, ParseUnit *u)
             expected(p, "declaration");
             adv(p);
             p->nodes.len = 0;
-            leaf(p, N_ERROR, before);
-            set_aux(p, 1);
+            p_leaf(p, N_ERROR, before);
+            p_set_aux(p, 1);
         }
     }
     p->unit_end = p->pos;
