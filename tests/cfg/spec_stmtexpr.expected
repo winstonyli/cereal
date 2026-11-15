@@ -1,16 +1,2 @@
 tast 1 target x86_64-linux-gnu
-unit spec_stmtexpr.c:1:1 func f int(int)
-B0:
-  #0 sym n@1:11 int
-  #1 load #0 int
-  #2 local t@3:32 #1 int
-  #3 sym t@3:32 int
-  #4 load #3 int
-  #5 const 0 int
-  #6 cmp > #4 #5 int
-  #7 stmtexpr #2 #6 int
-  #8 spec requires #7
-  #9 sym n@1:11 int
-  #10 load #9 int
-  ret #10
-cfg: 1 blocks, 0 unreachable
+unit spec_stmtexpr.c:1:1 skipped: errors

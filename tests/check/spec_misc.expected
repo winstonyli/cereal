@@ -13,6 +13,9 @@ spec_misc.c:1:1: note: 'NULL' is defined in header '<stddef.h>'; did you forget 
 spec_misc.c:23:30: note: each undeclared identifier is reported only once for each function it appears in
    23 | #pragma cereal requires p != NULL
       |                              ^
+spec_misc.c:28:25: error: a spec must not have side effects
+   28 | #pragma cereal requires n++ > 0
+      |                         ^
 spec_misc.c:35:16: error: '#pragma cereal requires' must start a function body
    35 | #pragma cereal requires 1
       |                ^

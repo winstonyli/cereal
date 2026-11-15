@@ -1,5 +1,4 @@
 struct S { int x; };
-void v(void);
 int c1(struct S s, int n)
 {
 #pragma cereal requires s
@@ -7,7 +6,7 @@ int c1(struct S s, int n)
 }
 int c2(int n)
 {
-#pragma cereal requires v()
+#pragma cereal requires (void)n
   return n;
 }
 int c3(int n)

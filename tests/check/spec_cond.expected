@@ -1,6 +1,6 @@
-spec_cond.c:5:25: error: used struct type value where scalar is required
-    5 | #pragma cereal requires s
+spec_cond.c:4:25: error: used struct type value where scalar is required
+    4 | #pragma cereal requires s
       |                         ^
-spec_cond.c:10:25: error: void value not ignored as it ought to be
-   10 | #pragma cereal requires v()
+spec_cond.c:9:25: error: void value not ignored as it ought to be
+    9 | #pragma cereal requires (void)n
       |                         ^

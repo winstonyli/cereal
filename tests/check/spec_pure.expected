@@ -1,0 +1,18 @@
+spec_pure.c:4:25: error: a spec must not have side effects
+    4 | #pragma cereal requires n++ > 0
+      |                         ^
+spec_pure.c:5:25: error: a spec must not have side effects
+    5 | #pragma cereal requires --n > 0
+      |                         ^
+spec_pure.c:6:26: error: a spec must not have side effects
+    6 | #pragma cereal requires (n = 1)
+      |                          ^
+spec_pure.c:7:25: error: a spec must not have side effects
+    7 | #pragma cereal requires f(n)
+      |                         ^
+spec_pure.c:8:25: warning: ISO C forbids braced-groups within expressions [-Wpedantic]
+    8 | #pragma cereal requires ({ n; })
+      |                         ^
+spec_pure.c:8:25: error: a spec must not have side effects
+    8 | #pragma cereal requires ({ n; })
+      |                         ^

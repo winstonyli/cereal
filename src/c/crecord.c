@@ -1486,13 +1486,32 @@ void cdecl_static_assert_visit(Checker *c, uint32_t i)
     }
 }
 
+/* A spec is a condition about state, not code that changes it: the first
+ * node of the spec at i (its kid is the last child) that has a side effect. */
+static uint32_t spec_impure(Checker *c, uint32_t i)
+{
+    uint32_t j;
+    for (j = i - cnode(c, i)->size + 1; j < i; j++) {
+        int t = ntag(c, j);
+        if (t == N_ASSIGN || t == N_POSTFIX || t == N_CALL || t == N_STMT_EXPR ||
+            (t == N_UNARY && (tpunct(c, cnode(c, j)->tok) == P_INC || tpunct(c, cnode(c, j)->tok) == P_DEC)))
+            return j;
+    }
+    return NO_NODE;
+}
+
 void cdecl_pragma_visit(Checker *c, uint32_t i)
 {
     if (c->par[i] != NO_NODE && ntag(c, c->par[i]) == N_STRUCT)
         cdecl_struct_semis(c, cnode(c, i)->tok);
     if (cnode(c, i)->aux) {     /* a spec (aux: its kind): its expression is a condition */
-        if (cnode(c, i)->size > 1)
-            cstmt_cond_check(c, i - 1);
+        if (cnode(c, i)->size > 1) {
+            uint32_t bad = spec_impure(c, i);
+            if (bad != NO_NODE)
+                cerror(c, first_loc(c, bad), "a spec must not have side effects");
+            else
+                cstmt_cond_check(c, i - 1);
+        }
     } else
         cpragma_apply(c, cnode(c, i)->tok);
 }
