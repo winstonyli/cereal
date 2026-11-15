@@ -311,11 +311,9 @@ out:
 
 /* ---- self-test ---- */
 
-static int failures;
-
-static void expect(const char *what, int got, int want)
+static void expect(int *failures, const char *what, int got, int want)
 {
-    if (got != want) { fprintf(stderr, "prove selftest: %s: got %d, want %d\n", what, got, want); failures++; }
+    if (got != want) { fprintf(stderr, "prove selftest: %s: got %d, want %d\n", what, got, want); (*failures)++; }
 }
 
 static PsT bv(Ps *ps, const char *nm) { return ps_var(ps, nm, PS_BV, 64); }
@@ -324,6 +322,7 @@ static PsT ule(Ps *ps, PsT a, PsT b) { return ps_op(ps, PS_BVULE, a, b); }
 
 int prove_selftest(void)
 {
+    int failures = 0;
     Ps ps = {0};
     char err[200];
     StrBuf sb = {0};
@@ -342,21 +341,21 @@ int prove_selftest(void)
 
     /* the copy loop's write bound, and it with the size fact dropped */
     h[0] = ule(&ps, n, szD); h[1] = ult(&ps, i, n);
-    expect("copy bound", ps_valid(s, &ps, h, 2, ult(&ps, i, szD), 0), PS_VALID);
-    expect("copy bound without n <= szD", ps_valid(s, &ps, h + 1, 1, ult(&ps, i, szD), 0), PS_INVALID);
+    expect(&failures, "copy bound", ps_valid(s, &ps, h, 2, ult(&ps, i, szD), 0), PS_VALID);
+    expect(&failures, "copy bound without n <= szD", ps_valid(s, &ps, h + 1, 1, ult(&ps, i, szD), 0), PS_INVALID);
 
     /* the nested loop's write bound: nonlinear as bit-vectors, instant through the Int tier (S7) */
     h[0] = ule(&ps, r, lim); h[1] = ule(&ps, c, lim); h[2] = ult(&ps, i, r); h[3] = ult(&ps, j, c);
     h[4] = ule(&ps, ps_op(&ps, PS_BVMUL, r, c), szD);
     k = ult(&ps, ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVMUL, i, c), j), szD);
-    expect("fill2 bound by Int", ps_valid_int(s, &ps, h, 5, k, 400000), PS_VALID);
-    expect("fill2 bound without r*c <= szD", ps_valid_int(s, &ps, h, 4, k, 400000), PS_INVALID);
-    expect("fill2 bound without r <= 2^31", ps_valid_int(s, &ps, h + 1, 4, k, 400000), PS_UNKNOWN);   /* the no-wrap proof fails */
+    expect(&failures, "fill2 bound by Int", ps_valid_int(s, &ps, h, 5, k, 400000), PS_VALID);
+    expect(&failures, "fill2 bound without r*c <= szD", ps_valid_int(s, &ps, h, 4, k, 400000), PS_INVALID);
+    expect(&failures, "fill2 bound without r <= 2^31", ps_valid_int(s, &ps, h + 1, 4, k, 400000), PS_UNKNOWN);   /* the no-wrap proof fails */
 
     /* wrap: x < x + 1 is false at the top, and the Int tier must not say otherwise */
     k = ult(&ps, x, ps_op(&ps, PS_BVADD, x, one));
-    expect("x < x + 1 in bit-vectors", ps_valid(s, &ps, NULL, 0, k, 0), PS_INVALID);
-    expect("x < x + 1 by Int", ps_valid_int(s, &ps, NULL, 0, k, 400000), PS_UNKNOWN);
+    expect(&failures, "x < x + 1 in bit-vectors", ps_valid(s, &ps, NULL, 0, k, 0), PS_INVALID);
+    expect(&failures, "x < x + 1 by Int", ps_valid_int(s, &ps, NULL, 0, k, 400000), PS_UNKNOWN);
 
     /* arrays and a quantifier: copied below i, so equal at 0 if 0 < i */
     {
@@ -365,9 +364,9 @@ int prove_selftest(void)
         PsT all = ps_forall(&ps, kv, ps_op(&ps, PS_IMP, ult(&ps, kv, i), eq));
         PsT g0 = ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, d, zero), ps_op(&ps, PS_SEL, src, zero));
         h[0] = all; h[1] = ult(&ps, zero, i);
-        expect("forall instance", ps_valid(s, &ps, h, 2, g0, 0), PS_VALID);
-        expect("forall without 0 < i", ps_valid(s, &ps, h, 1, g0, 0), PS_INVALID);
-        expect("store then select", ps_valid(s, &ps, NULL, 0,
+        expect(&failures, "forall instance", ps_valid(s, &ps, h, 2, g0, 0), PS_VALID);
+        expect(&failures, "forall without 0 < i", ps_valid(s, &ps, h, 1, g0, 0), PS_INVALID);
+        expect(&failures, "store then select", ps_valid(s, &ps, NULL, 0,
                ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, ps_store(&ps, d, zero, ps_bvc(&ps, 8, 7)), zero), ps_bvc(&ps, 8, 7)), 0), PS_VALID);
     }
     ps_close(s);
