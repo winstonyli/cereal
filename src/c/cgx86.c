@@ -1952,6 +1952,8 @@ static void gen_stmt(Gx *g, uint32_t n)
     case TO_EXPRSTMT:
         gen(g, kid(g->L, n, 0));
         break;
+    case TO_SPEC:               /* a contract: no code */
+        break;
     case TO_ASM: {              /* no assembler: the instructions without operands this back end knows */
         static const struct { const char *text; int op; } known[] = {
             {"rep; nop", M_PAUSE}, {"pause", M_PAUSE}, {"nop", M_NOP},

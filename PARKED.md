@@ -309,3 +309,9 @@ Evidence for each row was probed against gcc 15.2 on 2026-11-06 unless a golden 
 | What | Why parked | Status |
 |---|---|---|
 | Fold `driver.c` `options_parse_one` (51 strcmp/strncmp branches, magic prefix lengths 18/19/24) into a row table: about 70% fit a row (30 bare flags, 4 negation pairs, 3 aliases, 12 `=value` prefixes, 10 joined/separate args), about 15 need action hooks (`-pedantic`/`-std=`, validated `-j`/`-fparallel=`/`-Wbidi-chars`, order-dependent `-D`/`-U`, `-M`). Then `main.c` (about 36 options writing 22 statics; needs one `MainOpts` struct first) and `fixmode.c` (`fix_flag`, 8). | By decision (the user chose the narrow `note_ignored` fold only, 2026-11-05). Estimate net -60..-100 lines (2-4% of the three files); no prototype. Trigger: a new option that needs a branch in `options_parse_one`, or the `usage()`/parse/`tests/run.sh` section 13/README lists drifting. Evidence: AR7 item in CLEANUP_PLAN (second survey 2026-11-05; `fixmode.c` unread); `--help` layout must not change; `options_parse_one`, `option_affects_diagnostics`, `opt_error` have 2 callers (`main.c:1814`, `compdb.c:293,300`). | parked |
+
+## Spec directives (docs/SPEC_DIRECTIVES_DESIGN.md; 2026-11-14)
+
+| What | Why parked | Status |
+|---|---|---|
+| Lower `return`, `$len(p)` and slices `p[lo:hi]` in a spec to `intrin` nodes (`tast_int.h`). Until then a function whose spec uses one is unsupported in tast (`unit ...: unsupported: expression SPEC_RESULT`, golden `tests/cfg/spec`), never a function silently without its contract. | Slice 2 needed only the operation and the `==>` lowering; the intrinsics' rows and types belong with the prover stage that reads them (trigger: stage 3b/4, the first contract about a result or a buffer, e.g. `copy`'s `ensures dst[0:n] == src[0:n]`). | parked |

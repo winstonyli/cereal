@@ -1069,6 +1069,15 @@ static uint32_t ex(El *e, uint32_t n, bool allow_void)
             return tunsup(e, "malformed binary");
         if (p != P_COMMA && (tkind(c, rvt(c, k[0])) == TY_VECTOR || tkind(c, rvt(c, k[1])) == TY_VECTOR))
             return vec_binary(e, i, p, k[0], k[1], loc);
+        if (c->nodes[i].aux == 1 && p == P_EQEQ) {      /* a ==> b, in a spec: !a || b */
+            x = rv(e, k[0]);
+            y = rv(e, k[1]);
+            if (x == TN || y == TN)
+                return TN;
+            ka[0] = mk(e, TO_UNOP, t, loc, 0, 0, P_BANG, &x, 1);
+            ka[1] = y;
+            return mk(e, TO_LOGOR, t, loc, 0, 0, 0, ka, 2);
+        }
         switch (p) {
         case P_COMMA:
             x = ex(e, k[0], true);
@@ -1683,7 +1692,17 @@ static uint32_t st(El *e, uint32_t n)
         }
         break;
     }
-    case N_PRAGMA:          /* a pragma between statements changes nothing here */
+    case N_PRAGMA:
+        if (c->nodes[n].aux) {      /* a spec: carried verbatim (docs/SPEC_DIRECTIVES_DESIGN.md) */
+            uint32_t x;
+            m = fkids(e, n, &k);
+            x = m == 1 ? rv(e, k[0]) : TN;
+            if (x != TN)
+                id = mk(e, TO_SPEC, 0, loc, (int64_t)c->nodes[n].aux, 0, 0, &x, 1);
+            break;
+        }
+        id = nop(e, loc);       /* any other pragma changes nothing here */
+        break;
     case N_ATTR_STMT:       /* [[fallthrough]], __attribute__((fallthrough)) */
         id = nop(e, loc);
         break;
@@ -1815,6 +1834,9 @@ void tast_print_node(El *e, FILE *out, size_t i)
             }
             if (nd->width)
                 fprintf(out, " fixed %lld", (long long)nd->val);
+            break;
+        case TO_SPEC:
+            fprintf(out, " %s", spec_kw[nd->val]);
             break;
         case TO_VA:
             fprintf(out, " %s", nd->pun == 1 ? "start" : nd->pun == 2 ? "end" : nd->pun == 3 ? "copy" : "arg");
@@ -2311,6 +2333,11 @@ static void verify(El *e, FILE *out)
         case TO_EXPRSTMT:
             NEED(1);
             if (!IS_EXPR(KID(0)->op) || ISLV(KID(0)))
+                vbad(e, out, i, "operand");
+            break;
+        case TO_SPEC:
+            NEED(1);
+            if (!ISVAL(KID(0)))
                 vbad(e, out, i, "operand");
             break;
         case TO_IF:

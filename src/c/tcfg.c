@@ -415,6 +415,7 @@ static void lower(Cfg *L, uint32_t n)
         vec_push(&L->b.data[open_cur(L)].st, n);
         break;
     case TO_DATA: case TO_ASM:
+    case TO_SPEC:                           /* a spec: its kid is carried verbatim, never lowered */
         vec_push(&L->b.data[open_cur(L)].st, n);
         break;
     case TO_IF: {
@@ -631,7 +632,8 @@ static void mark(Cfg *L, uint32_t entry, const U32Vec *ij)
 static size_t struct_stmts(Cfg *L, uint32_t n)
 {
     const TNode *t = nd(L, n);
-    size_t c = t->op == TO_LOCAL || t->op == TO_EXPRSTMT || t->op == TO_DATA || t->op == TO_ASM;
+    size_t c = t->op == TO_LOCAL || t->op == TO_EXPRSTMT || t->op == TO_DATA || t->op == TO_ASM ||
+               t->op == TO_SPEC;
     uint32_t j;
     for (j = 0; j < t->nkids; j++)
         c += struct_stmts(L, kid(L, n, j));
@@ -644,6 +646,8 @@ static void seen_tree(Cfg *L, uint32_t n, uint8_t *seen, unsigned *dup, unsigned
     int op = nd(L, n)->op;
     if (seen[n]++)
         ++*dup;
+    if (op == TO_SPEC)              /* its kid may hold && and ||: not control flow */
+        return;
     if (op == TO_LOGAND || op == TO_LOGOR || op == TO_COND || op == TO_ELVIS ||
         op == TO_STMTEXPR)
         ++*hid;

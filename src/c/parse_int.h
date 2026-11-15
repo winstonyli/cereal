@@ -19,7 +19,6 @@ void parse_expr(Parser *p);
 
 /* parse_spec.c: what a body's leading specs may be (Parser.spec_ctx). */
 enum { SCTX_NONE, SCTX_FUNC, SCTX_LOOP };
-extern const char *const spec_kw[];
 int spec_kind(Parser *p, const Tok *t, const char **kw);
 void spec_pragma(Parser *p, uint32_t pt, int k, const char *kw, int ctx);
 void spec_loop_prelude(Parser *p, uint32_t j, bool braced);

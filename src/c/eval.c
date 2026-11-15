@@ -1963,6 +1963,7 @@ static uint64_t ev_node1(Fr *r, uint32_t n, uint32_t *sh)
     case TO_EXPRSTMT:
         ev_node(r, KID(r, n, 0));
         return 0;
+    case TO_SPEC:               /* a contract: no run-time effect */
     case TO_NOP:
         return 0;
     case TO_DEREF:

@@ -1,0 +1,193 @@
+tast 1 target x86_64-linux-gnu
+unit spec.c:5:1 func sum int(int *, int)
+B0:
+  #0 sym n@5:21 int
+  #1 load #0 int
+  #2 const 0 int
+  #3 cmp >= #1 #2 int
+  #4 spec requires #3
+  #5 sym n@5:21 int
+  #6 load #5 int
+  #7 const 0 int
+  #8 cmp >= #6 #7 int
+  #18 unop ! #8 int
+  #9 sym n@5:21 int
+  #10 load #9 int
+  #11 const 100 int
+  #12 cmp < #10 #11 int
+  #13 sym n@5:21 int
+  #14 load #13 int
+  #15 const 0 int
+  #16 cmp >= #14 #15 int
+  #17 logand #12 #16 int
+  #19 logor #18 #17 int
+  #20 spec ensures #19
+  #21 const 0 int
+  #22 local s@9:9 #21 int
+  #23 local i@9:16 int
+  #24 sym i@9:16 int
+  #25 const 0 int
+  #26 store #24 #25 int
+  #27 exprstmt #26
+  jmp B1
+B1:
+  #28 sym i@9:16 int
+  #29 load #28 int
+  #30 sym n@5:21 int
+  #31 load #30 int
+  #32 cmp < #29 #31 int
+  br #32 B2 B4
+B2:
+  #41 const 0 int
+  #42 sym i@9:16 int
+  #43 load #42 int
+  #44 cmp <= #41 #43 int
+  #45 sym i@9:16 int
+  #46 load #45 int
+  #47 sym n@5:21 int
+  #48 load #47 int
+  #49 cmp <= #46 #48 int
+  #50 logand #44 #49 int
+  #51 spec invariant #50
+  #52 sym s@9:9 int
+  #53 sym s@9:9 int
+  #54 load #53 int
+  #55 sym a@5:14 int *
+  #56 load #55 int *
+  #57 sym i@9:16 int
+  #58 load #57 int
+  #59 cast #58 long int
+  #60 ptradd *4 #56 #59 int *
+  #61 deref #60 int
+  #62 load #61 int
+  #63 binop + #54 #62 int
+  #64 store #52 #63 int
+  #65 exprstmt #64
+  jmp B3
+B3:
+  #33 sym i@9:16 int
+  #34 sym i@9:16 int
+  #35 load #34 int
+  #36 const 1 int
+  #37 binop + #35 #36 int
+  #38 store #33 #37 int
+  #39 post #38 int
+  #40 exprstmt #39
+  jmp B1
+B4:
+  #68 sym s@9:9 int
+  #69 load #68 int
+  ret #69
+cfg: 5 blocks, 0 unreachable
+unit spec.c:17:1 func count int(int)
+B0:
+  #0 sym n@17:15 int
+  #1 load #0 int
+  #2 const 0 int
+  #3 cmp > #1 #2 int
+  #4 spec requires #3
+  #5 const 0 int
+  #6 local i@20:9 #5 int
+  jmp B1
+B1:
+  #7 sym i@20:9 int
+  #8 load #7 int
+  #9 sym n@17:15 int
+  #10 load #9 int
+  #11 cmp < #8 #10 int
+  br #11 B2 B3
+B2:
+  #12 sym i@20:9 int
+  #13 load #12 int
+  #14 const 0 int
+  #15 cmp >= #13 #14 int
+  #21 unop ! #15 int
+  #16 sym i@20:9 int
+  #17 load #16 int
+  #18 sym n@17:15 int
+  #19 load #18 int
+  #20 cmp <= #17 #19 int
+  #22 logor #21 #20 int
+  #23 spec invariant #22
+  #24 sym i@20:9 int
+  #25 sym i@20:9 int
+  #26 load #25 int
+  #27 const 1 int
+  #28 binop + #26 #27 int
+  #29 store #24 #28 int
+  #30 post #29 int
+  #31 exprstmt #30
+  jmp B1
+B3:
+  #34 sym i@20:9 int
+  #35 load #34 int
+  ret #35
+cfg: 4 blocks, 0 unreachable
+unit spec.c:28:1 func spin int(int)
+B0:
+  #0 sym n@28:14 int
+  #1 load #0 int
+  #2 local i@30:9 #1 int
+  jmp B1
+B1:
+  #3 sym i@30:9 int
+  #4 load #3 int
+  #5 sym n@28:14 int
+  #6 load #5 int
+  #7 cmp <= #4 #6 int
+  #8 spec invariant #7
+  #9 sym i@30:9 int
+  #10 sym i@30:9 int
+  #11 load #10 int
+  #12 const 1 int
+  #13 binop - #11 #12 int
+  #14 store #9 #13 int
+  #15 post #14 int
+  #16 exprstmt #15
+  jmp B2
+B2:
+  #18 sym i@30:9 int
+  #19 load #18 int
+  #20 const 0 int
+  #21 cmp > #19 #20 int
+  br #21 B1 B3
+B3:
+  #23 sym i@30:9 int
+  #24 load #23 int
+  ret #24
+cfg: 4 blocks, 0 unreachable
+unit spec.c:38:1 func forever int(int)
+B0:
+  #0 const 0 int
+  #1 local i@40:9 #0 int
+  jmp B1
+B1:
+  #5 sym i@40:9 int
+  #6 load #5 int
+  #7 const 0 int
+  #8 cmp >= #6 #7 int
+  #9 spec invariant #8
+  #10 sym i@40:9 int
+  #11 load #10 int
+  #12 sym n@38:17 int
+  #13 load #12 int
+  #14 cmp >= #11 #13 int
+  br #14 B2 B3
+B2:
+  jmp B4
+B3:
+  #17 sym i@40:9 int
+  #18 sym i@40:9 int
+  #19 load #18 int
+  #20 const 1 int
+  #21 binop + #19 #20 int
+  #22 store #17 #21 int
+  #23 post #22 int
+  #24 exprstmt #23
+  jmp B1
+B4:
+  #27 sym i@40:9 int
+  #28 load #27 int
+  ret #28
+cfg: 5 blocks, 0 unreachable
+unit spec.c:52:1 unsupported: expression SPEC_RESULT

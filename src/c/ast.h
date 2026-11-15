@@ -142,6 +142,7 @@ typedef enum {
 
 /* The aux of a PRAGMA node that is a spec (#pragma cereal ...). */
 enum { SPEC_NONE, SPEC_REQUIRES, SPEC_ENSURES, SPEC_INVARIANT, SPEC_UNKNOWN };
+extern const char *const spec_kw[];     /* by SPEC_*: the keyword after #pragma cereal */
 
 enum {
     NF_ERROR = 1 << 0,     /* recovered from a syntax error */
