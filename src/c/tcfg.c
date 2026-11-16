@@ -866,10 +866,91 @@ static void check(Cfg *L, FILE *out, uint32_t root, const uint32_t *ord, const U
     free(seen);
 }
 
+/* The consumers of a built graph, run in this order for each enabled one.  A new
+ * one (--prove) is a row here, not another branch in tast_cfg. */
+typedef struct {
+    bool (*on)(const CheckOptions *o);
+    void (*run)(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *out);
+} CfgConsumer;
+
+static bool on_eval(const CheckOptions *o) { return CHK_EVAL(*o); }
+static bool on_asm(const CheckOptions *o) { return CHK_ASM(*o); }
+static bool on_dump(const CheckOptions *o) { return o->dump_cfg; }
+static bool on_check(const CheckOptions *o) { return o->verify_cfg; }
+
+static void run_eval(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *out)
+{
+    (void)ord, (void)ij, (void)root, (void)out;
+    eval_keep(L->e->c, L->e, L);
+}
+
+static void run_asm(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *out)
+{
+    (void)ij, (void)root;
+    if (!CHK_EVAL(L->e->c->opt))
+        eval_statics(L->e->c, L->e);        /* the block-scope statics ev_object images */
+    x86_func(L, ord, out);
+}
+
+static void run_dump(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *out)
+{
+    size_t i, k, nun = 0;
+    (void)root;
+    for (i = 0; i < L->npl; i++) {
+        const CBlk *x = &L->b.data[ord[i]];
+        fprintf(out, "B%zu:%s\n", i, x->reach ? "" : " unreachable");
+        nun += !x->reach;
+        for (k = 0; k < x->st.len; k++)
+            put_tree(L, out, x->st.data[k]);
+        if (x->val != TN)
+            put_tree(L, out, x->val);
+        switch (x->term) {
+        case TK_JMP:
+            fprintf(out, "  jmp B%u\n", L->b.data[x->a].pos);
+            break;
+        case TK_BR:
+            fprintf(out, "  br #%u B%u B%u\n", x->val, L->b.data[x->a].pos,
+                    L->b.data[x->b].pos);
+            break;
+        case TK_SWTCH:
+            fprintf(out, "  swtch #%u default B%u\n", x->val, L->b.data[x->a].pos);
+            for (k = 0; k < x->cases.len; k++)
+                fprintf(out, "    case %lld B%u\n", (long long)x->cases.data[k].v,
+                        L->b.data[x->cases.data[k].to].pos);
+            break;
+        case TK_IJMP:
+            fprintf(out, "  ijmp #%u", x->val);
+            for (k = 0; k < ij->len; k++)
+                fprintf(out, " B%u", L->b.data[ij->data[k]].pos);
+            fputc('\n', out);
+            break;
+        case TK_RET:
+            if (x->val != TN)
+                fprintf(out, "  ret #%u\n", x->val);
+            else
+                fputs("  ret\n", out);
+            break;
+        default:
+            fputs("  (no terminator)\n", out);
+            break;
+        }
+    }
+    fprintf(out, "cfg: %u blocks, %zu unreachable\n", L->npl, nun);
+}
+
+static void run_check(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *out)
+{
+    check(L, out, root, ord, ij);
+}
+
+static const CfgConsumer cons[] = {
+    {on_eval, run_eval}, {on_asm, run_asm}, {on_dump, run_dump}, {on_check, run_check},
+};
+
 void tast_cfg(El *e, uint32_t root, FILE *out)
 {
     Cfg L;
-    size_t i, k, nun = 0;
+    size_t i, k;
     bool asm_only = CHK_ASM(e->c->opt) && !e->c->opt.dump_cfg;
     uint32_t *ord;
     U32Vec ij = {0};
@@ -898,56 +979,9 @@ void tast_cfg(El *e, uint32_t root, FILE *out)
         ord = by_pos(&L);
         ijmp_targets(&L, &ij);
         mark(&L, ord[0], &ij);
-        if (CHK_EVAL(e->c->opt))
-            eval_keep(e->c, e, &L);
-        if (CHK_ASM(e->c->opt)) {
-            if (!CHK_EVAL(e->c->opt))
-                eval_statics(e->c, e);      /* the block-scope statics ev_object images */
-            x86_func(&L, ord, out);
-        }
-        for (i = 0; i < L.npl && e->c->opt.dump_cfg; i++) {
-            const CBlk *x = &L.b.data[ord[i]];
-            fprintf(out, "B%zu:%s\n", i, x->reach ? "" : " unreachable");
-            nun += !x->reach;
-            for (k = 0; k < x->st.len; k++)
-                put_tree(&L, out, x->st.data[k]);
-            if (x->val != TN)
-                put_tree(&L, out, x->val);
-            switch (x->term) {
-            case TK_JMP:
-                fprintf(out, "  jmp B%u\n", L.b.data[x->a].pos);
-                break;
-            case TK_BR:
-                fprintf(out, "  br #%u B%u B%u\n", x->val, L.b.data[x->a].pos,
-                        L.b.data[x->b].pos);
-                break;
-            case TK_SWTCH:
-                fprintf(out, "  swtch #%u default B%u\n", x->val, L.b.data[x->a].pos);
-                for (k = 0; k < x->cases.len; k++)
-                    fprintf(out, "    case %lld B%u\n", (long long)x->cases.data[k].v,
-                            L.b.data[x->cases.data[k].to].pos);
-                break;
-            case TK_IJMP:
-                fprintf(out, "  ijmp #%u", x->val);
-                for (k = 0; k < ij.len; k++)
-                    fprintf(out, " B%u", L.b.data[ij.data[k]].pos);
-                fputc('\n', out);
-                break;
-            case TK_RET:
-                if (x->val != TN)
-                    fprintf(out, "  ret #%u\n", x->val);
-                else
-                    fputs("  ret\n", out);
-                break;
-            default:
-                fputs("  (no terminator)\n", out);
-                break;
-            }
-        }
-        if (e->c->opt.dump_cfg)
-            fprintf(out, "cfg: %u blocks, %zu unreachable\n", L.npl, nun);
-        if (e->c->opt.verify_cfg)
-            check(&L, out, root, ord, &ij);
+        for (i = 0; i < sizeof cons / sizeof *cons; i++)
+            if (cons[i].on(&e->c->opt))
+                cons[i].run(&L, ord, &ij, root, out);
         free(ord);
     }
     for (i = 0; i < L.b.len; i++) {

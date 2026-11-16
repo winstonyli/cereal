@@ -90,13 +90,13 @@ All of 1 to 4 use `size_t i, n` (unsigned: a signed `i` admits negatives under a
 |---|---|---|---|
 | spec ops lowered | `tast.c`, `tast_int.h` | the "unsupported: expression SPEC_RESULT" path | the `PARKED.md` "Spec directives" row; the golden's unsupported text |
 | cut points and loop bodies (e3) | `prove_vc.c`, from layout order and strongly connected components | the "loop heads and back edges" part of `PROVER_DESIGN.md`'s tcfg-gaps row (amended) | nothing |
-| consumer table (y1) | `tcfg.c` (`tast_cfg`) | the five inline consumer branches | those branches |
+| consumer table (y1) | `tcfg.c` (`tast_cfg`) | the four inline consumer branches (`mark` stays inline: it always runs) | those branches |
 | obligation generator | new `src/c/prove_vc.c`, `Cfg` in, `Ps` goals and a report out | `docs/spikes/prover/s6.py`'s generator (kept as the spike record, with a pointer) | nothing |
 | solver ops | `prove_smt.[ch]` | nothing | nothing |
 | `--prove` flag | `main.c`, `check.h` (`opt.prove`), one consumer in `tast_cfg` | nothing | nothing |
 | tests | `tests/prove/`, `tests/run.sh` | nothing | nothing |
 
-Tripwire: `tast_cfg` already has five consumers hung off it as inline branches (`mark`, `eval_keep`, `x86_func`, dump, `check`); `--prove` would be a sixth. Decision y.
+Tripwire: `tast_cfg` already has four optional consumers hung off it as inline branches (`eval_keep`, `x86_func`, dump, `check`), plus `mark`; `--prove` would be a fifth (built as table `cons[]` in `tcfg.c`, 2026-11-15). Decision y.
 
 ## 9. Decisions
 
@@ -117,7 +117,7 @@ Searched: tried deleting the records (dominators, as S7), deleting the prover's 
 
 Chosen e3: the loop-records slice and row are gone, and `PROVER_DESIGN.md`'s tcfg-gaps row says "loop heads: derived by the prover from layout order".
 
-**Decide y (`tast_cfg` consumers), decided 2026-11-15: y1 (consumer table first, its own commit).** Searched: tried leaving the five inline `if`s and adding a sixth, and a consumer table.
+**Decide y (`tast_cfg` consumers), decided 2026-11-15: y1 (consumer table first, its own commit).** Searched: tried leaving the four inline `if`s and adding a fifth, and a consumer table.
 - y1 **Consumer table first, as its own commit** (recommended): `tast_cfg` builds the `Cfg`, then calls each enabled consumer from a small static list; `--prove` is one entry.
     - Pro: the tripwire's rule (split before the third of a shape); Con: touches `eval_keep` and `x86_func`'s call sites, which are verified by the full suite and the gate.
 - y2 **One more `if`.**
