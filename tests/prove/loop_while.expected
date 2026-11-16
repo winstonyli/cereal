@@ -1,0 +1,6 @@
+upto: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  loop_while.c:7:1  proved                 invariant holds on entry
+  loop_while.c:7:1  proved                 invariant preserved
+  loop_while.c:4:1  proved                 ensures
+upto: 3 proved, 0 not proved, 0 unsupported
+exit 0

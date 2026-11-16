@@ -1,0 +1,7 @@
+skip: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  loop_continue.c:8:1  proved                 invariant holds on entry
+  loop_continue.c:5:1  proved                 ensures
+  loop_continue.c:12:14  proved                 bounds read s
+  loop_continue.c:8:1  proved                 invariant preserved
+skip: 4 proved, 0 not proved, 0 unsupported
+exit 0

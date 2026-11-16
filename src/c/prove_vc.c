@@ -63,6 +63,7 @@ typedef struct Ctx {
     bool inspec;
     int cdepth;
     Val ret;
+    unsigned proved, bad;       /* the report's counts (in Ctx: prove_func's locals would be clobbered by longjmp) */
 } Ctx;
 
 static const char *const opn[TO_COUNT] = {
@@ -715,7 +716,17 @@ static void run_block(Ctx *x, St *s, uint32_t b)
         uint32_t n = B->st.data[i];
         switch (nd(L, n)->op) {
         case TO_EXPRSTMT: ev(x, s, kid(L, n, 0)); break;
-        case TO_LOCAL: case TO_SPEC: case TO_NOP: break;
+        case TO_LOCAL: {            /* `T x = e;` stores e; a declaration alone leaves x free */
+            int sl = slot_of(x, nd(L, n)->sym);
+            if (nd(L, n)->nkids == 1 && sl >= 0) {
+                Val v = bv(x, ev(x, s, kid(L, n, 0)));
+                if (v.w != x->sl.data[sl].w)
+                    unsup(x, "an initializer of another width");
+                s->loc[sl] = v.t;
+            }
+            break;
+        }
+        case TO_SPEC: case TO_NOP: break;
         default: unsup(x, "the statement %s", opn[nd(L, n)->op]);
         }
     }
@@ -780,7 +791,7 @@ static void put_loc(Checker *c, FILE *out, SrcLoc loc)
     fprintf(out, "%s:%u:%u", f ? f->name : "?", line, col);
 }
 
-static void analyse(Ctx *x, PsSolver *sv, FILE *out, unsigned *proved, unsigned *bad)
+static void analyse(Ctx *x, PsSolver *sv, FILE *out)
 {
     Cfg *L = x->L;
     size_t i, r;
@@ -830,9 +841,9 @@ static void analyse(Ctx *x, PsSolver *sv, FILE *out, unsigned *proved, unsigned 
             put_loc(x->c, out, g->loc);
             fprintf(out, "  %-22s %s\n", st, g->label);
             if (res == PS_VALID)
-                ++*proved;
+                ++x->proved;
             else
-                ++*bad;
+                ++x->bad;
         }
     }
     (void)L;
@@ -843,7 +854,7 @@ void prove_func(Cfg *L, const uint32_t *ord, FILE *out)
     Ctx x;
     PsSolver *sv;
     char err[200];
-    volatile unsigned proved = 0, bad = 0, unsupported = 0;
+    volatile unsigned unsupported = 0;
     size_t i;
     const char *fn = L->e->fsym ? cident(L->e->c, csym(L->e->c, L->e->fsym)->name) : "?";
     memset(&x, 0, sizeof x);
@@ -865,7 +876,7 @@ void prove_func(Cfg *L, const uint32_t *ord, FILE *out)
             fprintf(out, "%s: unsupported: %s\n", fn, x.why);
             unsupported = 1;
         } else {
-            analyse(&x, sv, buf, &proved, &bad);
+            analyse(&x, sv, buf);
             if (buf != out) {
                 char chunk[512];
                 size_t n;
@@ -877,11 +888,11 @@ void prove_func(Cfg *L, const uint32_t *ord, FILE *out)
                     fwrite(chunk, 1, n, out);
                 fclose(buf);
             }
-            fprintf(out, "%s: %u proved, %u not proved, 0 unsupported\n", fn, proved, bad);
+            fprintf(out, "%s: %u proved, %u not proved, 0 unsupported\n", fn, x.proved, x.bad);
         }
         ps_close(sv);
     }
-    if ((bad || unsupported) && x.c->opt.tast_bad)
+    if ((x.bad || unsupported) && x.c->opt.tast_bad)
         ++*x.c->opt.tast_bad;
     for (i = 0; i < x.sts.len; i++)
         vec_free(&x.sts.data[i]->hy);

@@ -1,0 +1,2 @@
+half: unsupported: the operator /
+exit 1

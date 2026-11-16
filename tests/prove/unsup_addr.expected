@@ -1,0 +1,2 @@
+h: unsupported: the pointer local p
+exit 1

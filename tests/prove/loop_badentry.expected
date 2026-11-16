@@ -1,0 +1,6 @@
+upto: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  loop_badentry.c:7:1  not proved (sat)       invariant holds on entry
+  loop_badentry.c:7:1  proved                 invariant preserved
+  loop_badentry.c:4:1  proved                 ensures
+upto: 2 proved, 1 not proved, 0 unsupported
+exit 1

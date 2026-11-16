@@ -66,7 +66,7 @@ Status: `proved`; `not proved (sat)` (a counterexample exists in the abstraction
 
 New tests in `tests/prove/` (need z3; run by `tests/run.sh` only when z3 is on `PATH`, like `selftest prove`). Goldens:
 
-(Built 2026-11-15 as slice 4a, see section 7; items 5 to 7 are partly built: `mixed_sign` is the sign case, `straight` and `unsup_ternary` stand in for the rest, the remaining shapes are parked.)
+(Built 2026-11-15 as slice 4a, see section 7; items 5 to 7 are built as `mixed_sign`, `loop_while`, `loop_do`, `loop_continue`, `loop_badentry`, `unsup_div`, `unsup_call`, `unsup_addr` and `unsup_ternary`; a `signed char` index and a negative slice bound are not covered.)
 
 All of 1 to 4 use `size_t i, n` (unsigned: a signed `i` admits negatives under a bare `i <= n`; item 5 covers signed).
 1. `copy_ok`: `char *copy(char *dst, const char *src, size_t n)` with `requires n <= $len(dst) && n <= $len(src)`, `invariant i <= n && dst[0:i] == src[0:i]`, `ensures dst[0:n] == src[0:n]`, `return dst`: all proved. Also a variant over `int *` (4-byte elements), where the risk in section 3 shows if it is real.
