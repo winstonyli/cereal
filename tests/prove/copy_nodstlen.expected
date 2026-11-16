@@ -1,0 +1,8 @@
+copy: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  copy_nodstlen.c:8:1  proved                 invariant holds on entry
+  copy_nodstlen.c:9:21  proved                 bounds read src
+  copy_nodstlen.c:9:12  not proved (sat)       bounds write dst
+  copy_nodstlen.c:8:1  proved                 invariant preserved
+  copy_nodstlen.c:5:1  proved                 ensures
+copy: 4 proved, 1 not proved, 0 unsupported
+exit 1

@@ -260,17 +260,18 @@ int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned 
     const char *a;
     size_t i;
     int r;
-    if (s->ps != ps) {                      /* another DAG: its variable numbers mean other things */
-        a = sx_raw(s->sx, "(reset)\n(set-option :produce-models true)\n(set-logic ALL)\n");
-        if (!a || strstr(a, "(error")) return PS_ERROR;
-        s->ps = ps;
-        s->declared.len = 0;
-    }
+    /* Every query starts from a reset: z3's incremental mode (after a push) answers `unknown` on quantified array
+     * queries that a fresh state proves (checked on the int copy loop's "preserved" goal), and the variable numbers
+     * of another DAG mean other things. */
+    a = sx_raw(s->sx, "(reset)\n(set-option :produce-models true)\n(set-logic ALL)\n");
+    if (!a || strstr(a, "(error")) return PS_ERROR;
+    s->ps = ps;
+    s->declared.len = 0;
     for (i = 0; i < n; i++) mark_bound(s, ps, hyps[i]);
     mark_bound(s, ps, goal);
     for (i = 0; i < n; i++) declare(s, ps, hyps[i], &q);
     declare(s, ps, goal, &q);
-    sb_printf(&q, "(push 1)\n(set-option :rlimit %lu)\n", rlimit);
+    sb_printf(&q, "(set-option :rlimit %lu)\n", rlimit);
     for (i = 0; i < n; i++) {
         sb_puts(&q, "(assert ");
         ps_print(ps, hyps[i], &q);
@@ -278,7 +279,7 @@ int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned 
     }
     sb_puts(&q, "(assert (not ");
     ps_print(ps, goal, &q);
-    sb_puts(&q, "))\n(check-sat)\n(pop 1)\n");
+    sb_puts(&q, "))\n(check-sat)\n");
     a = sx_raw(s->sx, sb_cstr(&q));
     sb_free(&q);
     if (!a || strstr(a, "(error")) return PS_ERROR;

@@ -60,4 +60,7 @@ static inline uint32_t kid(Cfg *L, uint32_t n, uint32_t j)
  * comment line saying why not.  ord lists the placed blocks in order. */
 void x86_func(Cfg *L, const uint32_t *ord, FILE *out);
 
+/* prove_vc.c: --prove, the function's proof obligations and their status on out. */
+void prove_func(Cfg *L, const uint32_t *ord, FILE *out);
+
 #endif

@@ -2646,7 +2646,7 @@ static void unit_run(Checker *c, FILE *out)
     El e;
     uint32_t root = c->nn - 1;
     const char *pf;
-    bool sys;
+    bool sys, hdr;
     SrcLoc loc = cnode_loc(c, root);
     unsigned tag = ntag(c, root);
     if (tag != N_FUNC_DEF && tag != N_DECL && tag != N_TOP_ASM)
@@ -2677,9 +2677,12 @@ static void unit_run(Checker *c, FILE *out)
             tunsup(&e, "top-level asm");
         else
             func_def(&e, root);
-        fputs(pf, out);
-        fputs("unit ", out);
-        put_loc(c, out, loc);
+        hdr = e.why[0] || !CHK_PROVE_ONLY(c->opt);
+        if (hdr) {                          /* --prove alone prints only its own report */
+            fputs(pf, out);
+            fputs("unit ", out);
+            put_loc(c, out, loc);
+        }
         if (e.why[0]) {
             fprintf(out, " unsupported: %s\n", e.why);
             if (sys)
@@ -2687,17 +2690,19 @@ static void unit_run(Checker *c, FILE *out)
         } else {
             uint32_t d = declared_of(&e, root, NULL);
             e.fsym = c->cb[d] - 1;
-            fputs(" func ", out);
-            put_sym(c, out, c->cb[d] - 1);
-            fputc(' ', out);
-            put_type(c, out, csym(c, c->cb[d] - 1)->ty);
-            fputc('\n', out);
+            if (hdr) {
+                fputs(" func ", out);
+                put_sym(c, out, c->cb[d] - 1);
+                fputc(' ', out);
+                put_type(c, out, csym(c, c->cb[d] - 1)->ty);
+                fputc('\n', out);
+            }
             if (c->opt.tast_tree) {
                 print_tree(&e, out);
                 if (c->opt.verify_tast)
                     verify(&e, out);
             }
-            if (c->opt.dump_cfg || CHK_EVAL(c->opt) || CHK_ASM(c->opt))
+            if (c->opt.dump_cfg || c->opt.prove || CHK_EVAL(c->opt) || CHK_ASM(c->opt))
                 tast_cfg(&e, (uint32_t)e.nodes.len - 1, out);
         }
     }

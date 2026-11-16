@@ -45,6 +45,7 @@ typedef struct CheckOptions {
     bool eval_state;            /* the sweep also builds state with constructors and fills record parameters from it (--eval-state) */
     const char *eval_only;      /* the sweep covers only these functions (comma-separated) and prints each call's outcome on stderr (--eval-only=) */
     bool eval_miss;             /* the solver sweep also prints, per function, its untaken edges by class (--eval-miss) */
+    bool prove;                 /* --prove: the proof obligations of each function (prove_vc.c) */
     bool dump_cfg, verify_cfg;  /* --dump-cfg: print the lowered control-flow graph;
                                  * --verify-cfg: and check it (tcfg.c) */
     bool verify_tast;           /* --verify-tast: check each tree, print findings */
@@ -74,6 +75,7 @@ typedef struct CheckOptions {
 /* `cereal run` and the sweep print nothing of the lowering (opt.tast is the program's stdout). */
 #define CHK_EVAL(o) ((o).eval != EVAL_OFF)
 #define CHK_QUIET(o) (CHK_EVAL(o) && !(o).dump_cfg && !(o).tast_tree && !CHK_ASM(o))
+#define CHK_PROVE_ONLY(o) ((o).prove && !(o).dump_cfg && !(o).tast_tree && !CHK_ASM(o) && !CHK_EVAL(o))   /* --prove prints only its own report */
 
 Checker *checker_new(SrcMgr *sm, Interner *in, DiagEngine *diag,
                      const CheckOptions *opt);

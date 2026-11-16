@@ -877,6 +877,7 @@ static bool on_eval(const CheckOptions *o) { return CHK_EVAL(*o); }
 static bool on_asm(const CheckOptions *o) { return CHK_ASM(*o); }
 static bool on_dump(const CheckOptions *o) { return o->dump_cfg; }
 static bool on_check(const CheckOptions *o) { return o->verify_cfg; }
+static bool on_prove(const CheckOptions *o) { return o->prove; }
 
 static void run_eval(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *out)
 {
@@ -943,8 +944,14 @@ static void run_check(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *ou
     check(L, out, root, ord, ij);
 }
 
+static void run_prove(Cfg *L, uint32_t *ord, U32Vec *ij, uint32_t root, FILE *out)
+{
+    (void)ij, (void)root;
+    prove_func(L, ord, out);
+}
+
 static const CfgConsumer cons[] = {
-    {on_eval, run_eval}, {on_asm, run_asm}, {on_dump, run_dump}, {on_check, run_check},
+    {on_eval, run_eval}, {on_asm, run_asm}, {on_dump, run_dump}, {on_check, run_check}, {on_prove, run_prove},
 };
 
 void tast_cfg(El *e, uint32_t root, FILE *out)

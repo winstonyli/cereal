@@ -1069,6 +1069,14 @@ if "$CEREAL" selftest fparith </dev/null; then ok; else bad "selftest fparith"; 
 if "$CEREAL" selftest idxset </dev/null; then ok; else bad "selftest idxset"; fi
 if command -v z3 >/dev/null 2>&1; then   # the prover's term DAG and solver pipe (docs/PROVER_DESIGN.md)
     if "$CEREAL" selftest prove </dev/null; then ok; else bad "selftest prove"; fi
+    # --prove goldens (tests/prove): the report and exit status of `check --prove` on each file (docs/PROVE_OBLIGATIONS_DESIGN.md)
+    cd "$ROOT/tests/prove"
+    for f in *.c; do
+        n=${f%.c}
+        { "$CEREAL" check --target=x86_64-linux-gnu --prove "$f" 2>&1 </dev/null; echo "exit $?"; } >"$TMP/prove.out"
+        if diff -u "$n.expected" "$TMP/prove.out" >"$TMP/prove.diff"; then ok; else bad "prove/$n"; sed 's/^/    /' "$TMP/prove.diff" | head -20; fi
+    done
+    cd "$ROOT"
 fi
 # 24. presence conditions (S1c fold): the hidden CEREAL_PCDUMP hook against
 # tests/pc/NAME.pc; NAME.flags adds flags (host macros, a system directory),

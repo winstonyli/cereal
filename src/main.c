@@ -360,7 +360,7 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
     tu_init(tp, o);
     tp->diag.out = err;
     fo.out = out;
-    fo.tast_bad = fe_opts.verify_tast || fe_opts.verify_cfg ? &tast_bad : NULL;
+    fo.tast_bad = fe_opts.verify_tast || fe_opts.verify_cfg || fe_opts.prove ? &tast_bad : NULL;
     if (parse_cells) {
         po = par_options(o);
         fo.cells_par = &po;
@@ -1712,6 +1712,10 @@ int main(int argc, char **argv)
             run_args = argv + i + 1;        /* the program's own */
             run_nargs = argc - i - 1;
             break;
+        }
+        if (!strcmp(argv[i], "--prove")) {
+            fe_opts.prove = true;
+            continue;
         }
         if (!strcmp(argv[i], "--verify-cfg")) {
             fe_opts.dump_cfg = fe_opts.verify_cfg = true;

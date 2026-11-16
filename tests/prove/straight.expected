@@ -1,0 +1,4 @@
+clampz: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  straight.c:4:1  proved                 ensures
+clampz: 1 proved, 0 not proved, 0 unsupported
+exit 0

@@ -1,0 +1,2 @@
+pick: unsupported: a store to a reg
+exit 1
