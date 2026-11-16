@@ -1,7 +1,7 @@
 /* prove_smt.h - the prover's term DAG and its solver pipe (docs/PROVER_DESIGN.md, stage 2).
  *
- * Terms have four sorts: Bool, bit-vectors of 8 or 64 bits, unbounded Int and the byte array
- * (64-bit index, 8-bit element) that Decide A's per-allocation memory is made of.  Variables are
+ * Terms have four sorts: Bool, bit-vectors of 8, 16, 32 or 64 bits, unbounded Int and the array
+ * (64-bit index, an element of 8, 16, 32 or 64 bits: the sort's w) that a per-allocation memory is made of.  Variables are
  * named; a quantifier binds one.  The rewrites the engine's tiers need are functions over the DAG
  * (substitution, the bit-vector-to-Int rewrite with its no-wrap obligations); printing is SMT-LIB2.
  * symx.h's DAG stays the evaluator's; the two share only the solver pipe. */
@@ -21,11 +21,15 @@ enum {
     PS_P64,                             /* the Int 2^64 */
     PS_VAR,                             /* k: index into the variable table */
     PS_BVADD, PS_BVMUL, PS_BVNOT, PS_BVULT, PS_BVULE,
+    PS_BVSUB, PS_BVSLT, PS_BVSLE,
+    PS_RESIZE,                          /* a: the operand; k: target width, | PS_SIGNED to sign-extend (truncates when narrower) */
     PS_IADD, PS_IMUL, PS_ILT, PS_ILE,
     PS_EQ, PS_AND, PS_OR, PS_NOT, PS_IMP,
     PS_SEL, PS_STORE,                   /* array a, index b [, element c] */
     PS_FORALL                           /* a: the bound variable, b: the body */
 };
+
+#define PS_SIGNED 0x100                 /* in a PS_RESIZE's k */
 
 typedef struct PsNode {
     uint8_t op, sort, w;
@@ -51,6 +55,7 @@ PsT ps_bvc(Ps *ps, unsigned w, uint64_t v);
 PsT ps_intc(Ps *ps, uint64_t v);
 PsT ps_var(Ps *ps, const char *name, int sort, unsigned w);   /* the same name, the same variable */
 PsT ps_op(Ps *ps, int op, PsT a, PsT b);                      /* the binary and unary operations (b: 0 for PS_BVNOT, PS_NOT) */
+PsT ps_resize(Ps *ps, PsT a, unsigned w, bool sign);          /* a bit-vector as w bits: zero- or sign-extended, or truncated */
 PsT ps_store(Ps *ps, PsT arr, PsT idx, PsT val);
 PsT ps_forall(Ps *ps, PsT var, PsT body);
 

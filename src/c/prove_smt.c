@@ -42,15 +42,16 @@ PsT ps_op(Ps *ps, int op, PsT a, PsT b)
     int sort = PS_BOOL;
     unsigned w = 0;
     switch (op) {
-    case PS_BVADD: case PS_BVMUL: case PS_BVNOT: sort = PS_BV; w = ps_at(ps, a)->w; break;
+    case PS_BVADD: case PS_BVMUL: case PS_BVNOT: case PS_BVSUB: sort = PS_BV; w = ps_at(ps, a)->w; break;
     case PS_IADD: case PS_IMUL: sort = PS_INT; break;
-    case PS_SEL: sort = PS_BV; w = 8; break;
+    case PS_SEL: sort = PS_BV; w = ps_at(ps, a)->w; break;      /* the array's element width */
     default: break;
     }
     return mk(ps, op, sort, w, a, b, 0, 0);
 }
 
-PsT ps_store(Ps *ps, PsT arr, PsT idx, PsT val) { return mk(ps, PS_STORE, PS_ARR, 0, arr, idx, val, 0); }
+PsT ps_resize(Ps *ps, PsT a, unsigned w, bool sign) { return mk(ps, PS_RESIZE, PS_BV, w, a, 0, 0, w | (sign ? PS_SIGNED : 0)); }
+PsT ps_store(Ps *ps, PsT arr, PsT idx, PsT val) { return mk(ps, PS_STORE, PS_ARR, ps_at(ps, arr)->w, arr, idx, val, 0); }
 PsT ps_forall(Ps *ps, PsT var, PsT body) { return mk(ps, PS_FORALL, PS_BOOL, 0, var, body, 0, 0); }
 
 static PsT and_all(Ps *ps, const PsT *t, size_t n)
@@ -136,6 +137,7 @@ PsT ps_to_int(Ps *ps, PsT t, PsInt *obl)
 
 static const char *const op_name[] = {
     [PS_BVADD] = "bvadd", [PS_BVMUL] = "bvmul", [PS_BVNOT] = "bvnot", [PS_BVULT] = "bvult", [PS_BVULE] = "bvule",
+    [PS_BVSUB] = "bvsub", [PS_BVSLT] = "bvslt", [PS_BVSLE] = "bvsle",
     [PS_IADD] = "+", [PS_IMUL] = "*", [PS_ILT] = "<", [PS_ILE] = "<=",
     [PS_EQ] = "=", [PS_AND] = "and", [PS_OR] = "or", [PS_NOT] = "not", [PS_IMP] = "=>",
     [PS_SEL] = "select", [PS_STORE] = "store"
@@ -147,7 +149,7 @@ static void put_sort(StrBuf *sb, int sort, unsigned w)
     case PS_BOOL: sb_puts(sb, "Bool"); break;
     case PS_INT: sb_puts(sb, "Int"); break;
     case PS_BV: sb_printf(sb, "(_ BitVec %u)", w); break;
-    default: sb_puts(sb, "(Array (_ BitVec 64) (_ BitVec 8))"); break;
+    default: sb_printf(sb, "(Array (_ BitVec 64) (_ BitVec %u))", w); break;
     }
 }
 
@@ -170,6 +172,15 @@ void ps_print(const Ps *ps, PsT t, StrBuf *sb)
         ps_print(ps, n->b, sb);
         sb_putc(sb, ')');
         return;
+    case PS_RESIZE: {
+        unsigned from = ps_at(ps, n->a)->w, to = (unsigned)(n->k & 0xff);
+        if (to == from) { ps_print(ps, n->a, sb); return; }
+        if (to < from) sb_printf(sb, "((_ extract %u 0) ", to - 1);
+        else sb_printf(sb, "((_ %s %u) ", n->k & PS_SIGNED ? "sign_extend" : "zero_extend", to - from);
+        ps_print(ps, n->a, sb);
+        sb_putc(sb, ')');
+        return;
+    }
     default: break;
     }
     sb_putc(sb, '(');
@@ -331,7 +342,7 @@ int prove_selftest(void)
     if (!s) { fprintf(stderr, "prove selftest: %s\n", err); return 1; }
     n = bv(&ps, "n"); szD = bv(&ps, "szD"); i = bv(&ps, "i"); j = bv(&ps, "j");
     r = bv(&ps, "r"); c = bv(&ps, "c"); x = bv(&ps, "x");
-    d = ps_var(&ps, "D", PS_ARR, 0); src = ps_var(&ps, "S", PS_ARR, 0);
+    d = ps_var(&ps, "D", PS_ARR, 8); src = ps_var(&ps, "S", PS_ARR, 8);
     zero = ps_bvc(&ps, 64, 0); one = ps_bvc(&ps, 64, 1); lim = ps_bvc(&ps, 64, 2147483648u);
 
     /* substitution */
@@ -368,6 +379,43 @@ int prove_selftest(void)
         expect(&failures, "forall without 0 < i", ps_valid(s, &ps, h, 1, g0, 0), PS_INVALID);
         expect(&failures, "store then select", ps_valid(s, &ps, NULL, 0,
                ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, ps_store(&ps, d, zero, ps_bvc(&ps, 8, 7)), zero), ps_bvc(&ps, 8, 7)), 0), PS_VALID);
+    }
+    /* narrow widths, subtraction, signed order and resize (docs/PROVE_OBLIGATIONS_DESIGN.md section 3) */
+    {
+        PsT u = ps_var(&ps, "u32", PS_BV, 32), v = ps_var(&ps, "v32", PS_BV, 32), b8 = ps_var(&ps, "b8", PS_BV, 8);
+        PsT z32 = ps_bvc(&ps, 32, 0), max32 = ps_bvc(&ps, 32, 0xffffffffu), one32 = ps_bvc(&ps, 32, 1), c80 = ps_bvc(&ps, 8, 0x80);
+        PsT sx = ps_resize(&ps, c80, 32, true), zx = ps_resize(&ps, c80, 32, false);
+        PsT a16 = ps_var(&ps, "A16", PS_ARR, 16), a32 = ps_var(&ps, "A32", PS_ARR, 32);
+        PsT st;
+        /* a 32-bit add wraps; with the top value excluded it does not */
+        k = ult(&ps, u, ps_op(&ps, PS_BVADD, u, one32));
+        expect(&failures, "32-bit u < u + 1", ps_valid(s, &ps, NULL, 0, k, 0), PS_INVALID);
+        h[0] = ps_op(&ps, PS_NOT, ps_op(&ps, PS_EQ, u, max32), 0);
+        expect(&failures, "32-bit u < u + 1 below the top", ps_valid(s, &ps, h, 1, k, 0), PS_VALID);
+        expect(&failures, "(u - v) + v == u", ps_valid(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVSUB, u, v), v), u), 0), PS_VALID);
+        /* signed order is not unsigned order (a signed compare read as unsigned is the mutant) */
+        expect(&failures, "u <s 0 is satisfiable", ps_valid(s, &ps, NULL, 0, ps_op(&ps, PS_NOT, ps_op(&ps, PS_BVSLT, u, z32), 0), 0), PS_INVALID);
+        expect(&failures, "u <u 0 is never", ps_valid(s, &ps, NULL, 0, ps_op(&ps, PS_NOT, ult(&ps, u, z32), 0), 0), PS_VALID);
+        h[0] = ps_op(&ps, PS_BVSLT, u, z32);
+        expect(&failures, "u <s 0 means u >u 2^31 - 1", ps_valid(s, &ps, h, 1, ult(&ps, ps_bvc(&ps, 32, 0x7fffffff), u), 0), PS_VALID);
+        expect(&failures, "u <=s u", ps_valid(s, &ps, NULL, 0, ps_op(&ps, PS_BVSLE, u, u), 0), PS_VALID);
+        /* sign-extension: 0x80 as 8 bits is -128, and zero-extension must differ from it */
+        expect(&failures, "sext 0x80 == 0xffffff80", ps_valid(s, &ps, NULL, 0, ps_op(&ps, PS_EQ, sx, ps_bvc(&ps, 32, 0xffffff80u)), 0), PS_VALID);
+        expect(&failures, "zext 0x80 == 0x80", ps_valid(s, &ps, NULL, 0, ps_op(&ps, PS_EQ, zx, ps_bvc(&ps, 32, 0x80)), 0), PS_VALID);
+        expect(&failures, "zext 0x80 == sext 0x80", ps_valid(s, &ps, NULL, 0, ps_op(&ps, PS_EQ, zx, sx), 0), PS_INVALID);
+        expect(&failures, "trunc 0x1ff to 8 == 0xff", ps_valid(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_resize(&ps, ps_bvc(&ps, 32, 0x1ff), 8, false), ps_bvc(&ps, 8, 0xff)), 0), PS_VALID);
+        expect(&failures, "sext keeps the sign",  ps_valid(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_op(&ps, PS_BVSLT, ps_resize(&ps, b8, 32, true), z32), ps_op(&ps, PS_BVSLT, b8, ps_bvc(&ps, 8, 0))), 0), PS_VALID);
+        /* arrays with 16- and 32-bit elements */
+        st = ps_store(&ps, a32, zero, ps_bvc(&ps, 32, 7));
+        expect(&failures, "32-bit store then select", ps_valid(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, st, zero), ps_bvc(&ps, 32, 7)), 0), PS_VALID);
+        expect(&failures, "16-bit select is not 8-bit", ps_valid(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, a16, zero), ps_bvc(&ps, 16, 7)), 0), PS_INVALID);
+        /* the Int tier does not apply to the new operations */
+        expect(&failures, "Int tier declines bvsub", ps_valid_int(s, &ps, NULL, 0, ule(&ps, ps_op(&ps, PS_BVSUB, n, i), n), 400000), PS_UNKNOWN);
     }
     ps_close(s);
     ps_free(&ps);

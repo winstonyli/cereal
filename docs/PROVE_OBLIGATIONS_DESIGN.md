@@ -81,7 +81,7 @@ All of 1 to 4 use `size_t i, n` (unsigned: a signed `i` admits negatives under a
 
 1. **Lowering** (section 4): `tast.c`, `tast_int.h` (three ops), verifier and dump cases, `tcfg.c` unchanged beyond carrying them. Check: item 8 above; `--verify-cfg` passes on all of `tests/cfg`.
 2. **Consumer table** (decision y1, its own commit, before slice 4): `tast_cfg` builds the `Cfg`, then runs each enabled consumer from a static list. Check: the full suite and the gate, unchanged.
-3. **Solver ops** (`prove_smt`): `PS_BVSUB`, `PS_BVSLT`, `PS_BVSLE`, one `PS_RESIZE` (k: target width, a sign flag), widths 8, 16, 32 and 64, and arrays whose element width is a parameter of the sort. `ps_to_int` returns 0 for them. Check: `selftest prove` cases, including a sign-extension mutant and a 32-bit wrap.
+3. **Solver ops** (built 2026-11-15; `PS_SIGNED` flag in `k`, array element width in the sort's `w`) (`prove_smt`): `PS_BVSUB`, `PS_BVSLT`, `PS_BVSLE`, one `PS_RESIZE` (k: target width, a sign flag), widths 8, 16, 32 and 64, and arrays whose element width is a parameter of the sort. `ps_to_int` returns 0 for them. Check: `selftest prove` cases, including a sign-extension mutant and a 32-bit wrap.
 4. **Generator and `--prove`** (`prove_vc.c`, `main.c`, `check.h`, the `tast_cfg` call per decision y): sections 3 and 5. Check: the `tests/prove` goldens.
 
 ## 8. End-state fit
