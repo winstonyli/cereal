@@ -371,8 +371,11 @@ int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned 
     bool q = ps_has(ps, goal, PS_FORALL);
     size_t i;
     for (i = 0; i < n && !q; i++) q = ps_has(ps, hyps[i], PS_FORALL);
-    if (q && valid_inst(s, ps, hyps, n, goal, rlimit) == PS_VALID) return PS_VALID;
-    return valid_q(s, ps, hyps, n, goal, rlimit);   /* the instantiation tier proves or says nothing */
+    /* The instantiation tier proves or says nothing, and gets a tenth of the budget: the copy loops' goals need
+     * between 1M and 3.3M of the 100M (measured), while the nodstlen golden's "preserved" goal ran 25 s to
+     * `unknown` at the full budget and the full query proved it in 0.7 s. */
+    if (q && valid_inst(s, ps, hyps, n, goal, rlimit / 10) == PS_VALID) return PS_VALID;
+    return valid_q(s, ps, hyps, n, goal, rlimit);
 }
 
 int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
