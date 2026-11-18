@@ -5,6 +5,10 @@
 # sweep must print calls with the five results of lz_run past the first pointer (the first four result bytes, hex; -1, the call's NULL path, may or may not show and is left out).
 C=${1:?cereal binary}
 D=$(cd "$(dirname "$0")" && pwd)
+# Each group below is independent, so they run in parallel (EVAL_LAZY_JOBS at a time, default 4; the file ran
+# serially for 202 s under ASan).  `eval_lazy.sh CEREAL GROUP[:ARG]` runs one group; with no GROUP it runs them
+# all and prints their output in order.  A group exits 1 on its first failure.
+g_downcast() {
 got=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_downcast.c" 2>/dev/null </dev/null |
     awk '$1 == "call" && $2 == "lz_run" && $4 == "=>" { print substr($5, 1, 8) }' | grep -v ffffffff | sort -u | tr '\n' ' ')
 want="01000000 02000000 03000000 fdffffff feffffff "
@@ -13,6 +17,8 @@ if [ "$got" != "$want" ]; then
     exit 1
 fi
 echo "eval_lazy: ok"
+}
+g_guard() {
 # With the solver, lazy calls are solved too: lg_run's guard needs k[0] == 331, behind a pointer.
 if command -v z3 >/dev/null 2>&1; then
     got=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 --eval-solve='z3 -in -smt2' "$D/cfg_lazy/lazy_guard.c" 2>/dev/null </dev/null |
@@ -23,6 +29,8 @@ if command -v z3 >/dev/null 2>&1; then
     esac
     echo "eval_lazy: solver ok"
 fi
+}
+g_stop() {
 # Fixtures where the sweep must stop instead of differing from gcc: lazy_ptrbyte.c reads a stored pointer back through a
 # char; lazy_ptrcopy.c copies part of one with memcpy; lazy_constwrite.c writes a static const object; lazy_overwrite.c sets a whole pointer slot as an integer (allowed).
 for f in lazy_ptrbyte lazy_ptrcopy lazy_constwrite lazy_overwrite; do
@@ -37,6 +45,8 @@ if [ "$n" -lt 40 ]; then
     exit 1
 fi
 echo "eval_lazy: stop fixtures ok"
+}
+g_paralias() {
 # Two pointer parameters subtracted: the retry makes the later one share the earlier, so every call finishes (11 of 24 without it).
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_paralias.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_paralias.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_paralias.c" 2>/dev/null </dev/null | grep -ac '^call pa_run .* =>')
@@ -45,6 +55,8 @@ if [ "$n" -lt 24 ]; then
     exit 1
 fi
 echo "eval_lazy: parameter alias ok"
+}
+g_list() {
 # A walk over six list elements, each subtracted from one field of the head: one hint for the pointee size makes them all share
 # (hints per cell stop at the fifth element: 17 of 200 calls finish without a hint for the size).
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_list.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_list.c differs from gcc"; exit 1; }
@@ -54,6 +66,8 @@ if [ "$n" -lt 180 ]; then
     exit 1
 fi
 echo "eval_lazy: size hint ok (list)"
+}
+g_size() {
 # Ten fields of one pointee size subtracted from an eleventh: one hint for the size makes them all share (a hint per cell or per offset
 # stops at the ninth).  Calls whose one NULL lands on a pointer cell stop for good, so the count stays under 200.
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_size.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_size.c differs from gcc"; exit 1; }
@@ -63,6 +77,8 @@ if [ "$n" -lt 155 ]; then
     exit 1
 fi
 echo "eval_lazy: size hint ok"
+}
+g_selfptr() {
 # A cell drawn to share its own object (a pointer read as an int): the retry redraws the cell as a new blob (958 of 1000 finish without it).
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_selfptr.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_selfptr.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=1000,1234 "$D/cfg_lazy/lazy_selfptr.c" 2>/dev/null </dev/null | grep -ac '^call sp_run .* =>')
@@ -71,6 +87,8 @@ if [ "$n" -lt 965 ]; then
     exit 1
 fi
 echo "eval_lazy: pointer-read retry ok"
+}
+g_igoto() {
 # A computed goto over drawn bytes (the dispatch of Lua's luaV_execute): the sweep follows it, so every call finishes, and gcc agrees.
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_igoto.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_igoto.c differs from gcc"; exit 1; }
 n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_igoto.c" 2>/dev/null </dev/null | grep -ac '^call ig_run .* =>')
@@ -79,6 +97,8 @@ if [ "$n" -lt 24 ]; then
     exit 1
 fi
 echo "eval_lazy: computed goto ok"
+}
+g_solver() {
 # Bytes read by memcpy are zero unless the solver sets them: with it, mc_eq's unequal edge and mc_const's equal edge are reached
 # (without it the first always returns 1 and the second 0), and gcc agrees on the bytes it set.
 if command -v z3 >/dev/null 2>&1; then
@@ -124,6 +144,8 @@ if command -v z3 >/dev/null 2>&1; then
         { echo "eval_lazy: tb_run with the solver never gave 1 (a table of 257 entries is not read symbolically)"; exit 1; }
     echo "eval_lazy: table 257 ok"
 fi
+}
+g_free() {
 # A function that frees what the sweep drew (a lazy blob is never freed, on either side): every call finishes.
 for fn in lf_run lf_twice lf_own; do
     n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_free.c" 2>/dev/null </dev/null | grep -ac "^call $fn .* =>")
@@ -135,6 +157,8 @@ done
 echo "eval_lazy: lazy free ok"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_free.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_free.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy free agrees with gcc"
+}
+g_realloc() {
 # A function that reallocs what the sweep drew (a lazy blob grows in place and the pointer stays, on either side): every call finishes.
 for fn in lr_grow lr_twice lr_own; do
     n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_realloc.c" 2>/dev/null </dev/null | grep -ac "^call $fn .* =>")
@@ -146,6 +170,8 @@ done
 echo "eval_lazy: lazy realloc ok"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_realloc.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_realloc.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy realloc agrees with gcc"
+}
+g_addr() {
 # A pointer into a lazy blob read as an integer has a fixed address on both sides (docs/LAZY_ADDR_DESIGN.md): the calls finish.
 # An integer turned back into a pointer and dereferenced stops (a NULL draw still finishes, so la_ctl is the count to stay under).
 la_n() { "$C" check --target=x86_64-linux-gnu --eval-sweep=24,1234 "$D/cfg_lazy/lazy_addr.c" 2>/dev/null </dev/null | grep -ac "^call $1 .* =>"; }
@@ -180,18 +206,37 @@ fi
 echo "eval_lazy: lazy address ok"
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_addr.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_addr.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy address agrees with gcc"
+}
+g_uninit() {
 # uninitialised bytes copied into the state: both sides see zero (the gcc driver zero-initialises its stack)
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_uninit.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_uninit.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy uninit agrees with gcc"
+}
 # a chain of self-links ends at a fixed depth (LCHAIN in src/c/eval_run.c): an unbounded walk down it finishes, and agrees with gcc
 # (seed 1234: 8 of 24 finished without the rule, 18 with it; seeds 1 and 7 gave 17 and 16; the rest are share draws that close the
 # chain into a cycle: the step limit.  The bound 14 leaves slack for a draw-stream change; it does not pin LCHAIN.)
-for s in 1234 1 7; do
+g_chain() { # g_chain SEED
+    s=$1
     n=$("$C" check --target=x86_64-linux-gnu --eval-sweep=24,$s "$D/cfg_lazy/lazy_chain.c" 2>/dev/null </dev/null | grep -ac '^call lc_up .* =>')
     if [ "$n" -lt 14 ]; then
         echo "eval_lazy: lazy_chain.c: only $n of 24 calls of lc_up finished on seed $s (the chain of self-links must end)"
         exit 1
     fi
-done
+    echo "eval_lazy: lazy chain seed $s ok"
+}
+g_chaingcc() {
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_chain.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_chain.c differs from gcc"; exit 1; }
-echo "eval_lazy: lazy chain ok"
+echo "eval_lazy: lazy chain agrees with gcc"
+}
+GROUPS_ALL="downcast guard stop paralias list size selfptr igoto solver free realloc addr uninit chain:1234 chain:1 chain:7 chaingcc"
+if [ -n "${2:-}" ]; then "g_${2%%:*}" "${2#*:}"; exit $?; fi
+O=$(mktemp -d "${TMPDIR:-/tmp}/eval_lazy.XXXXXX") || exit 1
+trap 'rm -rf "$O"' EXIT
+# shellcheck disable=SC2086
+printf '%s\n' $GROUPS_ALL | xargs -P "${EVAL_LAZY_JOBS:-4}" -I{} sh -c 'sh "$1" "$2" "$3" >"$4/$3.out" 2>&1 || touch "$4/$3.bad"' _ "$0" "$C" {} "$O"
+rc=0
+for g in $GROUPS_ALL; do
+    cat "$O/$g.out"
+    [ -e "$O/$g.bad" ] && rc=1
+done
+exit $rc
