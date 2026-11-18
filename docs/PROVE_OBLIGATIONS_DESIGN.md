@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Obligation generator and `--prove` (stage 3b of `PROVER_DESIGN.md`)
@@ -40,7 +40,7 @@ A function is analysed only if every statement and expression in it is in the su
 
 **Loops.** Decision e3: no loop construct is read. A cut point is the target of a retreating edge (an edge to a block whose `pos` is at most the source's), which every cycle contains; an edge into a cut point c from c's strongly connected component is a back edge, any other an entry edge; a spec belongs to the cut point with the smallest component containing the spec's block. At a cut point the state is replaced by a fresh one: every local assigned in the loop gets a fresh variable and the array of every allocation stored to in the loop gets a fresh array variable. Acyclic regions between cut points (entry, heads, `ret`) are executed forward; a `br` forks the state with its condition on each side, and the goals of one source position are the conjunction over paths of `path => goal`, reported once. A load or store in the right operand of `&&`, `||` or `?:` carries the left operand's value (or its negation) as a hypothesis. The path cap is 256 per region (counted at forking `br`s); beyond it the function is unsupported (joins with `ite` are parked).
 
-**Solver.** One `ps_valid` per goal, hypotheses = `requires`, path, head invariants. Built 2026-11-15: the `int *` copy loop was the risk from S6 and it is real in cost, not in kind: z3 proves the "invariant preserved" goal over 4-byte elements, but needs 5.5 s and 50M resource units against 0.1 s for bytes, so `RLIMIT` is 100M and each query starts from `(reset)` (incremental mode after a push answered `unknown` on such queries); the instantiation tier stays parked (PARKED.md). The Int tier does not apply to values narrower than 64 bits (`ps_to_int` reads 64-bit only), so a nonlinear bound on `int` indices is `unknown` here; stage 4 extends `ps_to_int` to the resize nodes (parked, with the `fill2` shape as its check).
+**Solver.** One `ps_valid` per goal, hypotheses = `requires`, path, head invariants. Built 2026-11-15: the `int *` copy loop was the risk from S6 and it is real in cost, not in kind: z3 proved the "invariant preserved" goal over 4-byte elements only after 5.5 s and 50M resource units (0.1 s for bytes). Fixed 2026-11-18: `ps_valid` first skolemizes the goal's quantifiers and instantiates the assumed ones at those constants (`prove_smt.c`, the instantiation tier), and the query logic is `QF_ABV` when nothing needs more (z3's `ALL` took 16 s on the same quantifier-free query, `QF_ABV` 0.09 s); `copy_int` now takes 0.2 s. Each query starts from `(reset)` (incremental mode after a push answered `unknown`); `RLIMIT` is 100M for the fallback to the full quantified query. The Int tier does not apply to values narrower than 64 bits (`ps_to_int` reads 64-bit only), so a nonlinear bound on `int` indices is `unknown` here; stage 4 extends `ps_to_int` to the resize nodes (parked, with the `fill2` shape as its check).
 
 ## 4. Lowering of `return`, `$len` and slices (tast; first slice)
 

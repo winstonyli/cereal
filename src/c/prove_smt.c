@@ -254,16 +254,94 @@ static void mark_bound(PsSolver *s, const Ps *ps, PsT t)
     if (n->c) mark_bound(s, ps, n->c);
 }
 
-int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+/* ---- the instantiation tier ----
+ * A quantifier the goal proves is replaced by its body at a fresh constant (valid iff the body is, for any value);
+ * a quantifier assumed is replaced by its body at each of those constants (a consequence, so a weaker hypothesis).
+ * What the result proves, the original proves; the solver then needs no quantifier instantiation of its own, which
+ * it does slowly over wide array elements (the int copy loop's "preserved" goal: 5.5 s against 0.1 s). */
+typedef struct PsSk { VEC(PsT) v; unsigned next; bool bad; } PsSk;
+
+static bool ps_conn(int op) { return op == PS_AND || op == PS_OR || op == PS_NOT || op == PS_IMP; }
+
+/* pass 1: positive quantifiers become fresh constants (collected in sk) */
+static PsT skolem(Ps *ps, PsSk *sk, PsT t, bool pos)
+{
+    PsNode n = *ps_at(ps, t);
+    PsT a, b;
+    if (n.op == PS_FORALL) {
+        const PsVar *bv = &ps->v.data[ps_at(ps, n.a)->k];
+        char nm[48];
+        PsT c;
+        if (!pos) return t;
+        snprintf(nm, sizeof nm, "sk%u_%u_%u", sk->next++, (unsigned)bv->sort, (unsigned)bv->w);
+        c = ps_var(ps, nm, bv->sort, bv->w);
+        vec_push(&sk->v, c);
+        return skolem(ps, sk, ps_subst(ps, n.b, n.a, c), pos);
+    }
+    if (!ps_conn(n.op)) return t;
+    a = skolem(ps, sk, n.a, n.op == PS_NOT || n.op == PS_IMP ? !pos : pos);
+    b = n.b ? skolem(ps, sk, n.b, pos) : 0;
+    return a == n.a && b == n.b ? t : mk(ps, n.op, n.sort, n.w, a, b, 0, 0);
+}
+
+/* pass 2: the quantifiers that remain are assumed, whatever their place */
+static PsT weaken(Ps *ps, PsSk *sk, PsT t, bool pos)
+{
+    PsNode n = *ps_at(ps, t);
+    PsT a, b, r = 0;
+    size_t i;
+    if (n.op == PS_FORALL) {
+        if (pos) { sk->bad = true; return t; }     /* a quantifier to prove inside an assumed one: no tier */
+        for (i = 0; i < sk->v.len; i++) {
+            PsT inst = weaken(ps, sk, ps_subst(ps, n.b, n.a, sk->v.data[i]), pos);
+            r = r ? ps_op(ps, PS_AND, r, inst) : inst;
+        }
+        return r ? r : ps_true(ps);
+    }
+    if (!ps_conn(n.op)) return t;
+    a = weaken(ps, sk, n.a, n.op == PS_NOT || n.op == PS_IMP ? !pos : pos);
+    b = n.b ? weaken(ps, sk, n.b, pos) : 0;
+    return a == n.a && b == n.b ? t : mk(ps, n.op, n.sort, n.w, a, b, 0, 0);
+}
+
+static int valid_q(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
+
+static int valid_inst(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+{
+    PsSk sk = {{0}, 0, false};
+    VEC(PsT) h = {0};
+    size_t i;
+    int r;
+    goal = weaken(ps, &sk, skolem(ps, &sk, goal, true), true);
+    for (i = 0; i < n; i++) vec_push(&h, weaken(ps, &sk, hyps[i], false));
+    r = sk.bad ? PS_UNKNOWN : valid_q(s, ps, h.data, h.len, goal, rlimit);
+    vec_free(&h); vec_free(&sk.v);
+    return r;
+}
+
+/* Does t need more than quantifier-free arrays of bit-vectors: a quantifier, or an Int term? */
+static bool beyond_abv(const Ps *ps, PsT t)
+{
+    const PsNode *n = ps_at(ps, t);
+    if (n->op == PS_FORALL || n->sort == PS_INT) return true;
+    return (n->a && beyond_abv(ps, n->a)) || (n->b && beyond_abv(ps, n->b)) || (n->c && beyond_abv(ps, n->c));
+}
+
+static int valid_q(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
 {
     StrBuf q = {0};
+    bool full;
     const char *a;
     size_t i;
     int r;
     /* Every query starts from a reset: z3's incremental mode (after a push) answers `unknown` on quantified array
      * queries that a fresh state proves (checked on the int copy loop's "preserved" goal), and the variable numbers
      * of another DAG mean other things. */
-    a = sx_raw(s->sx, "(reset)\n(set-option :produce-models true)\n(set-logic ALL)\n");
+    /* The logic picks z3's solver: QF_ABV answered the instantiated copy-loop goal in 0.09 s where ALL took 16 s. */
+    full = beyond_abv(ps, goal);
+    for (i = 0; i < n && !full; i++) full = beyond_abv(ps, hyps[i]);
+    a = sx_raw(s->sx, full ? "(reset)\n(set-option :produce-models true)\n(set-logic ALL)\n"
+                           : "(reset)\n(set-option :produce-models true)\n(set-logic QF_ABV)\n");
     if (!a || strstr(a, "(error")) return PS_ERROR;
     s->ps = ps;
     s->declared.len = 0;
@@ -286,6 +364,15 @@ int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned 
     while (*a == ' ' || *a == '\n' || *a == '\r') a++;
     r = !strncmp(a, "unsat", 5) ? PS_VALID : !strncmp(a, "sat", 3) ? PS_INVALID : !strncmp(a, "unknown", 7) ? PS_UNKNOWN : PS_ERROR;
     return r;
+}
+
+int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+{
+    bool q = ps_has(ps, goal, PS_FORALL);
+    size_t i;
+    for (i = 0; i < n && !q; i++) q = ps_has(ps, hyps[i], PS_FORALL);
+    if (q && valid_inst(s, ps, hyps, n, goal, rlimit) == PS_VALID) return PS_VALID;
+    return valid_q(s, ps, hyps, n, goal, rlimit);   /* the instantiation tier proves or says nothing */
 }
 
 int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
@@ -380,6 +467,20 @@ int prove_selftest(void)
         expect(&failures, "forall without 0 < i", ps_valid(s, &ps, h, 1, g0, 0), PS_INVALID);
         expect(&failures, "store then select", ps_valid(s, &ps, NULL, 0,
                ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, ps_store(&ps, d, zero, ps_bvc(&ps, 8, 7)), zero), ps_bvc(&ps, 8, 7)), 0), PS_VALID);
+        /* the instantiation tier: a quantifier to prove is proved at a fresh constant (a smaller bound follows, a
+         * larger one does not, and one more copied element does), by the fallback when the tier says nothing */
+        {
+            PsT jb = ps_var(&ps, "jq", PS_BV, 64);
+            PsT gj = ps_forall(&ps, kv, ps_op(&ps, PS_IMP, ult(&ps, kv, jb), eq));
+            PsT step = ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, ps_store(&ps, d, i, ps_op(&ps, PS_SEL, src, i)), kv), ps_op(&ps, PS_SEL, src, kv));
+            PsT gi1 = ps_forall(&ps, kv, ps_op(&ps, PS_IMP, ult(&ps, kv, ps_op(&ps, PS_BVADD, i, one)), step));
+            h[0] = all; h[1] = ps_op(&ps, PS_BVULE, jb, i);
+            expect(&failures, "forall goal, smaller bound", ps_valid(s, &ps, h, 2, gj, 0), PS_VALID);
+            expect(&failures, "forall goal, larger bound", ps_valid(s, &ps, h, 1, gj, 0), PS_INVALID);
+            expect(&failures, "forall goal, one more copied", ps_valid(s, &ps, h, 1, gi1, 0), PS_VALID);
+            expect(&failures, "forall goal, two more", ps_valid(s, &ps, h, 1,
+                   ps_forall(&ps, kv, ps_op(&ps, PS_IMP, ult(&ps, kv, ps_op(&ps, PS_BVADD, i, ps_bvc(&ps, 64, 2))), step)), 0), PS_INVALID);
+        }
     }
     /* narrow widths, subtraction, signed order and resize (docs/PROVE_OBLIGATIONS_DESIGN.md section 3) */
     {
