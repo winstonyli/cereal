@@ -607,8 +607,10 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     fi
     # 13e1z. library oracle (bench/tools/lib_oracle.sh): zstd, with state, N=2, each gcc call in a forked child;
     #        only where the corpus is (~/corpus).  Passes when gcc never crashes and the only differing functions are
-    #        the two that read the machine (cpuid, the alignment of a raw address).
-    if [ -z "${ASAN_OPTIONS:-}" ] && [ -d "$HOME/corpus/zstd-1.5.7-dl/zstd-1.5.7/lib" ]; then   # not under ASan (the oracle sets ulimit -v)
+    #        the two that read the machine (cpuid, the alignment of a raw address).  Opt-in (LIB_ORACLE=1): it took
+    #        171 s of a 460 s run (2026-11-18).  Run it when evaluator, lazy-memory or `--eval-state` code changes
+    #        (the evaluator designs already name `lib_oracle.sh zstd 8` as their exit check) and before a tag.
+    if [ -n "${LIB_ORACLE:-}" ] && [ -z "${ASAN_OPTIONS:-}" ] && [ -d "$HOME/corpus/zstd-1.5.7-dl/zstd-1.5.7/lib" ]; then   # not under ASan (the oracle sets ulimit -v)
         STATE=1 sh "$ROOT/bench/tools/lib_oracle.sh" "$CEREAL" zstd 2 >"$TMP/libz.out" 2>&1 </dev/null
         if grep -q ' 0 gcc crashed' "$TMP/libz.out" &&
            ! grep ' differs ' "$TMP/libz.out" | sed 's/.* differs [0-9]*://; s/ .*//' |

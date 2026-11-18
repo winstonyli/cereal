@@ -24,6 +24,8 @@ Before a slice or round is closed: `sh bench/tools/gate.sh` (inside the WSL tree
 run/san `N passed, 0 failed`, san `findings 0`, globals `all allowed`, verify 2 / 1 / 0 differ and callgrind
 within 0.5% of the figure in the script's header. The san and globals stages catch what the suite does not
 (Round 279: six UB sites and four unlisted globals had accumulated since the S1 rounds).
+The zstd library oracle (`tests/run.sh` 13e1z) is opt-in: `LIB_ORACLE=1 sh bench/tools/gate.sh` when evaluator,
+lazy-memory or `--eval-state` code changed, and before a tag.
 
 ## Facts about the tree (verified)
 
