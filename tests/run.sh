@@ -579,46 +579,27 @@ fi
 # 13e. evaluator sweep (tests/eval_sweep.sh): the scalar, pointer and record functions of
 #      tests/cfg_exec/*.c run in the evaluator and compared with gcc, plus --verify-cfg
 if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
-    if (cd "$ROOT/tests/cfg_exec" && sh ../eval_sweep.sh "$CEREAL" *.c \
-            >"$TMP/exec.out" 2>&1 </dev/null); then
-        ok
-    else
-        bad "eval_sweep"
-        head -10 "$TMP/exec.out" | sed 's/^/    /'
-    fi
+    bg run_check "eval_sweep" sh -c 'cd "$1/tests/cfg_exec" && sh ../eval_sweep.sh "$2" *.c' _ "$ROOT" "$CEREAL"
     # 13e1. the files of tests/cfg_link as one program (--eval-link, docs/MULTITU_DESIGN.md): calls
     #       across files, a static of the same name in both, a function pointer, records by value;
     #       compared with gcc's link of the same files, and the guarded branch in link_b.c must be
     #       reached from link_a.c (12345 = 0x3039)
-    if (cd "$ROOT/tests/cfg_link" && EVAL_SWEEP_LINK=1 sh ../eval_sweep.sh "$CEREAL" link_a.c link_b.c \
-            >"$TMP/link.out" 2>&1 </dev/null) &&
-       (cd "$ROOT/tests/cfg_link" && "$CEREAL" check --target=x86_64-linux-gnu --eval-link --eval-sweep=24,1234 \
-            "$PWD/link_a.c" "$PWD/link_b.c" 2>&1 </dev/null | grep -q '^call a_call_guard 0000000039300000'); then
-        ok
-    else
-        bad "eval_sweep --eval-link"
-        head -10 "$TMP/link.out" | sed 's/^/    /'
-    fi
+    chk_link() {
+        (cd "$ROOT/tests/cfg_link" && EVAL_SWEEP_LINK=1 sh ../eval_sweep.sh "$CEREAL" link_a.c link_b.c) &&
+        (cd "$ROOT/tests/cfg_link" && "$CEREAL" check --target=x86_64-linux-gnu --eval-link --eval-sweep=24,1234 "$PWD/link_a.c" "$PWD/link_b.c" 2>&1 | grep -q '^call a_call_guard 0000000039300000')
+    }
+    bg run_check "eval_sweep --eval-link" chk_link
     # 13e1s. built state (--eval-state): tests/cfg_state/state.c's functions take the record its
     #        constructor builds; compared with gcc, which runs the constructor afresh per call, and
     #        the state functions must have been compared (ctx_check__st0, the first of the states of a type)
-    if (cd "$ROOT/tests/cfg_state" && EVAL_SWEEP_STATE=1 sh ../eval_sweep.sh "$CEREAL" state.c \
-            >"$TMP/state.out" 2>&1 </dev/null) &&
-       (cd "$ROOT/tests/cfg_state" && "$CEREAL" check --target=x86_64-linux-gnu --eval-state --eval-sweep=24,1234 \
-            "$PWD/state.c" 2>&1 </dev/null | grep -q '^call ctx_check__st0 '); then
-        ok
-    else
-        bad "eval_sweep --eval-state"
-        head -10 "$TMP/state.out" | sed 's/^/    /'
-    fi
+    chk_state() {
+        (cd "$ROOT/tests/cfg_state" && EVAL_SWEEP_STATE=1 sh ../eval_sweep.sh "$CEREAL" state.c) &&
+        (cd "$ROOT/tests/cfg_state" && "$CEREAL" check --target=x86_64-linux-gnu --eval-state --eval-sweep=24,1234 "$PWD/state.c" 2>&1 | grep -q '^call ctx_check__st0 ')
+    }
+    bg run_check "eval_sweep --eval-state" chk_state
     # 13e1l. lazy blobs (docs/LAZY_BLOBS_DESIGN.md): the fixture shaped like Lua's luaV_execute must give its
     #        results, with the solver where the environment has one (tests/eval_lazy.sh)
-    if sh "$ROOT/tests/eval_lazy.sh" "$CEREAL" >"$TMP/lazy.out" 2>&1 </dev/null; then
-        ok
-    else
-        bad "eval_lazy"
-        head -10 "$TMP/lazy.out" | sed 's/^/    /'
-    fi
+    bg run_check "eval_lazy" sh "$ROOT/tests/eval_lazy.sh" "$CEREAL"
     # 13e1z. library oracle (bench/tools/lib_oracle.sh): zstd, with state, N=2, each gcc call in a forked child;
     #        only where the corpus is (~/corpus).  Passes when gcc never crashes and the only differing functions are
     #        the two that read the machine (cpuid, the alignment of a raw address).  Opt-in (LIB_ORACLE=1): it took
