@@ -1,0 +1,4 @@
+get: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  schar_index.c:5:13  not proved (sat)       bounds read a
+get: 0 proved, 1 not proved, 0 unsupported
+exit 1

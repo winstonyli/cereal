@@ -1,0 +1,4 @@
+refl: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  slice_negbound.c:5:1  not proved (sat)       ensures
+refl: 0 proved, 1 not proved, 0 unsupported
+exit 1
