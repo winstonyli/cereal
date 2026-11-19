@@ -46,6 +46,24 @@ fail=0
 ok() { pass=$((pass + 1)); }
 bad() { fail=$((fail + 1)); echo "FAIL: $*"; }
 
+# defer FAILMSG CMD...: start a self-contained check (one process tree, its own temp dirs) in the background so it
+# overlaps the rest of the suite; `join_deferred`, at the end, waits and scores each in start order.
+defer_n=0
+defer() {
+    defer_n=$((defer_n + 1))
+    echo "$1" >"$TMP/d$defer_n.msg"
+    shift
+    ("$@" >"$TMP/d$defer_n.out" 2>&1 </dev/null; echo $? >"$TMP/d$defer_n.rc") &
+}
+join_deferred() {
+    wait
+    i=1
+    while [ "$i" -le "$defer_n" ]; do
+        if [ "$(cat "$TMP/d$i.rc")" = 0 ]; then ok; else bad "$(cat "$TMP/d$i.msg")"; sed 's/^/    /' "$TMP/d$i.out" | tail -10; fi
+        i=$((i + 1))
+    done
+}
+
 diff_pp() { # diff_pp NAME FILE FLAGS...  (ALLOW_ERRORS=1: erroneous input)
     name=$1 file=$2
     shift 2
@@ -188,25 +206,10 @@ for h in stdio.h stdlib.h pthread.h; do
     par_same "<$h>" "$TMP/h.c" -D_GNU_SOURCE -O2
 done
 if command -v "$REFCC" >/dev/null 2>&1; then
-    if python3 "$ROOT/tests/fuzz_gcc.py" "$CEREAL" "${FUZZ_GCC_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fg" 2>&1; then
-        ok
-    else
-        bad "gcc fuzz (reduced cases kept)"
-        sed 's/^/    /' "$TMP/fg" | tail -10
-    fi
+    defer "gcc fuzz (reduced cases kept)" python3 "$ROOT/tests/fuzz_gcc.py" "$CEREAL" "${FUZZ_GCC_N:-40}" "${FUZZ_SEED:-1}"
 fi
-if python3 "$ROOT/tests/fuzz_par.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fz" 2>&1; then
-    ok
-else
-    bad "parallel fuzz"
-    sed 's/^/    /' "$TMP/fz" | tail -10
-fi
-if python3 "$ROOT/tests/fuzz_cells.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}" >"$TMP/fc" 2>&1; then
-    ok
-else
-    bad "cell cache fuzz (random edits vs full rebuilds)"
-    sed 's/^/    /' "$TMP/fc" | tail -10
-fi
+defer "parallel fuzz" python3 "$ROOT/tests/fuzz_par.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}"
+defer "cell cache fuzz (random edits vs full rebuilds)" python3 "$ROOT/tests/fuzz_cells.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}"
 
 jobs_same() { # jobs_same NAME DIR ARGS...
     name=$1 dir=$2
@@ -306,6 +309,7 @@ parse_golden() { # parse_golden NAME FLAGS...  (in tests/parse)
 par_goldens() {
     pg_n=${GOLDEN_JOBS:-4}
     pg_out=$TMP
+    pg_pids=
     pg_k=0
     while [ "$pg_k" -lt "$pg_n" ]; do
         (
@@ -321,9 +325,13 @@ par_goldens() {
             done
             echo "$pass $fail" >"$pg_out/r$pg_k"
         ) >"$pg_out/o$pg_k" 2>&1 &
+        pg_pids="$pg_pids $!"
         pg_k=$((pg_k + 1))
     done
-    wait
+    # only the shards: the deferred checks keep running (join_deferred)
+    # shellcheck disable=SC2086
+    wait $pg_pids
+    pg_pids=
     pg_k=0
     while [ "$pg_k" -lt "$pg_n" ]; do
         cat "$pg_out/o$pg_k"
@@ -654,21 +662,10 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     fi
     # 13f. native oracle (tests/asm_exec.py): --dump-asm output assembled,
     #      linked and run against gcc on the same random arguments
-    if (cd "$ROOT/tests/cfg_exec" && python3 -P ../asm_exec.py "$CEREAL" *.c ../asm_exec/*.c \
-            >"$TMP/asm.out" 2>&1 </dev/null); then
-        ok
-    else
-        bad "asm_exec"
-        head -10 "$TMP/asm.out" | sed 's/^/    /'
-    fi
+    defer "asm_exec" sh -c 'cd "$1/tests/cfg_exec" && python3 -P ../asm_exec.py "$2" *.c ../asm_exec/*.c' _ "$ROOT" "$CEREAL"
     # 13g. evaluator (tests/eval.sh, src/c/eval.c): main() run in the
     #      evaluator against the gcc build, and UB stopping with its reason
-    if sh "$ROOT/tests/eval.sh" "$CEREAL" >"$TMP/eval.out" 2>&1 </dev/null; then
-        ok
-    else
-        bad "eval"
-        head -10 "$TMP/eval.out" | sed 's/^/    /'
-    fi
+    defer "eval" sh "$ROOT/tests/eval.sh" "$CEREAL"
 fi
 
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
@@ -1097,5 +1094,6 @@ for f in *.c; do
     if diff -u "$n.pc" "$TMP/pc.out" >"$TMP/pc.diff"; then ok; else bad "pc/$n"; sed 's/^/    /' "$TMP/pc.diff" | head -20; fi
 done
 cd "$ROOT"
+join_deferred
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
