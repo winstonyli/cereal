@@ -330,119 +330,129 @@ static bool set_std(Options *o, const char *name)
     return false;
 }
 
-int options_parse_one(Options *o, int argc, char **argv, int i)
+/* The common options, tried in order: the first row that matches wins.
+ * `match` says how `name` is read against the argument and where the value
+ * is; `act` what to do with it.  A_SET stores `val` in the one-byte field
+ * at `off`; the other actions are run by apply_opt.
+ *   O_EXACT  the argument is `name`
+ *   O_SEP    the argument is `name`; the value is the next argument
+ *   O_ARG    `name` and then the value, joined (-Ifoo) or the next argument
+ *   O_PFX    `name` and then the value, which may be empty (-O2, -fparallel=on)
+ *   O_PFX1   the same, with a value that is not empty
+ *   O_WORD   `name` alone or `name=...` (-Wbidi-chars=any) */
+enum { O_EXACT, O_SEP, O_ARG, O_PFX, O_PFX1, O_WORD };
+enum { A_SET, A_DIR, A_MACRO, A_STD, A_PEDANTIC, A_TRIGRAPHS, A_BIDI, A_NORM, A_WFLAG, A_CFPROT,
+       A_TRACK, A_DUMP, A_PARAM, A_OPT, A_PAR, A_THREADS, A_JOBS, A_WINDOW, A_CHUNK, A_OUTPUT, A_SKIP };
+
+typedef struct OptRow {
+    const char *name;
+    unsigned char match, act;
+    unsigned short off;
+    int val;                    /* A_SET: the byte; A_DIR: 0 angle, 1 quote, 2 system; A_MACRO: its kind; A_PEDANTIC: 1 for -errors */
+} OptRow;
+
+#define SET(n, f, v) {n, O_EXACT, A_SET, offsetof(Options, f), v}
+#define ACT(n, m, a, v) {n, m, a, 0, v}
+
+static const OptRow opt_rows[] = {
+    ACT("-I", O_ARG, A_DIR, 0), ACT("-iquote", O_ARG, A_DIR, 1), ACT("-isystem", O_ARG, A_DIR, 2),
+    ACT("-D", O_ARG, A_MACRO, 'D'), ACT("-U", O_ARG, A_MACRO, 'U'),
+    SET("-fcereal-late-macros", late_macros, 1),
+    ACT("-include", O_SEP, A_MACRO, 'i'), ACT("-imacros", O_SEP, A_MACRO, 'm'),
+    SET("-nostdinc", pp.nostdinc, 1), SET("-undef", pp.no_predefs, 1),
+    ACT("-std=", O_PFX, A_STD, 0),
+    ACT("-pedantic", O_EXACT, A_PEDANTIC, 0), ACT("-Wpedantic", O_EXACT, A_PEDANTIC, 0),
+    ACT("-pedantic-errors", O_EXACT, A_PEDANTIC, 1),
+    ACT("-trigraphs", O_EXACT, A_TRIGRAPHS, 0),
+    SET("-Wfatal-errors", fatal_errors, 1), SET("-Wno-fatal-errors", fatal_errors, 0),
+    SET("-Wsystem-headers", show_system, 1), SET("-Wno-system-headers", show_system, 0),
+    ACT("-Wbidi-chars", O_WORD, A_BIDI, 0), SET("-Wno-bidi-chars", pp.lex.bidi, 0),
+    ACT("-Wnormalized", O_WORD, A_NORM, 0), SET("-Wno-normalized", pp.lex.norm, 3),
+    ACT("-Wl,", O_PFX, A_SKIP, 0), ACT("-Wa,", O_PFX, A_SKIP, 0),    /* the linker's and assembler's */
+    ACT("-W", O_PFX1, A_WFLAG, 0),
+    SET("-fdiagnostics-format=json", json, 1), SET("-fdiagnostics-parseable-fixits", fixit_lines, 1),
+    SET("-fdiagnostics-generate-patch", gen_patch, 1),
+    SET("-fcolor-diagnostics", color, 1), SET("-fdiagnostics-color", color, 1),
+    SET("-fshort-enums", short_enums, 1), SET("-fno-short-enums", short_enums, 0),
+    SET("-fstrict-aliasing", strict_alias, 1), SET("-fno-strict-aliasing", strict_alias, 2),
+    SET("-flax-vector-conversions", lax_vector, 1), SET("-fno-lax-vector-conversions", lax_vector, 0),
+    ACT("-fcf-protection=", O_PFX, A_CFPROT, 0),
+    SET("-fcf-protection", cf_nobranch, 0), SET("-fno-cf-protection", cf_nobranch, 1),
+    SET("-w", no_warnings, 1),
+    ACT("-ftrack-macro-expansion=", O_PFX, A_TRACK, 0),
+    /* middle-end only: no effect on diagnostics, but the pass names are checked */
+    ACT("-fdump-", O_PFX, A_DUMP, 0), ACT("-fcompare-debug", O_PFX, A_DUMP, 0),
+    ACT("--param", O_SEP, A_PARAM, 0), ACT("--param=", O_PFX, A_PARAM, 0),
+    SET("-fsystem-warnings", show_system, 1),
+    ACT("-O", O_PFX, A_OPT, 0),                     /* affects predefined macros only */
+    SET("-fcheck-macro-versions", check_versions, 1),
+    ACT("-fparallel=", O_PFX, A_PAR, 0), ACT("-fparallel-threads=", O_PFX, A_THREADS, 0),
+    ACT("-j", O_ARG, A_JOBS, 0),
+    ACT("-fparallel-window=", O_PFX, A_WINDOW, 0), ACT("-fparallel-chunk=", O_PFX, A_CHUNK, 0),
+    SET("-P", linemarkers, 0),
+    ACT("-o", O_SEP, A_OUTPUT, 0),
+};
+
+static bool row_matches(const OptRow *r, const char *a)
 {
-    const char *a = argv[i];
-    int start = i;
+    size_t n = strlen(r->name);
+    switch (r->match) {
+    case O_EXACT: case O_SEP: return !strcmp(a, r->name);
+    case O_PFX1:              return !strncmp(a, r->name, n) && a[n];
+    case O_WORD:              return !strncmp(a, r->name, n) && (!a[n] || a[n] == '=');
+    default:                  return !strncmp(a, r->name, n);
+    }
+}
+
+/* Run a matched row; `i` moves past a value taken from the next argument. */
+static void apply_opt(Options *o, int argc, char **argv, int *i, const OptRow *r)
+{
+    const char *a = argv[*i], *v = a + strlen(r->name);
+    int before = o->bad_options;
     CmdlineMacro cm = {0};
-    if (!strncmp(a, "-I", 2)) {
-        vec_push(&o->pp.angle_dirs, arg_value(o, argc, argv, &i, "-I"));
-    } else if (!strncmp(a, "-iquote", 7)) {
-        vec_push(&o->pp.quote_dirs, arg_value(o, argc, argv, &i, "-iquote"));
-    } else if (!strncmp(a, "-isystem", 8)) {
-        vec_push(&o->pp.system_dirs, arg_value(o, argc, argv, &i, "-isystem"));
-    } else if (!strncmp(a, "-D", 2)) {
-        cm.kind = 'D';
-        cm.late = o->late_macros;
-        cm.text = arg_value(o, argc, argv, &i, "-D");
+    if (r->match == O_ARG || r->match == O_SEP)
+        v = arg_value(o, argc, argv, i, r->name);
+    switch (r->act) {
+    case A_SET:
+        *((unsigned char *)o + r->off) = (unsigned char)r->val;
+        break;
+    case A_DIR:
+        if (r->val == 0)
+            vec_push(&o->pp.angle_dirs, v);
+        else if (r->val == 1)
+            vec_push(&o->pp.quote_dirs, v);
+        else
+            vec_push(&o->pp.system_dirs, v);
+        break;
+    case A_MACRO:
+        cm.kind = (char)r->val;
+        cm.late = (r->val == 'D' || r->val == 'U') && o->late_macros;
+        cm.text = v;
         vec_push(&o->macros, cm);
-    } else if (!strncmp(a, "-U", 2)) {
-        cm.kind = 'U';
-        cm.late = o->late_macros;
-        cm.text = arg_value(o, argc, argv, &i, "-U");
-        vec_push(&o->macros, cm);
-    } else if (!strcmp(a, "-fcereal-late-macros")) {
-        o->late_macros = true;
-    } else if (!strcmp(a, "-include") || !strcmp(a, "-imacros")) {
-        cm.kind = a[2] == 'n' ? 'i' : 'm';
-        cm.text = arg_value(o, argc, argv, &i, a);
-        vec_push(&o->macros, cm);
-    } else if (!strcmp(a, "-nostdinc")) {
-        o->pp.nostdinc = true;
-    } else if (!strcmp(a, "-undef")) {
-        o->pp.no_predefs = true;
-    } else if (!strncmp(a, "-std=", 5)) {
-        if (!set_std(o, a + 5) && !o->lenient)
+        break;
+    case A_STD:
+        if (!set_std(o, v) && !o->lenient)
             opt_error(o, "only C99, C11, C17 and C23 are supported (got '%s')", a);
-    } else if (!strcmp(a, "-pedantic") || !strcmp(a, "-Wpedantic")) {
+        break;
+    case A_PEDANTIC:
         o->pp.pedantic = true;
         o->pp.lex.ucn_c99 = true;
+        o->pedantic_errors |= r->val != 0;
         vec_push(&o->wflags, "pedantic");
-    } else if (!strcmp(a, "-pedantic-errors")) {
-        o->pp.pedantic = true;
-        o->pp.lex.ucn_c99 = true;
-        o->pedantic_errors = true;
-        vec_push(&o->wflags, "pedantic");
-    } else if (!strcmp(a, "-trigraphs")) {
+        break;
+    case A_TRIGRAPHS:
         o->trigraphs_flag = true;
         o->pp.lex.trigraphs = true;
-    } else if (!strcmp(a, "-Wfatal-errors")) {
-        o->fatal_errors = true;
-    } else if (!strcmp(a, "-Wno-fatal-errors")) {
-        o->fatal_errors = false;
-    } else if (!strcmp(a, "-Wsystem-headers")) {
-        o->show_system = true;
-    } else if (!strcmp(a, "-Wno-system-headers")) {
-        o->show_system = false;
-    } else if (!strncmp(a, "-Wbidi-chars", 12) && (!a[12] || a[12] == '=')) {
-        bidi_option(o, a);
-    } else if (!strcmp(a, "-Wno-bidi-chars")) {
-        o->pp.lex.bidi = 0;
-    } else if (!strncmp(a, "-Wnormalized", 12) && (!a[12] || a[12] == '=')) {
-        norm_option(o, a);
-    } else if (!strcmp(a, "-Wno-normalized")) {
-        o->pp.lex.norm = 3;
-    } else if (!strncmp(a, "-W", 2) && a[2] && strncmp(a, "-Wl,", 4) &&
-               strncmp(a, "-Wa,", 4)) {
-        vec_push(&o->wflags, a + 2);
-    } else if (!strcmp(a, "-fdiagnostics-format=json")) {
-        o->json = true;
-    } else if (!strcmp(a, "-fdiagnostics-parseable-fixits")) {
-        o->fixit_lines = true;
-    } else if (!strcmp(a, "-fdiagnostics-generate-patch")) {
-        o->gen_patch = true;
-    } else if (!strcmp(a, "-fcolor-diagnostics") ||
-               !strcmp(a, "-fdiagnostics-color")) {
-        o->color = true;
-    } else if (!strcmp(a, "-fshort-enums")) {
-        o->short_enums = true;
-    } else if (!strcmp(a, "-fno-short-enums")) {
-        o->short_enums = false;
-    } else if (!strcmp(a, "-fstrict-aliasing")) {
-        o->strict_alias = 1;
-    } else if (!strcmp(a, "-fno-strict-aliasing")) {
-        o->strict_alias = 2;
-    } else if (!strcmp(a, "-flax-vector-conversions")) {
-        o->lax_vector = true;
-    } else if (!strcmp(a, "-fno-lax-vector-conversions")) {
-        o->lax_vector = false;
-    } else if (!strncmp(a, "-fcf-protection=", 16)) {
-        o->cf_nobranch = !strcmp(a + 16, "none") || !strcmp(a + 16, "return");
-    } else if (!strcmp(a, "-fcf-protection")) {
-        o->cf_nobranch = false;
-    } else if (!strcmp(a, "-fno-cf-protection")) {
-        o->cf_nobranch = true;
-    } else if (!strcmp(a, "-w")) {
-        o->no_warnings = true;
-    } else if (!strncmp(a, "-ftrack-macro-expansion=", 24)) {
-        o->track0 = a[24] == '0';
-    } else if (!strncmp(a, "-fdump-", 7) || !strncmp(a, "-fcompare-debug", 15)) {
-        /* middle-end only: no effect on diagnostics, but the pass names are
-         * checked */
-        check_dump(o, a);
-    } else if (!strcmp(a, "--param")) {
-        check_param(o, arg_value(o, argc, argv, &i, "--param"));
-    } else if (!strncmp(a, "--param=", 8)) {
-        check_param(o, a + 8);
-    } else if (!strcmp(a, "-fsystem-warnings")) {
-        o->show_system = true;
-    } else if (a[1] == 'O') {
-        /* affects predefined macros only */
-        o->opt_level = a[2] ? a[2] : '1';
-    } else if (!strcmp(a, "-fcheck-macro-versions")) {
-        o->check_versions = true;
-    } else if (!strncmp(a, "-fparallel=", 11)) {
-        const char *v = a + 11;
+        break;
+    case A_BIDI:   bidi_option(o, a); break;
+    case A_NORM:   norm_option(o, a); break;
+    case A_WFLAG:  vec_push(&o->wflags, v); break;
+    case A_CFPROT: o->cf_nobranch = !strcmp(v, "none") || !strcmp(v, "return"); break;
+    case A_TRACK:  o->track0 = v[0] == '0'; break;
+    case A_DUMP:   check_dump(o, a); break;
+    case A_PARAM:  check_param(o, v); break;
+    case A_OPT:    o->opt_level = v[0] ? v[0] : '1'; break;
+    case A_PAR:
         if (!strcmp(v, "on"))
             o->parallel = 'y';
         else if (!strcmp(v, "off"))
@@ -451,28 +461,38 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
             o->parallel = 'a';
         else
             opt_error(o, "-fparallel= expects on, off or auto (got '%s')", v);
-    } else if (!strncmp(a, "-fparallel-threads=", 19)) {
-        o->par_threads = atoi(a + 19);
-    } else if (!strncmp(a, "-j", 2)) {
-        int before = o->bad_options;
-        const char *v = arg_value(o, argc, argv, &i, "-j");
+        break;
+    case A_THREADS: o->par_threads = atoi(v); break;
+    case A_JOBS:
         o->jobs = atoi(v);
         if (o->jobs < 1 && o->bad_options == before)
             opt_error(o, "-j expects a positive number (got '%s')", v);
-    } else if (!strncmp(a, "-fparallel-window=", 18)) {
-        o->par_window = (unsigned)strtoul(a + 18, NULL, 10);
-    } else if (!strncmp(a, "-fparallel-chunk=", 17)) {
-        o->par_chunk = (size_t)strtoul(a + 17, NULL, 10);
-    } else if (!strcmp(a, "-P")) {
-        o->linemarkers = false;
-    } else if (!strcmp(a, "-o")) {
-        o->output = arg_value(o, argc, argv, &i, "-o");
-    } else if (a[0] == '-' && a[1]) {
-        return option_ignored(o, argc, argv, i);
-    } else {
-        vec_push(&o->inputs, a);
+        break;
+    case A_WINDOW: o->par_window = (unsigned)strtoul(v, NULL, 10); break;
+    case A_CHUNK:  o->par_chunk = (size_t)strtoul(v, NULL, 10); break;
+    case A_OUTPUT: o->output = v; break;
+    default:       break;
     }
-    return i - start + 1;
+}
+
+int options_parse_one(Options *o, int argc, char **argv, int i)
+{
+    const char *a = argv[i];
+    int start = i;
+    size_t k;
+    for (k = 0; k < sizeof opt_rows / sizeof *opt_rows; k++) {
+        const OptRow *r = &opt_rows[k];
+        if (!row_matches(r, a))
+            continue;
+        if (r->act == A_SKIP)
+            break;
+        apply_opt(o, argc, argv, &i, r);
+        return i - start + 1;
+    }
+    if (a[0] == '-' && a[1])
+        return option_ignored(o, argc, argv, i);
+    vec_push(&o->inputs, a);
+    return 1;
 }
 
 /* gcc's size arguments: digits and an optional unit (kB, KiB, MB, ...). */

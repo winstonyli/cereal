@@ -459,6 +459,10 @@ for f in "-x c++" "-x c-header"; do
     # shellcheck disable=SC2086
     "$CEREAL" check -std=c99 $f "$TMP/bo.c" >/dev/null 2>&1 && bad "option $f accepted" || ok
 done
+# an input whose second character is 'O' is a file, not -O (driver.c once read a[1] == 'O' as an option)
+printf 'int x;\n' >"$TMP/dOne.c"
+"$CEREAL" check "$TMP/dOne.c" >/dev/null 2>&1 && ok || bad "an input file named dOne.c"
+(cd "$TMP" && "$CEREAL" check dOne.c >/dev/null 2>&1) && ok || bad "a relative input named dOne.c"
 
 # 13b. response files: every tests/rsp/*.rsp passed as `@file` (gcc's quoting,
 #     nesting relative to the working directory, empty and blank files)
