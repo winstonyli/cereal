@@ -5,7 +5,7 @@
 # sweep must print calls with the five results of lz_run past the first pointer (the first four result bytes, hex; -1, the call's NULL path, may or may not show and is left out).
 C=${1:?cereal binary}
 D=$(cd "$(dirname "$0")" && pwd)
-# Each group below is independent, so they run in parallel (EVAL_LAZY_JOBS at a time, default 4; the file ran
+# Each group below is independent, so they run in parallel (EVAL_LAZY_JOBS at a time, default 6; the file ran
 # serially for 202 s under ASan).  `eval_lazy.sh CEREAL GROUP[:ARG]` runs one group; with no GROUP it runs them
 # all and prints their output in order.  A group exits 1 on its first failure.
 g_downcast() {
@@ -228,12 +228,12 @@ g_chaingcc() {
 sh "$D/eval_sweep.sh" "$C" "$D/cfg_lazy/lazy_chain.c" >/dev/null 2>&1 || { echo "eval_lazy: lazy_chain.c differs from gcc"; exit 1; }
 echo "eval_lazy: lazy chain agrees with gcc"
 }
-GROUPS_ALL="downcast guard stop paralias list size selfptr igoto solver free realloc addr uninit chain:1234 chain:1 chain:7 chaingcc"
+GROUPS_ALL="chain:1234 chain:1 chain:7 chaingcc solver downcast guard stop paralias list size selfptr igoto free realloc addr uninit"
 if [ -n "${2:-}" ]; then "g_${2%%:*}" "${2#*:}"; exit $?; fi
 O=$(mktemp -d "${TMPDIR:-/tmp}/eval_lazy.XXXXXX") || exit 1
 trap 'rm -rf "$O"' EXIT
 # shellcheck disable=SC2086
-printf '%s\n' $GROUPS_ALL | xargs -P "${EVAL_LAZY_JOBS:-4}" -I{} sh -c 'sh "$1" "$2" "$3" >"$4/$3.out" 2>&1 || touch "$4/$3.bad"' _ "$0" "$C" {} "$O"
+printf '%s\n' $GROUPS_ALL | xargs -P "${EVAL_LAZY_JOBS:-6}" -I{} sh -c 'sh "$1" "$2" "$3" >"$4/$3.out" 2>&1 || touch "$4/$3.bad"' _ "$0" "$C" {} "$O"
 rc=0
 for g in $GROUPS_ALL; do
     cat "$O/$g.out"
