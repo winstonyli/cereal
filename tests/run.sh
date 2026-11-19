@@ -46,22 +46,44 @@ fail=0
 ok() { pass=$((pass + 1)); }
 bad() { fail=$((fail + 1)); echo "FAIL: $*"; }
 
-# defer FAILMSG CMD...: start a self-contained check (one process tree, its own temp dirs) in the background so it
-# overlaps the rest of the suite; `join_deferred`, at the end, waits and scores each in start order.
-defer_n=0
-defer() {
-    defer_n=$((defer_n + 1))
-    echo "$1" >"$TMP/d$defer_n.msg"
-    shift
-    ("$@" >"$TMP/d$defer_n.out" 2>&1 </dev/null; echo $? >"$TMP/d$defer_n.rc") &
+# bg FUNC ARGS...: run FUNC in a background subshell with its own scratch dir and its own pass/fail counts, so it
+# overlaps the rest of the suite; join_bg [FROM] waits for the jobs started at or after number FROM (default: all
+# not yet joined) and merges their output and counts in start order.  FUNC must be self-contained (absolute paths,
+# no state the rest of the suite reads).  A job that is not joined by the end of the run is lost, so the last line
+# of the file joins them all.
+bg_n=0
+bg() {
+    bg_n=$((bg_n + 1))
+    bg_k=$bg_n
+    (
+        TMP=$bg_dir/b$bg_k
+        mkdir -p "$TMP"
+        pass=0 fail=0
+        "$@"
+        echo "$pass $fail" >"$bg_dir/r$bg_k"
+    ) >"$bg_dir/o$bg_k" 2>&1 &
+    eval "bg_pid$bg_k=\$!"
 }
-join_deferred() {
-    wait
-    i=1
-    while [ "$i" -le "$defer_n" ]; do
-        if [ "$(cat "$TMP/d$i.rc")" = 0 ]; then ok; else bad "$(cat "$TMP/d$i.msg")"; sed 's/^/    /' "$TMP/d$i.out" | tail -10; fi
-        i=$((i + 1))
+join_bg() {
+    bg_i=${1:-1}
+    while [ "$bg_i" -le "$bg_n" ]; do
+        if [ ! -e "$bg_dir/j$bg_i" ]; then
+            eval "wait \$bg_pid$bg_i"
+            cat "$bg_dir/o$bg_i"
+            read -r bg_p bg_f <"$bg_dir/r$bg_i"
+            pass=$((pass + bg_p))
+            fail=$((fail + bg_f))
+            : >"$bg_dir/j$bg_i"
+        fi
+        bg_i=$((bg_i + 1))
     done
+}
+bg_dir=$TMP
+# run_check MSG CMD...: CMD is one check (a failure scores one `bad MSG` with the last 10 lines of its output)
+run_check() {
+    rc_msg=$1
+    shift
+    if "$@" >"$TMP/rc.out" 2>&1 </dev/null; then ok; else bad "$rc_msg"; sed 's/^/    /' "$TMP/rc.out" | tail -10; fi
 }
 
 diff_pp() { # diff_pp NAME FILE FLAGS...  (ALLOW_ERRORS=1: erroneous input)
@@ -206,10 +228,10 @@ for h in stdio.h stdlib.h pthread.h; do
     par_same "<$h>" "$TMP/h.c" -D_GNU_SOURCE -O2
 done
 if command -v "$REFCC" >/dev/null 2>&1; then
-    defer "gcc fuzz (reduced cases kept)" python3 "$ROOT/tests/fuzz_gcc.py" "$CEREAL" "${FUZZ_GCC_N:-40}" "${FUZZ_SEED:-1}"
+    bg run_check "gcc fuzz (reduced cases kept)" python3 "$ROOT/tests/fuzz_gcc.py" "$CEREAL" "${FUZZ_GCC_N:-40}" "${FUZZ_SEED:-1}"
 fi
-defer "parallel fuzz" python3 "$ROOT/tests/fuzz_par.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}"
-defer "cell cache fuzz (random edits vs full rebuilds)" python3 "$ROOT/tests/fuzz_cells.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}"
+bg run_check "parallel fuzz" python3 "$ROOT/tests/fuzz_par.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}"
+bg run_check "cell cache fuzz (random edits vs full rebuilds)" python3 "$ROOT/tests/fuzz_cells.py" "$CEREAL" "${FUZZ_N:-40}" "${FUZZ_SEED:-1}"
 
 jobs_same() { # jobs_same NAME DIR ARGS...
     name=$1 dir=$2
@@ -304,42 +326,26 @@ parse_golden() { # parse_golden NAME FLAGS...  (in tests/parse)
     fi
 }
 # par_goldens FUNC: run FUNC NAME and FUNC NAME <cells flags> over *.c in the
-# current directory, sharded over $GOLDEN_JOBS subshells (each with its own
-# scratch dir); their output and counts are merged in shard order.
+# current directory, sharded over $GOLDEN_JOBS background jobs (bg); returns once they are joined.
+pg_shard() { # pg_shard FUNC K N
+    i=0
+    for f in *.c; do
+        [ -f "$f" ] || continue
+        i=$((i + 1))
+        [ $((i % $3)) -eq "$2" ] || continue
+        "$1" "${f%.c}"
+        "$1" "${f%.c}" --cells -fparallel-chunk=1 -fparallel-threads=2
+    done
+}
 par_goldens() {
     pg_n=${GOLDEN_JOBS:-4}
-    pg_out=$TMP
-    pg_pids=
+    pg_from=$((bg_n + 1))
     pg_k=0
     while [ "$pg_k" -lt "$pg_n" ]; do
-        (
-            TMP=$pg_out/s$pg_k
-            mkdir -p "$TMP"
-            pass=0 fail=0 i=0
-            for f in *.c; do
-                [ -f "$f" ] || continue
-                i=$((i + 1))
-                [ $((i % pg_n)) -eq "$pg_k" ] || continue
-                "$1" "${f%.c}"
-                "$1" "${f%.c}" --cells -fparallel-chunk=1 -fparallel-threads=2
-            done
-            echo "$pass $fail" >"$pg_out/r$pg_k"
-        ) >"$pg_out/o$pg_k" 2>&1 &
-        pg_pids="$pg_pids $!"
+        bg pg_shard "$1" "$pg_k" "$pg_n"
         pg_k=$((pg_k + 1))
     done
-    # only the shards: the deferred checks keep running (join_deferred)
-    # shellcheck disable=SC2086
-    wait $pg_pids
-    pg_pids=
-    pg_k=0
-    while [ "$pg_k" -lt "$pg_n" ]; do
-        cat "$pg_out/o$pg_k"
-        read -r pg_p pg_f <"$pg_out/r$pg_k"
-        pass=$((pass + pg_p))
-        fail=$((fail + pg_f))
-        pg_k=$((pg_k + 1))
-    done
+    join_bg "$pg_from"
 }
 
 cd "$ROOT/tests/parse"
@@ -662,10 +668,10 @@ if command -v gcc >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     fi
     # 13f. native oracle (tests/asm_exec.py): --dump-asm output assembled,
     #      linked and run against gcc on the same random arguments
-    defer "asm_exec" sh -c 'cd "$1/tests/cfg_exec" && python3 -P ../asm_exec.py "$2" *.c ../asm_exec/*.c' _ "$ROOT" "$CEREAL"
+    bg run_check "asm_exec" sh -c 'cd "$1/tests/cfg_exec" && python3 -P ../asm_exec.py "$2" *.c ../asm_exec/*.c' _ "$ROOT" "$CEREAL"
     # 13g. evaluator (tests/eval.sh, src/c/eval.c): main() run in the
     #      evaluator against the gcc build, and UB stopping with its reason
-    defer "eval" sh "$ROOT/tests/eval.sh" "$CEREAL"
+    bg run_check "eval" sh "$ROOT/tests/eval.sh" "$CEREAL"
 fi
 
 # 14. C symbol index: golden `--dump-symbols` (plain and from cells), and
@@ -722,10 +728,13 @@ sym_verify() { # sym_verify LABEL FILES...: one verdict for the lot
         ok
     fi
 }
-cd "$ROOT/tests/check" && sym_verify tests/check ./*.c
-cd "$ROOT/tests/parse" && sym_verify tests/parse ./*.c
-cd "$ROOT/tests/symidx" && sym_verify tests/symidx ./*.c
-cd "$ROOT" && sym_verify sources src/*.c src/analysis/*.c src/lsp/*.c src/c/*.c
+sv_all() {
+    cd "$ROOT/tests/check" && sym_verify tests/check ./*.c
+    cd "$ROOT/tests/parse" && sym_verify tests/parse ./*.c
+    cd "$ROOT/tests/symidx" && sym_verify tests/symidx ./*.c
+    cd "$ROOT" && sym_verify sources src/*.c src/analysis/*.c src/lsp/*.c src/c/*.c
+}
+bg sv_all
 
 # 16. compile-commands replay: `check --compile-commands DB` per case
 # (tests/ccdb/NAME.cmd: the arguments), stdout, stderr and exit status against
@@ -743,27 +752,30 @@ ccdb_run() { # ccdb_run NAME JOBS
             sed "s|$ROOT|ROOT|g"
     )
 }
-for f in "$ROOT"/tests/ccdb/*.cmd; do
-    n=$(basename "$f" .cmd)
-    ccdb_run "$n" 1 >"$TMP/cc.1"
-    ccdb_run "$n" 12 >"$TMP/cc.12"
-    if [ "${CCDB_UPDATE:-0}" = 1 ]; then
-        cp "$TMP/cc.1" "$ROOT/tests/ccdb/$n.expected"
-    fi
-    if cmp -s "$TMP/cc.1" "$ROOT/tests/ccdb/$n.expected" && cmp -s "$TMP/cc.1" "$TMP/cc.12"; then
-        ok
+ccdb_all() {
+    for f in "$ROOT"/tests/ccdb/*.cmd; do
+        n=$(basename "$f" .cmd)
+        ccdb_run "$n" 1 >"$TMP/cc.1"
+        ccdb_run "$n" 12 >"$TMP/cc.12"
+        if [ "${CCDB_UPDATE:-0}" = 1 ]; then
+            cp "$TMP/cc.1" "$ROOT/tests/ccdb/$n.expected"
+        fi
+        if cmp -s "$TMP/cc.1" "$ROOT/tests/ccdb/$n.expected" && cmp -s "$TMP/cc.1" "$TMP/cc.12"; then
+            ok
+        else
+            bad "ccdb/$n"
+            diff "$ROOT/tests/ccdb/$n.expected" "$TMP/cc.1" | head -10 | sed "s/^/    /"
+            cmp -s "$TMP/cc.1" "$TMP/cc.12" || echo "    -j1 and -j12 differ"
+        fi
+    done
+    if [ -e "$ROOT/tests/ccdb/src/ok.d" ]; then
+        rm -f "$ROOT/tests/ccdb/src/ok.d"
+        bad "ccdb: replayed -MD wrote ok.d"
     else
-        bad "ccdb/$n"
-        diff "$ROOT/tests/ccdb/$n.expected" "$TMP/cc.1" | head -10 | sed "s/^/    /"
-        cmp -s "$TMP/cc.1" "$TMP/cc.12" || echo "    -j1 and -j12 differ"
+        ok
     fi
-done
-if [ -e "$ROOT/tests/ccdb/src/ok.d" ]; then
-    rm -f "$ROOT/tests/ccdb/src/ok.d"
-    bad "ccdb: replayed -MD wrote ok.d"
-else
-    ok
-fi
+}
+bg ccdb_all
 
 # 17. -M family: every tests/deps/NAME.cmd (the arguments; run in a scratch
 # copy of tests/deps by deps_case.sh) prints the rule, every file it writes
@@ -838,22 +850,25 @@ done
 
 # 19. the edit builder: tests/fix/NAME.edits (`cereal fix --edits=F --diff`
 # in that directory); stdout, stderr and exit status against NAME.expected
-for f in "$ROOT"/tests/fix/*.edits; do
-    [ -f "$f" ] || continue
-    n=$(basename "$f" .edits)
-    (
-        cd "$ROOT/tests/fix" || exit 9
-        "$CEREAL" fix "--edits=$n.edits" --diff >"$TMP/fx.o" 2>"$TMP/fx.e" </dev/null
-        rc=$?
-        { cat "$TMP/fx.o"; echo "--- stderr"; cat "$TMP/fx.e"; echo "exit $rc"; }
-    ) >"$TMP/fx.all"
-    if cmp -s "$TMP/fx.all" "$ROOT/tests/fix/$n.expected"; then
-        ok
-    else
-        bad "fix/$n"
-        diff "$ROOT/tests/fix/$n.expected" "$TMP/fx.all" | head -10 | sed 's/^/    /'
-    fi
-done
+fix_edits_all() {
+    for f in "$ROOT"/tests/fix/*.edits; do
+        [ -f "$f" ] || continue
+        n=$(basename "$f" .edits)
+        (
+            cd "$ROOT/tests/fix" || exit 9
+            "$CEREAL" fix "--edits=$n.edits" --diff >"$TMP/fx.o" 2>"$TMP/fx.e" </dev/null
+            rc=$?
+            { cat "$TMP/fx.o"; echo "--- stderr"; cat "$TMP/fx.e"; echo "exit $rc"; }
+        ) >"$TMP/fx.all"
+        if cmp -s "$TMP/fx.all" "$ROOT/tests/fix/$n.expected"; then
+            ok
+        else
+            bad "fix/$n"
+            diff "$ROOT/tests/fix/$n.expected" "$TMP/fx.all" | head -10 | sed 's/^/    /'
+        fi
+    done
+}
+bg fix_edits_all
 
 # 20. fix-it columns are physical bytes: a byte order mark, CRLF line ends and
 # a file past 64 KiB (mmap'd) leave cereal's fix-its identical to gcc-13's
@@ -886,21 +901,24 @@ fi
 
 # 21. cereal fix on files: tests/fix/NAME.sh (run by tests/fix_case.sh in a
 # scratch directory) against NAME.expected, at -j1 and -j12 (the same output)
-for f in "$ROOT"/tests/fix/*.sh; do
-    n=$(basename "$f" .sh)
-    [ "$n" = lib ] && continue
-    [ "$n" = unwritable ] && [ "$(id -u)" = 0 ] && continue   # root can write
-    sh "$ROOT/tests/fix_case.sh" "$CEREAL" "$n" 1 >"$TMP/fc1" 2>&1
-    sh "$ROOT/tests/fix_case.sh" "$CEREAL" "$n" 12 >"$TMP/fc12" 2>&1
-    if cmp -s "$TMP/fc1" "$ROOT/tests/fix/$n.expected" &&
-        cmp -s "$TMP/fc1" "$TMP/fc12"; then
-        ok
-    else
-        bad "fix/$n (-j1 against golden, then -j1 against -j12)"
-        diff "$ROOT/tests/fix/$n.expected" "$TMP/fc1" | head -10 | sed 's/^/    /'
-        diff "$TMP/fc1" "$TMP/fc12" | head -6 | sed 's/^/    /'
-    fi
-done
+fix_cases_all() {
+    for f in "$ROOT"/tests/fix/*.sh; do
+        n=$(basename "$f" .sh)
+        [ "$n" = lib ] && continue
+        [ "$n" = unwritable ] && [ "$(id -u)" = 0 ] && continue   # root can write
+        sh "$ROOT/tests/fix_case.sh" "$CEREAL" "$n" 1 >"$TMP/fc1" 2>&1
+        sh "$ROOT/tests/fix_case.sh" "$CEREAL" "$n" 12 >"$TMP/fc12" 2>&1
+        if cmp -s "$TMP/fc1" "$ROOT/tests/fix/$n.expected" &&
+            cmp -s "$TMP/fc1" "$TMP/fc12"; then
+            ok
+        else
+            bad "fix/$n (-j1 against golden, then -j1 against -j12)"
+            diff "$ROOT/tests/fix/$n.expected" "$TMP/fc1" | head -10 | sed 's/^/    /'
+            diff "$TMP/fc1" "$TMP/fc12" | head -6 | sed 's/^/    /'
+        fi
+    done
+}
+bg fix_cases_all
 
 # 22. project index records (docs/B5_DESIGN.md 14.2, 14.4): `index-summary
 # --dump` goldens (tests/index/*.cmd); two --cache runs write the same bytes
@@ -1094,6 +1112,6 @@ for f in *.c; do
     if diff -u "$n.pc" "$TMP/pc.out" >"$TMP/pc.diff"; then ok; else bad "pc/$n"; sed 's/^/    /' "$TMP/pc.diff" | head -20; fi
 done
 cd "$ROOT"
-join_deferred
+join_bg
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
