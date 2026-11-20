@@ -15,6 +15,7 @@
 #include "fixres.h"
 #include "fixset.h"
 #include "jobs.h"
+#include "optrow.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -202,32 +203,32 @@ done:
 
 /* ---- options --------------------------------------------------------------- */
 
+enum { F_PASSES = OPT_ACT0 };
+
+#define FSET(n, f) OPT_SET1(n, 0, FixOpts, f, 1)
+#define FSTR(n, f) OPT_STR1(n, O_PFX, 0, FixOpts, f)
+static const OptRow fix_rows[] = {
+    FSET("--unsafe", unsafe), FSET("--diff", diff), FSET("--dry-run", dry), FSET("--apply", apply),
+    {"--max-passes=", O_PFX, F_PASSES, 0, 0, 0},
+    FSTR("--only=", only), FSTR("--root=", root), FSTR("--edits=", edits),
+};
+
 int fix_flag(FixOpts *fx, const char *a)
 {
-    if (!strcmp(a, "--unsafe"))
-        fx->unsafe = true;
-    else if (!strcmp(a, "--diff"))
-        fx->diff = true;
-    else if (!strcmp(a, "--dry-run"))
-        fx->dry = true;
-    else if (!strcmp(a, "--apply"))
-        fx->apply = true;
-    else if (!strncmp(a, "--max-passes=", 13)) {
+    void *const bases[] = {fx};
+    const OptRow *r = optrow_find(fix_rows, sizeof fix_rows / sizeof *fix_rows, a);
+    if (!r)
+        return 0;
+    if (r->act == F_PASSES) {
         char *end;
-        long v = strtol(a + 13, &end, 10);
-        if (!a[13] || *end || v < 1 || v > 1000) {
+        long v = strtol(a + strlen(r->name), &end, 10);
+        if (!a[strlen(r->name)] || *end || v < 1 || v > 1000) {
             fputs("cereal: --max-passes needs a number from 1 to 1000\n", stderr);
             return -1;
         }
         fx->max_passes = (int)v;
-    } else if (!strncmp(a, "--only=", 7))
-        fx->only = a + 7;
-    else if (!strncmp(a, "--root=", 7))
-        fx->root = a + 7;
-    else if (!strncmp(a, "--edits=", 8))
-        fx->edits = a + 8;
-    else
-        return 0;
+    } else
+        optrow_apply(bases, r, a + strlen(r->name));
     return 1;
 }
 
