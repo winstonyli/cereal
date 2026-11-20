@@ -26,6 +26,10 @@ within 0.5% of the figure in the script's header. The san and globals stages cat
 (Round 279: six UB sites and four unlisted globals had accumulated since the S1 rounds).
 The zstd library oracle (`tests/run.sh` 13e1z) is opt-in: `LIB_ORACLE=1 sh bench/tools/gate.sh` when evaluator,
 lazy-memory or `--eval-state` code changed, and before a tag.
+Run it capped to 12 of the 16 CPUs: `taskset -c 0-11 sh bench/tools/gate.sh`. Its stages sum to more job slots than that
+(run 2, verify 4, san 4+5+5, callgrind 1) and peaked at 15.5 busy cores while run and san overlapped; capped, the peak
+is 11.7 and the gate takes 6:48 instead of 6:16 (runs `cpucap-gate`, `cpucap-gate-ts12`, 2026-11-19). The gate is not
+a timing run, so it takes no CPU lease.
 
 ## Facts about the tree (verified)
 
