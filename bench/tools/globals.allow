@@ -23,9 +23,7 @@ main buf  CLI state set before threads
 main fe_opts  CLI options, read-only once units run
 main carry_old  CLI state set before threads
 main carry_at  CLI state set before threads
-main parse_cells  CLI option
-main dump_symbols  CLI option
-main verify_symbols  CLI option
+main mo  CLI options (MainOpts), read-only once units run
 main rsp  CLI state set before threads (@file arguments)
 # Language server: state outside the checker; B5 does not change its thread discipline.
 lsp/features tok_cache  server (semantic token cache)

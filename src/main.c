@@ -1,6 +1,7 @@
 /* main.c - the `cereal` command. */
 #include "fixmode.h"
 #include "driver.h"
+#include "optrow.h"
 #include "par.h"
 #include "ppout.h"
 #include "analysis/analysis.h"
@@ -251,7 +252,16 @@ done:
 /* ---- parse, -fsyntax-only ------------------------------------------------ */
 
 static FrontendOpts fe_opts;
-static bool parse_cells, dump_symbols, verify_symbols;
+/* What the options of the modes set, besides fe_opts. */
+typedef struct MainOpts {
+    bool all, check_graph, replay, no_cells, quiet, queries;
+    bool parse_cells, dump_symbols, verify_symbols;
+    unsigned char tokens;       /* --tokens: 1, =digest 2, =check 3 */
+} MainOpts;
+static MainOpts mo;
+
+enum { B_FE, B_MO };            /* the structs a row's offset is in: fe_opts, mo */
+
 static const char *carry_old, *carry_at;  /* --verify-carry=OLD[@PATH] */
 
 /* The text of OLD stands in for the file PATH (default: the input). */
@@ -361,21 +371,21 @@ static int parse_one(Options *o, const char *path, FILE *out, FILE *err,
     tp->diag.out = err;
     fo.out = out;
     fo.tast_bad = fe_opts.verify_tast || fe_opts.verify_cfg || fe_opts.prove ? &tast_bad : NULL;
-    if (parse_cells) {
+    if (mo.parse_cells) {
         po = par_options(o);
         fo.cells_par = &po;
     }
-    if (dump_symbols || verify_symbols) {
+    if (mo.dump_symbols || mo.verify_symbols) {
         fo.cidx = &ix;
-        fo.symidx_verify = verify_symbols ? out : NULL;
+        fo.symidx_verify = mo.verify_symbols ? out : NULL;
     }
     frontend_run(tp, path, &fo);
     rc = finish(tp, out);
     if (tast_bad && !rc)
         rc = 1;
-    if (ix && dump_symbols)
+    if (ix && mo.dump_symbols)
         cindex_dump(ix, &tp->sm, out);
-    if (ix && verify_symbols && cindex_verify(ix, &tp->sm, out) && !rc)
+    if (ix && mo.verify_symbols && cindex_verify(ix, &tp->sm, out) && !rc)
         rc = 1;
     cindex_free(ix);
     if (tp == &tu0)
@@ -1564,19 +1574,96 @@ out:
     return rc;
 }
 
+/* ---- cereal's own options ------------------------------------------------ */
+
+enum { M_VERIFY_TAST = OPT_ACT0, M_VERIFY_CFG, M_SWEEP, M_LINK, M_CARRY, M_VALIDATE, M_TARGET, M_HELP, M_LISTW };
+
+#define FE(n, f) OPT_SET1(n, B_FE, FrontendOpts, f, 1)
+#define MO(n, f, v) OPT_SET1(n, B_MO, MainOpts, f, v)
+#define MACT(n, m, a) {n, m, a, 0, 0, 0}
+
+static const OptRow main_rows[] = {
+    FE("--dump", dump), FE("--dump-types", dump_types), FE("--dump-tast", dump_tast),
+    MACT("--verify-tast", O_EXACT, M_VERIFY_TAST), FE("--dump-asm", dump_asm),
+    OPT_STR1("--emit-obj=", O_PFX, B_FE, FrontendOpts, emit_obj), FE("--dump-cfg", dump_cfg),
+    MACT("--eval-sweep=", O_PFX, M_SWEEP), MACT("--eval-link", O_EXACT, M_LINK),
+    FE("--eval-state", eval_state), OPT_STR1("--eval-only=", O_PFX, B_FE, FrontendOpts, eval_only),
+    FE("--eval-miss", eval_miss), OPT_STR1("--eval-solve=", O_PFX, B_FE, FrontendOpts, eval_solve),
+    FE("--eval-wrap", eval_wrap), FE("--prove", prove), MACT("--verify-cfg", O_EXACT, M_VERIFY_CFG),
+    MO("--dump-symbols", dump_symbols, 1), MO("--verify-symbols", verify_symbols, 1),
+    MACT("--verify-carry=", O_PFX, M_CARRY),
+    FE("--summaries", keep_summaries), FE("--dump-summaries", dump_summaries),
+    MACT("--validate-summaries=", O_PFX, M_VALIDATE), MACT("--target=", O_PFX, M_TARGET),
+    MO("--cells", parse_cells, 1), MO("--all", all, 1), MO("--check-graph", check_graph, 1),
+    MO("--replay", replay, 1), MO("--no-cells", no_cells, 1), MO("--no-output", quiet, 1),
+    MO("--tokens", tokens, 1), MO("--tokens=digest", tokens, 2), MO("--tokens=check", tokens, 3),
+    MO("--transcript", queries, 1),
+    MACT("--help", O_EXACT, M_HELP), MACT("-h", O_EXACT, M_HELP), MACT("--list-warnings", O_EXACT, M_LISTW),
+};
+
+/* Run a matched row of main_rows on argument `a`: -1 to go on, else the
+ * exit status. */
+static int main_opt(const OptRow *r, const char *a)
+{
+    void *const bases[] = {&fe_opts, &mo};
+    char *end, *at;
+    if (optrow_apply(bases, r, a + strlen(r->name)))
+        return -1;
+    switch (r->act) {
+    case M_VERIFY_TAST:
+        fe_opts.dump_tast = fe_opts.verify_tast = true;
+        break;
+    case M_VERIFY_CFG:
+        fe_opts.dump_cfg = fe_opts.verify_cfg = true;
+        break;
+    case M_SWEEP:
+        fe_opts.eval = EVAL_SWEEP;
+        fe_opts.eval_wrap = true;
+        fe_opts.eval_sweep = strtol(a + 13, &end, 10);
+        fe_opts.eval_seed = *end == ',' ? strtoul(end + 1, NULL, 10) : 1;
+        break;
+    case M_LINK:
+        fe_opts.link = xcalloc(1, sizeof *fe_opts.link);
+        break;
+    case M_CARRY:                   /* OLD[@PATH]; the argument is writable */
+        carry_old = a + 15;
+        if ((at = strchr((char *)carry_old, '@'))) {
+            *at = 0;
+            carry_at = at + 1;
+        }
+        break;
+    case M_VALIDATE:
+        fe_opts.validate_summaries = a + 21;
+        fe_opts.dump_summaries = true;
+        break;
+    case M_TARGET:
+        fe_opts.target = target_find(a + 9);
+        if (!fe_opts.target) {
+            fprintf(stderr, "cereal: unknown target '%s' (known: %s)\n", a + 9, target_names);
+            return 2;
+        }
+        break;
+    case M_HELP:
+        usage(stdout);
+        return 0;
+    case M_LISTW:
+        diag_list_options(stdout);
+        return 0;
+    }
+    return -1;
+}
+
 int main(int argc, char **argv)
 {
     Options o;
     const char *mode = NULL, *qkind = NULL, *qat = NULL;
-    bool all = false, check_graph = false, replay = false, no_cells = false,
-         quiet = false, queries = false;
     const char *ccdb = NULL;    /* --compile-commands DB */
     StrVec own = {0};           /* cereal's own options, for each entry */
     FixOpts fx = {0};
     bool ccdb_given = false;
     char **run_args = NULL;     /* run: the arguments after -- */
     int run_nargs = 0, run_status = 125;
-    int i, rc = 0, tokens = 0;
+    int i, rc = 0;
     static Arena rsp;           /* @file arguments: live for the whole run */
     const char *rsp_err;
     options_init(&o);
@@ -1613,6 +1700,7 @@ int main(int argc, char **argv)
         ccdb_given |= !strncmp(argv[i], "--compile-commands", 18);
     for (i = 1; i < argc; i++) {
         int n;
+        const OptRow *row;
         if (!mode && !strcmp(argv[i], "lsp")) {
             if (ccdb_given) {
                 fputs("cereal: lsp does not take --compile-commands (it finds "
@@ -1648,165 +1736,16 @@ int main(int argc, char **argv)
             qat = argv[++i];
             continue;
         }
-        if (!strcmp(argv[i], "--dump")) {
-            fe_opts.dump = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--dump-types")) {
-            fe_opts.dump_types = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--dump-tast")) {
-            fe_opts.dump_tast = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--verify-tast")) {
-            fe_opts.dump_tast = fe_opts.verify_tast = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--dump-asm")) {
-            fe_opts.dump_asm = true;
-            continue;
-        }
-        if (!strncmp(argv[i], "--emit-obj=", 11)) {
-            fe_opts.emit_obj = argv[i] + 11;
-            continue;
-        }
-        if (!strcmp(argv[i], "--dump-cfg")) {
-            fe_opts.dump_cfg = true;
-            continue;
-        }
-        if (!strncmp(argv[i], "--eval-sweep=", 13)) {
-            char *end;
-            fe_opts.eval = EVAL_SWEEP;
-            fe_opts.eval_wrap = true;
-            fe_opts.eval_sweep = strtol(argv[i] + 13, &end, 10);
-            fe_opts.eval_seed = *end == ',' ? strtoul(end + 1, NULL, 10) : 1;
-            continue;
-        }
-        if (!strcmp(argv[i], "--eval-link")) {
-            fe_opts.link = xcalloc(1, sizeof *fe_opts.link);
-            continue;
-        }
-        if (!strcmp(argv[i], "--eval-state")) {
-            fe_opts.eval_state = true;
-            continue;
-        }
-        if (!strncmp(argv[i], "--eval-only=", 12)) {
-            fe_opts.eval_only = argv[i] + 12;
-            continue;
-        }
-        if (!strcmp(argv[i], "--eval-miss")) {
-            fe_opts.eval_miss = true;
-            continue;
-        }
-        if (!strncmp(argv[i], "--eval-solve=", 13)) {
-            fe_opts.eval_solve = argv[i] + 13;
-            continue;
-        }
-        if (!strcmp(argv[i], "--eval-wrap")) {
-            fe_opts.eval_wrap = true;
-            continue;
-        }
         if (mode && !strcmp(mode, "run") && !strcmp(argv[i], "--")) {
             run_args = argv + i + 1;        /* the program's own */
             run_nargs = argc - i - 1;
             break;
         }
-        if (!strcmp(argv[i], "--prove")) {
-            fe_opts.prove = true;
+        if ((row = optrow_find(main_rows, sizeof main_rows / sizeof *main_rows, argv[i]))) {
+            int done = main_opt(row, argv[i]);
+            if (done >= 0)
+                return done;
             continue;
-        }
-        if (!strcmp(argv[i], "--verify-cfg")) {
-            fe_opts.dump_cfg = fe_opts.verify_cfg = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--dump-symbols")) {
-            dump_symbols = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--verify-symbols")) {
-            verify_symbols = true;
-            continue;
-        }
-        if (!strncmp(argv[i], "--verify-carry=", 15)) {
-            char *at = strchr(argv[i] + 15, '@');
-            carry_old = argv[i] + 15;
-            if (at) {
-                *at = 0;
-                carry_at = at + 1;
-            }
-            continue;
-        }
-        if (!strcmp(argv[i], "--summaries")) {
-            fe_opts.keep_summaries = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--dump-summaries")) {
-            fe_opts.dump_summaries = true;
-            continue;
-        }
-        if (!strncmp(argv[i], "--validate-summaries=", 21)) {
-            fe_opts.validate_summaries = argv[i] + 21;
-            fe_opts.dump_summaries = true;
-            continue;
-        }
-        if (!strncmp(argv[i], "--target=", 9)) {
-            fe_opts.target = target_find(argv[i] + 9);
-            if (!fe_opts.target) {
-                fprintf(stderr, "cereal: unknown target '%s' (known: %s)\n",
-                        argv[i] + 9, target_names);
-                return 2;
-            }
-            continue;
-        }
-        if (!strcmp(argv[i], "--cells")) {
-            parse_cells = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--all")) {
-            all = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--check-graph")) {
-            check_graph = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--replay")) {
-            replay = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--no-cells")) {
-            no_cells = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--no-output")) {
-            quiet = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--tokens")) {
-            tokens = 1;
-            continue;
-        }
-        if (!strcmp(argv[i], "--tokens=digest")) {
-            tokens = 2;
-            continue;
-        }
-        if (!strcmp(argv[i], "--tokens=check")) {
-            tokens = 3;
-            continue;
-        }
-        if (!strcmp(argv[i], "--transcript")) {
-            queries = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
-            usage(stdout);
-            return 0;
-        }
-        if (!strcmp(argv[i], "--list-warnings")) {
-            diag_list_options(stdout);
-            return 0;
         }
         if (mode && !strcmp(mode, "fix")) {
             int r = fix_flag(&fx, argv[i]);
@@ -1910,10 +1849,10 @@ int main(int argc, char **argv)
         rc = mode_preprocess(&o);
     else if (!strcmp(mode, "lint"))
         rc = mode_lint(&o);
-    else if (!strcmp(mode, "index") && replay)
-        rc = mode_replay(&o, all, !no_cells, quiet, queries, tokens);
+    else if (!strcmp(mode, "index") && mo.replay)
+        rc = mode_replay(&o, mo.all, !mo.no_cells, mo.quiet, mo.queries, mo.tokens);
     else if (!strcmp(mode, "index"))
-        rc = mode_index(&o, all, check_graph);
+        rc = mode_index(&o, mo.all, mo.check_graph);
     else if (!strcmp(mode, "parse") || !strcmp(mode, "check") ||
              !strcmp(mode, "-fsyntax-only")) {
         fe_opts.check = strcmp(mode, "parse") != 0;

@@ -1,5 +1,6 @@
 /* driver.c - option parsing and translation-unit setup. */
 #include "driver.h"
+#include "optrow.h"
 
 #include <ctype.h>
 #include <strings.h>
@@ -330,29 +331,14 @@ static bool set_std(Options *o, const char *name)
     return false;
 }
 
-/* The common options, tried in order: the first row that matches wins.
- * `match` says how `name` is read against the argument and where the value
- * is; `act` what to do with it.  A_SET stores `val` in the one-byte field
- * at `off`; the other actions are run by apply_opt.
- *   O_EXACT  the argument is `name`
- *   O_SEP    the argument is `name`; the value is the next argument
- *   O_ARG    `name` and then the value, joined (-Ifoo) or the next argument
- *   O_PFX    `name` and then the value, which may be empty (-O2, -fparallel=on)
- *   O_PFX1   the same, with a value that is not empty
- *   O_WORD   `name` alone or `name=...` (-Wbidi-chars=any) */
-enum { O_EXACT, O_SEP, O_ARG, O_PFX, O_PFX1, O_WORD };
-enum { A_SET, A_DIR, A_MACRO, A_STD, A_PEDANTIC, A_TRIGRAPHS, A_BIDI, A_NORM, A_WFLAG, A_CFPROT,
-       A_TRACK, A_DUMP, A_PARAM, A_OPT, A_PAR, A_THREADS, A_JOBS, A_WINDOW, A_CHUNK, A_OUTPUT, A_SKIP };
+/* The common options (optrow.h), tried in order.  The rows that store a
+ * constant or a string are run by optrow_apply; the rest by apply_opt. */
+enum { A_DIR = OPT_ACT0, A_MACRO, A_STD, A_PEDANTIC, A_TRIGRAPHS, A_BIDI, A_NORM, A_WFLAG, A_CFPROT,
+       A_TRACK, A_DUMP, A_PARAM, A_OPT, A_PAR, A_THREADS, A_JOBS, A_WINDOW, A_CHUNK, A_SKIP };
+/* A_DIR: val 0 angle, 1 quote, 2 system; A_MACRO: val its kind; A_PEDANTIC: val 1 for -errors */
 
-typedef struct OptRow {
-    const char *name;
-    unsigned char match, act;
-    unsigned short off;
-    int val;                    /* A_SET: the byte; A_DIR: 0 angle, 1 quote, 2 system; A_MACRO: its kind; A_PEDANTIC: 1 for -errors */
-} OptRow;
-
-#define SET(n, f, v) {n, O_EXACT, A_SET, offsetof(Options, f), v}
-#define ACT(n, m, a, v) {n, m, a, 0, v}
+#define SET(n, f, v) OPT_SET1(n, 0, Options, f, v)
+#define ACT(n, m, a, v) {n, m, a, 0, 0, v}
 
 static const OptRow opt_rows[] = {
     ACT("-I", O_ARG, A_DIR, 0), ACT("-iquote", O_ARG, A_DIR, 1), ACT("-isystem", O_ARG, A_DIR, 2),
@@ -390,32 +376,21 @@ static const OptRow opt_rows[] = {
     ACT("-j", O_ARG, A_JOBS, 0),
     ACT("-fparallel-window=", O_PFX, A_WINDOW, 0), ACT("-fparallel-chunk=", O_PFX, A_CHUNK, 0),
     SET("-P", linemarkers, 0),
-    ACT("-o", O_SEP, A_OUTPUT, 0),
+    OPT_STR1("-o", O_SEP, 0, Options, output),
 };
-
-static bool row_matches(const OptRow *r, const char *a)
-{
-    size_t n = strlen(r->name);
-    switch (r->match) {
-    case O_EXACT: case O_SEP: return !strcmp(a, r->name);
-    case O_PFX1:              return !strncmp(a, r->name, n) && a[n];
-    case O_WORD:              return !strncmp(a, r->name, n) && (!a[n] || a[n] == '=');
-    default:                  return !strncmp(a, r->name, n);
-    }
-}
 
 /* Run a matched row; `i` moves past a value taken from the next argument. */
 static void apply_opt(Options *o, int argc, char **argv, int *i, const OptRow *r)
 {
     const char *a = argv[*i], *v = a + strlen(r->name);
     int before = o->bad_options;
+    void *const bases[] = {o};
     CmdlineMacro cm = {0};
     if (r->match == O_ARG || r->match == O_SEP)
         v = arg_value(o, argc, argv, i, r->name);
+    if (optrow_apply(bases, r, v))
+        return;
     switch (r->act) {
-    case A_SET:
-        *((unsigned char *)o + r->off) = (unsigned char)r->val;
-        break;
     case A_DIR:
         if (r->val == 0)
             vec_push(&o->pp.angle_dirs, v);
@@ -470,7 +445,6 @@ static void apply_opt(Options *o, int argc, char **argv, int *i, const OptRow *r
         break;
     case A_WINDOW: o->par_window = (unsigned)strtoul(v, NULL, 10); break;
     case A_CHUNK:  o->par_chunk = (size_t)strtoul(v, NULL, 10); break;
-    case A_OUTPUT: o->output = v; break;
     default:       break;
     }
 }
@@ -479,13 +453,8 @@ int options_parse_one(Options *o, int argc, char **argv, int i)
 {
     const char *a = argv[i];
     int start = i;
-    size_t k;
-    for (k = 0; k < sizeof opt_rows / sizeof *opt_rows; k++) {
-        const OptRow *r = &opt_rows[k];
-        if (!row_matches(r, a))
-            continue;
-        if (r->act == A_SKIP)
-            break;
+    const OptRow *r = optrow_find(opt_rows, sizeof opt_rows / sizeof *opt_rows, a);
+    if (r && r->act != A_SKIP) {
         apply_opt(o, argc, argv, &i, r);
         return i - start + 1;
     }

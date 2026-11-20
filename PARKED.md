@@ -308,7 +308,7 @@ Evidence for each row was probed against gcc 15.2 on 2026-11-06 unless a golden 
 
 | What | Why parked | Status |
 |---|---|---|
-| The `driver.c` table is done (2026-11-19, `opt_rows`). Still open: `main.c` (about 36 options writing 22 statics; needs one `MainOpts` struct first) and `fixmode.c` (`fix_flag`, 8). | By decision (the user chose the narrow `note_ignored` fold only, 2026-11-05). Estimate net -60..-100 lines (2-4% of the three files); no prototype. Trigger: a new option that needs a branch in `options_parse_one`, or the `usage()`/parse/`tests/run.sh` section 13/README lists drifting. Evidence: AR7 item in CLEANUP_PLAN (second survey 2026-11-05; `fixmode.c` unread); `--help` layout must not change; `options_parse_one`, `option_affects_diagnostics`, `opt_error` have 2 callers (`main.c:1814`, `compdb.c:293,300`). | parked |
+| `fixmode.c` `fix_flag` (8 flags) still reads its options with a branch each; `optrow.[ch]` (`OptRow`, `optrow_find`, `optrow_apply`) is the engine `driver.c` and `main.c` use. | The driver and `main.c` tables are done (2026-11-19: `opt_rows`, `main_rows`; about -9 lines net over driver.c, main.c and optrow.[ch]; `main()`'s seven flag locals and three statics are now `MainOpts mo`). Eight flags are about 20 lines. Trigger: a new `fix` flag, or `usage()`/`tests/run.sh` section 13/README option lists drifting from the tables. Evidence: AR7 in CLEANUP_PLAN; `fixmode.c` unread; `--help` layout must not change. | parked |
 
 ## `--prove` slice 4a leftovers (docs/PROVE_OBLIGATIONS_DESIGN.md section 7; 2026-11-15)
 
