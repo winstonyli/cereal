@@ -22,3 +22,4 @@ machine): the Int queries answer in 0.2-0.3 s each, `unsat` with all of `r >= 0,
 (not proved) when `r*c <= $len(d)` is dropped (goal) or `r*c <= INT_MAX` is dropped (both no-wrap obligations); the bit-vector query
 has no answer in 90 s. So the narrow Int tier works at 32 bits with signed values and a disjunction for the unsigned view; the open
 work is the implementation and its soundness review, not z3 cost.
+L1 (2026-11-21, `s8/l1_*.smt2`): the same `fill2` goal with z3's own Int/bit-vector bridges, 32-bit variables with a signed Int view through `bv2nat` (`l1_mixed`) and Int variables with the goal in bit-vectors through `int2bv` (`l1_int2bv`). Both time out at 50 s, like the pure bit-vector query, so the speed of S8 comes from keeping the query in Int, not from z3's conversions. Narrow-width arithmetic stays in the Int tier and converts at the edges.

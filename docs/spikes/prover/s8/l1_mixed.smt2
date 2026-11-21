@@ -1,0 +1,10 @@
+(set-logic ALL)
+(declare-const r (_ BitVec 32))(declare-const c (_ BitVec 32))(declare-const i (_ BitVec 32))(declare-const j (_ BitVec 32))(declare-const len (_ BitVec 64))
+(define-fun sv ((x (_ BitVec 32))) Int (ite (= ((_ extract 31 31) x) #b1) (- (bv2nat x) 4294967296) (bv2nat x)))
+(assert (and (<= 0 (sv r)) (<= 0 (sv c))
+  (<= (* (sv r) (sv c)) (bv2nat len))
+  (<= (* (sv r) (sv c)) 2147483647)
+  (<= 0 (sv i)) (< (sv i) (sv r)) (<= 0 (sv j)) (< (sv j) (sv c))))
+; goal: 32-bit wrapped index, sign-extended, < len
+(assert (not (bvult ((_ sign_extend 32) (bvadd (bvmul i c) j)) len)))
+(check-sat)
