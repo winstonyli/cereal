@@ -1,0 +1,5 @@
+(set-logic QF_NIA)
+(declare-const r Int)(declare-const c Int)(declare-const i Int)(declare-const j Int)(declare-const len Int)(declare-const pu Int)(declare-const xu Int)
+(assert (and (<= -2147483648 r) (<= r 2147483647) (<= -2147483648 c) (<= c 2147483647) (<= -2147483648 i) (<= i 2147483647) (<= -2147483648 j) (<= j 2147483647) (<= 0 len) (< len 18446744073709551616) (<= 0 r) (<= 0 c) (<= 0 i) (< i r) (<= 0 j) (< j c) (or (and (<= 0 (* r c)) (= pu (* r c))) (and (< (* r c) 0) (= pu (+ (* r c) 18446744073709551616)))) (<= pu len) (<= (* r c) 2147483647) (or (and (<= 0 (+ (* i c) j)) (= xu (+ (* i c) j))) (and (< (+ (* i c) j) 0) (= xu (+ (+ (* i c) j) 18446744073709551616))))))
+(assert (not (< xu len)))
+(check-sat)
