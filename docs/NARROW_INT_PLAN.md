@@ -67,7 +67,7 @@ golden contains "unknown" and invalid goals are not retried, so no existing repo
    unsigned-to-signed and narrow widths are T2's.
 1. **T1 `ps_range` and spec `*` (done 2026-11-21).** `tests/prove/spec_mul.c`/`.expected` first: `requires r * c <= $len(d)` over `int` accepted (the goal stays
    `unknown` until T3), over `unsigned long` refused with the reason line; a `selftest prove` case for `ps_range`; then delete `Val.ops`.
-2. **T2 Narrow images and the fixpoint (d1 settled).** `selftest prove` cases first (a timeout is a failure, which replaces a separate guard): the S8
+2. **T2 Narrow images and the fixpoint (done 2026-11-21).** Built without per-node memoization (terms are small; fresh view-change names come from a counter, leaf images are per variable, obligations are cached per query) and with the same `rlimit` for every query (the `* 25` is gone, selftests pass 10M). The cases below are in `prove_selftest`, plus the sharper circular case (signed leaves) that a mutant without the fixpoint fails. `selftest prove` cases first (a timeout is a failure, which replaces a separate guard): the S8
    goal valid; dropped `r*c <= len` invalid; dropped `r*c <= INT_MAX` unknown; the `x + y <= z` circularity case unknown; `BVULT(sext a8, c32)`
    not proved; `BVULE(BVSUB(n, i), n)` with `i <=u n` valid (replaces the "Int tier declines bvsub" case at `prove_smt.c:523`, which stays
    `unknown` without that hypothesis); unsigned-to-signed (`sext` of an unsigned-view add); nested view change; "fill2 bound without

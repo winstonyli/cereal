@@ -6,6 +6,8 @@
 
 #include "symx.h"
 
+typedef VEC(PsT) PsVec;
+
 /* ---- the DAG ---- */
 
 void ps_free(Ps *ps) { vec_free(&ps->n); vec_free(&ps->v); }
@@ -43,7 +45,7 @@ PsT ps_op(Ps *ps, int op, PsT a, PsT b)
     unsigned w = 0;
     switch (op) {
     case PS_BVADD: case PS_BVMUL: case PS_BVNOT: case PS_BVSUB: sort = PS_BV; w = ps_at(ps, a)->w; break;
-    case PS_IADD: case PS_IMUL: sort = PS_INT; break;
+    case PS_IADD: case PS_IMUL: case PS_ISUB: sort = PS_INT; break;
     case PS_SEL: sort = PS_BV; w = ps_at(ps, a)->w; break;      /* the array's element width */
     default: break;
     }
@@ -53,14 +55,6 @@ PsT ps_op(Ps *ps, int op, PsT a, PsT b)
 PsT ps_resize(Ps *ps, PsT a, unsigned w, bool sign) { return mk(ps, PS_RESIZE, PS_BV, w, a, 0, 0, w | (sign ? PS_SIGNED : 0)); }
 PsT ps_store(Ps *ps, PsT arr, PsT idx, PsT val) { return mk(ps, PS_STORE, PS_ARR, ps_at(ps, arr)->w, arr, idx, val, 0); }
 PsT ps_forall(Ps *ps, PsT var, PsT body) { return mk(ps, PS_FORALL, PS_BOOL, 0, var, body, 0, 0); }
-
-static PsT and_all(Ps *ps, const PsT *t, size_t n)
-{
-    PsT r = 0;
-    size_t i;
-    for (i = 0; i < n; i++) r = r ? ps_op(ps, PS_AND, r, t[i]) : t[i];
-    return r ? r : ps_true(ps);
-}
 
 PsT ps_subst(Ps *ps, PsT t, PsT var, PsT repl)
 {
@@ -139,44 +133,152 @@ bool ps_range(const Ps *ps, PsT t, int64_t *lo, int64_t *hi)
 
 /* ---- bit-vectors to Int ---- */
 
-void psint_free(PsInt *o) { vec_free(&o->wrapbv); vec_free(&o->wrapint); vec_free(&o->nonneg); }
+/* The Int image of a bit-vector term is the number its bits mean, read signed or unsigned (its "view").  Every node has
+ * one view (a leaf its first consumer's, an operation its first operand's, a resize its flag's); a consumer that wants
+ * the other one gets a fresh Int variable defined from it (a "view change").  An add, subtract or multiply is the Int
+ * operation plus an obligation that the result lies in the width's range, so that the image equals the bit-vector result. */
 
-PsT ps_to_int(Ps *ps, PsT t, PsInt *obl)
+enum { V_NONE, V_S, V_U };
+
+typedef struct PsImg {
+    Ps *ps;
+    VEC(PsT) facts;                     /* true of the real values whatever the hypotheses: leaf ranges, view changes */
+    VEC(PsT) obl;                       /* obligations: an operation's Int result lies in its width's range */
+    VEC(uint8_t) lv;                    /* per bit-vector variable: its view (V_NONE until a consumer asks) */
+    unsigned fresh;
+} PsImg;
+
+static PsT pw2(Ps *ps, unsigned e) { return e == 64 ? mk(ps, PS_P64, PS_INT, 0, 0, 0, 0, 0) : ps_intc(ps, UINT64_C(1) << e); }
+static PsT ineg(Ps *ps, PsT m) { return ps_op(ps, PS_ISUB, ps_intc(ps, 0), m); }
+static PsT icmp(Ps *ps, int op, PsT a, PsT b) { return ps_op(ps, op, a, b); }
+
+/* the value of w bits k in a view, as an Int constant */
+static PsT img_const(Ps *ps, unsigned w, uint64_t k, int view)
 {
+    bool neg = view == V_S && (k >> (w - 1) & 1);
+    return neg ? ineg(ps, ps_intc(ps, w == 64 ? 0 - k : (UINT64_C(1) << w) - k)) : ps_intc(ps, k);
+}
+
+static PsT in_range(Ps *ps, PsT r, unsigned w, int view)
+{
+    PsT lo = view == V_S ? ineg(ps, pw2(ps, w - 1)) : ps_intc(ps, 0), hi = pw2(ps, view == V_S ? w - 1 : w);
+    return ps_op(ps, PS_AND, icmp(ps, PS_ILE, lo, r), icmp(ps, PS_ILT, r, hi));
+}
+
+/* v, read in view from at width w, as the value read in view to (a fresh variable, defined, when the views differ) */
+static PsT view_change(PsImg *c, PsT v, unsigned w, int from, int to)
+{
+    Ps *ps = c->ps;
+    char nm[24];
+    PsT u, zero = ps_intc(ps, 0), keep, wrap;
+    if (from == to) return v;
+    snprintf(nm, sizeof nm, "_n%u", c->fresh++);
+    u = ps_var(ps, nm, PS_INT, 0);
+    if (from == V_S) {          /* v >= 0: u = v, else u = v + 2^w */
+        keep = ps_op(ps, PS_AND, icmp(ps, PS_ILE, zero, v), ps_op(ps, PS_EQ, u, v));
+        wrap = ps_op(ps, PS_AND, icmp(ps, PS_ILT, v, zero), ps_op(ps, PS_EQ, u, ps_op(ps, PS_IADD, v, pw2(ps, w))));
+    } else {                    /* v < 2^(w-1): u = v, else u = v - 2^w */
+        keep = ps_op(ps, PS_AND, icmp(ps, PS_ILT, v, pw2(ps, w - 1)), ps_op(ps, PS_EQ, u, v));
+        wrap = ps_op(ps, PS_AND, icmp(ps, PS_ILE, pw2(ps, w - 1), v), ps_op(ps, PS_EQ, u, ps_op(ps, PS_ISUB, v, pw2(ps, w))));
+    }
+    vec_push(&c->facts, ps_op(ps, PS_OR, keep, wrap));
+    return u;
+}
+
+/* t's Int image and its view; a constant takes hint's view (0: unsigned).  0 when the tier does not apply. */
+static PsT img_bv(PsImg *c, PsT t, int hint, int *view);
+
+/* the images of two operands of width w in one view (a constant follows the other operand) */
+static bool img_pair(PsImg *c, PsT x, PsT y, unsigned w, int hint, PsT *ta, PsT *tb, int *view)
+{
+    int va, vb;
+    if (ps_at(c->ps, x)->op == PS_BVC) {
+        if (!(*tb = img_bv(c, y, hint, &vb)) || !(*ta = img_bv(c, x, vb, &va))) return false;
+    } else {
+        if (!(*ta = img_bv(c, x, hint, &va)) || !(*tb = img_bv(c, y, va, &vb))) return false;
+    }
+    *tb = view_change(c, *tb, w, vb, va);
+    *view = va;
+    return true;
+}
+
+static PsT img_bv(PsImg *c, PsT t, int hint, int *view)
+{
+    Ps *ps = c->ps;
     PsNode n = *ps_at(ps, t);
     PsT a, b, r;
+    int v;
+    if (!hint) hint = V_U;
+    switch (n.op) {
+    case PS_BVC:
+        *view = hint;
+        return img_const(ps, n.w, n.k, hint);
+    case PS_VAR: {
+        char nm[48];
+        if (n.sort != PS_BV || strlen(ps->v.data[n.k].name) + 2 >= sizeof ((PsVar *)0)->name) return 0;
+        snprintf(nm, sizeof nm, "%s.i", ps->v.data[n.k].name);
+        a = ps_var(ps, nm, PS_INT, 0);
+        while (c->lv.len <= n.k) vec_push(&c->lv, V_NONE);
+        if (c->lv.data[n.k] == V_NONE) {            /* the first consumer picks the view; the range is a fact of the leaf */
+            c->lv.data[n.k] = (uint8_t)hint;
+            vec_push(&c->facts, in_range(ps, a, n.w, hint));
+        }
+        *view = c->lv.data[n.k];
+        return a;
+    }
+    case PS_RESIZE: {
+        unsigned to = (unsigned)(n.k & 0xff), from = ps_at(ps, n.a)->w;
+        int want = n.k & PS_SIGNED ? V_S : V_U;
+        if (to < from) return 0;                    /* truncation */
+        if (to == from) return img_bv(c, n.a, hint, view);
+        if (!(a = img_bv(c, n.a, want, &v))) return 0;
+        *view = want;                               /* widening keeps the value */
+        return view_change(c, a, from, v, want);
+    }
+    case PS_BVADD: case PS_BVSUB: case PS_BVMUL: {
+        int64_t lo, hi;
+        if (!img_pair(c, n.a, n.b, n.w, hint, &a, &b, &v)) return 0;
+        r = ps_op(ps, n.op == PS_BVADD ? PS_IADD : n.op == PS_BVSUB ? PS_ISUB : PS_IMUL, a, b);
+        /* a signed 64-bit term with an exact range cannot wrap; every other result owes its range */
+        if (!(v == V_S && n.w == 64 && ps_range(ps, t, &lo, &hi))) vec_push(&c->obl, in_range(ps, r, n.w, v));
+        *view = v;
+        return r;
+    }
+    default:
+        return 0;
+    }
+}
+
+/* a formula's Int image; 0 when the tier does not apply */
+static PsT img_fm(PsImg *c, PsT t)
+{
+    Ps *ps = c->ps;
+    PsNode n = *ps_at(ps, t);
+    PsT a, b;
+    int v;
     switch (n.op) {
     case PS_TRUE: case PS_FALSE: return t;
-    case PS_BVC: return n.w == 64 ? ps_intc(ps, n.k) : 0;
-    case PS_VAR:
-        if (n.sort == PS_BOOL) return t;
-        if (n.sort == PS_BV && n.w == 64) {
-            char nm[48];
-            PsT x;
-            snprintf(nm, sizeof nm, "%s.i", ps->v.data[n.k].name);
-            x = ps_var(ps, nm, PS_INT, 0);
-            vec_push(&obl->nonneg, ps_op(ps, PS_ILE, ps_intc(ps, 0), x));   /* repeats per use; the solver does not mind */
-            return x;
-        }
-        return 0;
-    case PS_BVADD: case PS_BVMUL:
-        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
-        r = ps_op(ps, n.op == PS_BVADD ? PS_IADD : PS_IMUL, a, b);
-        if (ps_has(ps, t, PS_BVMUL)) vec_push(&obl->wrapint, ps_op(ps, PS_ILT, r, mk(ps, PS_P64, PS_INT, 0, 0, 0, 0, 0)));
-        else vec_push(&obl->wrapbv, ps_op(ps, PS_BVULE, n.a, ps_op(ps, PS_BVNOT, n.b, 0)));
-        return r;
-    case PS_BVULT: case PS_BVULE:
-        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
-        return ps_op(ps, n.op == PS_BVULT ? PS_ILT : PS_ILE, a, b);
+    case PS_VAR: return n.sort == PS_BOOL ? t : 0;
+    case PS_BVULT: case PS_BVULE: case PS_BVSLT: case PS_BVSLE: {
+        int want = n.op == PS_BVULT || n.op == PS_BVULE ? V_U : V_S;
+        unsigned w = ps_at(ps, n.a)->w;
+        if (!img_pair(c, n.a, n.b, w, want, &a, &b, &v)) return 0;
+        a = view_change(c, a, w, v, want);
+        b = view_change(c, b, w, v, want);
+        return ps_op(ps, n.op == PS_BVULT || n.op == PS_BVSLT ? PS_ILT : PS_ILE, a, b);
+    }
     case PS_EQ:
-        if (ps_at(ps, n.a)->sort == PS_ARR) return 0;
-        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
-        return ps_op(ps, PS_EQ, a, b);
+        if (ps_at(ps, n.a)->sort == PS_BV) {
+            if (!img_pair(c, n.a, n.b, ps_at(ps, n.a)->w, V_U, &a, &b, &v)) return 0;
+            return ps_op(ps, PS_EQ, a, b);
+        }
+        if (ps_at(ps, n.a)->sort != PS_BOOL) return 0;
+        /* fall through */
     case PS_AND: case PS_OR: case PS_IMP:
-        if (!(a = ps_to_int(ps, n.a, obl)) || !(b = ps_to_int(ps, n.b, obl))) return 0;
+        if (!(a = img_fm(c, n.a)) || !(b = img_fm(c, n.b))) return 0;
         return ps_op(ps, n.op, a, b);
     case PS_NOT:
-        return (a = ps_to_int(ps, n.a, obl)) ? ps_op(ps, PS_NOT, a, 0) : 0;
+        return (a = img_fm(c, n.a)) ? ps_op(ps, PS_NOT, a, 0) : 0;
     default:
         return 0;
     }
@@ -187,7 +289,7 @@ PsT ps_to_int(Ps *ps, PsT t, PsInt *obl)
 static const char *const op_name[] = {
     [PS_BVADD] = "bvadd", [PS_BVMUL] = "bvmul", [PS_BVNOT] = "bvnot", [PS_BVULT] = "bvult", [PS_BVULE] = "bvule",
     [PS_BVSUB] = "bvsub", [PS_BVSLT] = "bvslt", [PS_BVSLE] = "bvsle",
-    [PS_IADD] = "+", [PS_IMUL] = "*", [PS_ILT] = "<", [PS_ILE] = "<=",
+    [PS_IADD] = "+", [PS_IMUL] = "*", [PS_ISUB] = "-", [PS_ILT] = "<", [PS_ILE] = "<=",
     [PS_EQ] = "=", [PS_AND] = "and", [PS_OR] = "or", [PS_NOT] = "not", [PS_IMP] = "=>",
     [PS_SEL] = "select", [PS_STORE] = "store"
 };
@@ -358,7 +460,7 @@ static int valid_q(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, uns
 static int valid_inst(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
 {
     PsSk sk = {{0}, 0, false};
-    VEC(PsT) h = {0};
+    PsVec h = {0};
     size_t i;
     int r;
     goal = weaken(ps, &sk, skolem(ps, &sk, goal, true), true);
@@ -427,36 +529,107 @@ int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned 
     return valid_q(s, ps, hyps, n, goal, rlimit);
 }
 
+/* One goal over some hypotheses.  A hypothesis's image is faithful only when its own obligations hold, and proving them
+ * from an unfaithful image is circular (x + y <= z with x = y = INT_MAX, z = 0 holds in bit-vectors and is false over
+ * Int), so the images join a set S one at a time, each once its obligations follow from the facts and the set so far
+ * (a least fixpoint).  A hypothesis that never joins, or cannot be translated, is left out: a weaker assumption, still
+ * sound, though an `invalid` then means only "not from S". */
+typedef struct PsQ {
+    PsSolver *s;
+    PsImg c;
+    VEC(PsT) set, args;                 /* the joined images; facts + set, as one query's hypotheses */
+    VEC(uint8_t) proved;                /* per obligation: proved already (stays so as the set grows) */
+    VEC(size_t) failed;                 /* per obligation: the set size + 1 at its last failed attempt */
+    unsigned long rlimit;
+} PsQ;
+
+static bool pq_hold(PsQ *q, size_t k)
+{
+    size_t i;
+    if (q->proved.data[k]) return true;
+    if (q->failed.data[k] == q->set.len + 1) return false;
+    q->args.len = 0;
+    for (i = 0; i < q->c.facts.len; i++) vec_push(&q->args, q->c.facts.data[i]);
+    for (i = 0; i < q->set.len; i++) vec_push(&q->args, q->set.data[i]);
+    if (ps_valid(q->s, q->c.ps, q->args.data, q->args.len, q->c.obl.data[k], q->rlimit) == PS_VALID) q->proved.data[k] = 1;
+    else q->failed.data[k] = q->set.len + 1;
+    return q->proved.data[k];
+}
+
+static int valid_int_one(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+{
+    PsQ q = {0};
+    VEC(PsT) himg = {0};
+    VEC(size_t) o0 = {0}, o1 = {0};
+    VEC(uint8_t) in = {0};
+    PsT g, h;
+    size_t i, k, g0;
+    bool changed, ok;
+    int r = PS_UNKNOWN;
+    q.s = s; q.c.ps = ps; q.rlimit = rlimit;
+    for (i = 0; i < n; i++) {
+        size_t m = q.c.obl.len;
+        h = img_fm(&q.c, hyps[i]);
+        if (!h) q.c.obl.len = m;
+        vec_push(&himg, h); vec_push(&o0, m); vec_push(&o1, q.c.obl.len); vec_push(&in, 0);
+    }
+    g0 = q.c.obl.len;
+    if (!(g = img_fm(&q.c, goal))) goto out;
+    for (k = 0; k < q.c.obl.len; k++) { vec_push(&q.proved, 0); vec_push(&q.failed, 0); }
+    do {
+        changed = false;
+        for (i = 0; i < n; i++) {
+            if (!himg.data[i] || in.data[i]) continue;
+            for (ok = true, k = o0.data[i]; k < o1.data[i] && ok; k++) ok = pq_hold(&q, k);
+            if (ok) { in.data[i] = 1; vec_push(&q.set, himg.data[i]); changed = true; }
+        }
+    } while (changed);
+    for (k = g0; k < q.c.obl.len; k++)
+        if (!pq_hold(&q, k)) goto out;
+    q.args.len = 0;
+    for (i = 0; i < q.c.facts.len; i++) vec_push(&q.args, q.c.facts.data[i]);
+    for (i = 0; i < q.set.len; i++) vec_push(&q.args, q.set.data[i]);
+    r = ps_valid(s, ps, q.args.data, q.args.len, g, rlimit);
+out:
+    vec_free(&q.c.facts); vec_free(&q.c.obl); vec_free(&q.c.lv); vec_free(&q.set); vec_free(&q.args);
+    vec_free(&q.proved); vec_free(&q.failed); vec_free(&himg); vec_free(&o0); vec_free(&o1); vec_free(&in);
+    return r;
+}
+
+static void flatten_and(const Ps *ps, PsT t, PsVec *out)
+{
+    const PsNode *n = ps_at(ps, t);
+    if (n->op == PS_AND) { PsT a = n->a, b = n->b; flatten_and(ps, a, out); flatten_and(ps, b, out); }
+    else vec_push(out, t);
+}
+
+/* the goal's conjuncts one by one; the antecedent of an implication (the path condition) is more hypotheses */
+static int valid_int_goal(PsSolver *s, Ps *ps, PsVec *hyps, PsT goal, unsigned long rlimit)
+{
+    PsNode n = *ps_at(ps, goal);
+    size_t keep = hyps->len;
+    int r;
+    if (n.op == PS_AND) {
+        r = valid_int_goal(s, ps, hyps, n.a, rlimit);
+        return r != PS_VALID ? r : valid_int_goal(s, ps, hyps, n.b, rlimit);
+    }
+    if (n.op == PS_IMP) {
+        flatten_and(ps, n.a, hyps);
+        r = valid_int_goal(s, ps, hyps, n.b, rlimit);
+        hyps->len = keep;
+        return r;
+    }
+    return valid_int_one(s, ps, hyps->data, hyps->len, goal, rlimit);
+}
+
 int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
 {
-    PsInt obl = {0};
-    VEC(PsT) ih = {0}, lin_b = {0}, lin_i = {0};
-    PsT g, cb, h;
+    PsVec h = {0};
     size_t i;
-    int r = PS_UNKNOWN, rr;
-    if (ps_has(ps, goal, PS_FORALL)) return PS_UNKNOWN;
-    for (i = 0; i < n; i++) {
-        if (ps_has(ps, hyps[i], PS_FORALL)) continue;
-        h = ps_to_int(ps, hyps[i], &obl);
-        if (!h) goto out;                   /* a hypothesis Int cannot say: the tier does not apply */
-        vec_push(&ih, h);
-        if (!ps_has(ps, hyps[i], PS_BVMUL)) { vec_push(&lin_b, hyps[i]); vec_push(&lin_i, h); }
-    }
-    if (!(g = ps_to_int(ps, goal, &obl))) goto out;
-    for (i = 0; i < obl.nonneg.len; i++) { vec_push(&ih, obl.nonneg.data[i]); vec_push(&lin_i, obl.nonneg.data[i]); }
-    /* 1. the adds with no multiply under them do not wrap, in bit-vectors, from the multiply-free hypotheses */
-    if (obl.wrapbv.len) {
-        cb = and_all(ps, obl.wrapbv.data, obl.wrapbv.len);
-        if (ps_valid(s, ps, lin_b.data, lin_b.len, cb, rlimit) != PS_VALID) goto out;
-    }
-    /* 2. every multiply, and add over one, stays below 2^64, as Int facts (one query each: a conjunction is slower) */
-    for (i = 0; i < obl.wrapint.len; i++)
-        if (ps_valid(s, ps, lin_i.data, lin_i.len, obl.wrapint.data[i], rlimit * 25) != PS_VALID) goto out;
-    /* 3. the goal over Int; with no wrap possible, an answer there is the answer in bit-vectors */
-    rr = ps_valid(s, ps, ih.data, ih.len, g, rlimit * 25);
-    r = rr;
-out:
-    psint_free(&obl); vec_free(&ih); vec_free(&lin_b); vec_free(&lin_i);
+    int r;
+    for (i = 0; i < n; i++) flatten_and(ps, hyps[i], &h);
+    r = valid_int_goal(s, ps, &h, goal, rlimit);
+    vec_free(&h);
     return r;
 }
 
@@ -517,14 +690,60 @@ int prove_selftest(void)
     h[0] = ule(&ps, r, lim); h[1] = ule(&ps, c, lim); h[2] = ult(&ps, i, r); h[3] = ult(&ps, j, c);
     h[4] = ule(&ps, ps_op(&ps, PS_BVMUL, r, c), szD);
     k = ult(&ps, ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVMUL, i, c), j), szD);
-    expect(&failures, "fill2 bound by Int", ps_valid_int(s, &ps, h, 5, k, 400000), PS_VALID);
-    expect(&failures, "fill2 bound without r*c <= szD", ps_valid_int(s, &ps, h, 4, k, 400000), PS_INVALID);
-    expect(&failures, "fill2 bound without r <= 2^31", ps_valid_int(s, &ps, h + 1, 4, k, 400000), PS_UNKNOWN);   /* the no-wrap proof fails */
+    expect(&failures, "fill2 bound by Int", ps_valid_int(s, &ps, h, 5, k, 10000000), PS_VALID);
+    expect(&failures, "fill2 bound without r*c <= szD", ps_valid_int(s, &ps, h, 4, k, 10000000), PS_INVALID);
+    expect(&failures, "fill2 bound without r <= 2^31", ps_valid_int(s, &ps, h + 1, 4, k, 10000000), PS_UNKNOWN);   /* the no-wrap proof fails */
+
+    /* narrow images (NARROW_INT_PLAN T2): int-wide indices, spec products, views and the faithful set */
+    {
+        PsT i3 = ps_var(&ps, "i3", PS_BV, 32), j3 = ps_var(&ps, "j3", PS_BV, 32), r3 = ps_var(&ps, "r3", PS_BV, 32),
+            c3 = ps_var(&ps, "c3", PS_BV, 32), a8 = ps_var(&ps, "a8", PS_BV, 8), u3 = ps_var(&ps, "u3", PS_BV, 32),
+            v3 = ps_var(&ps, "v3", PS_BV, 32), x3 = ps_var(&ps, "x3", PS_BV, 32), y3 = ps_var(&ps, "y3", PS_BV, 32),
+            z3 = ps_var(&ps, "z3", PS_BV, 32), z32 = ps_bvc(&ps, 32, 0), p, idx, g, hh[8];
+#define SX(t) ps_resize(&ps, (t), 64, true)
+        /* the nested loop over int: 0 <= i < r, 0 <= j < c, r * c <= szD (spec product, 64-bit) */
+        hh[0] = ps_op(&ps, PS_BVSLE, z32, i3); hh[1] = ps_op(&ps, PS_BVSLT, i3, r3);
+        hh[2] = ps_op(&ps, PS_BVSLE, z32, j3); hh[3] = ps_op(&ps, PS_BVSLT, j3, c3);
+        hh[4] = ule(&ps, ps_op(&ps, PS_BVMUL, SX(r3), SX(c3)), szD);
+        p = ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVMUL, SX(i3), SX(c3)), SX(j3));
+        expect(&failures, "int fill2, spec arithmetic", ps_valid_int(s, &ps, hh, 5, ult(&ps, p, szD), 10000000), PS_VALID);
+        expect(&failures, "int fill2 without r*c <= szD", ps_valid_int(s, &ps, hh, 4, ult(&ps, p, szD), 10000000), PS_INVALID);
+        /* the same with int arithmetic in the code: the 32-bit product and sum must not wrap, which needs szD <= INT_MAX */
+        hh[5] = ule(&ps, szD, ps_bvc(&ps, 64, 2147483647u));
+        idx = ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVMUL, i3, c3), j3);
+        g = ult(&ps, ps_op(&ps, PS_BVADD, zero, SX(idx)), szD);
+        expect(&failures, "int fill2, 32-bit index", ps_valid_int(s, &ps, hh, 6, g, 10000000), PS_VALID);
+        hh[4] = hh[5];
+        expect(&failures, "int fill2 index without r*c <= szD", ps_valid_int(s, &ps, hh, 5, g, 10000000), PS_UNKNOWN);
+        hh[4] = ule(&ps, ps_op(&ps, PS_BVMUL, SX(r3), SX(c3)), szD);
+        expect(&failures, "int fill2 index without szD <= INT_MAX", ps_valid_int(s, &ps, hh, 5, g, 10000000), PS_UNKNOWN);
+        /* views: a signed byte is below 128 signed, not unsigned */
+        expect(&failures, "sext a8 <s 128", ps_valid_int(s, &ps, NULL, 0,
+               ps_op(&ps, PS_BVSLT, ps_resize(&ps, a8, 32, true), ps_bvc(&ps, 32, 128)), 10000000), PS_VALID);
+        expect(&failures, "sext a8 <u 128", ps_valid_int(s, &ps, NULL, 0,
+               ult(&ps, ps_resize(&ps, a8, 32, true), ps_bvc(&ps, 32, 128)), 10000000), PS_INVALID);
+        /* a sum in the unsigned view read signed */
+        hh[0] = ult(&ps, u3, ps_bvc(&ps, 32, 1u << 30)); hh[1] = ult(&ps, v3, ps_bvc(&ps, 32, 1u << 30));
+        expect(&failures, "sext of an unsigned sum", ps_valid_int(s, &ps, hh, 2,
+               ps_op(&ps, PS_BVSLT, SX(ps_op(&ps, PS_BVADD, u3, v3)), ps_bvc(&ps, 64, 1u << 31)), 10000000), PS_VALID);
+        /* the index shape the access goals have: 0 + sext idx below a length */
+        hh[0] = ps_op(&ps, PS_BVSLE, z32, i3); hh[1] = ps_op(&ps, PS_BVSLT, i3, r3); hh[2] = ule(&ps, SX(r3), szD);
+        expect(&failures, "0 + sext i <u len", ps_valid_int(s, &ps, hh, 3, ult(&ps, ps_op(&ps, PS_BVADD, zero, SX(i3)), szD), 10000000), PS_VALID);
+        /* an unsigned difference: n - i <= n holds when i <= n */
+        expect(&failures, "n - i <=u n with i <=u n", ps_valid_int(s, &ps, (hh[0] = ule(&ps, i, n), hh), 1,
+               ule(&ps, ps_op(&ps, PS_BVSUB, n, i), n), 10000000), PS_VALID);
+        /* a hypothesis whose own no-wrap proof would need it: x + y <= z with x = y = INT_MAX and z = 0 holds in
+         * bit-vectors (the sum wraps negative) and is false over Int; assuming it would prove anything */
+        hh[0] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0x7fffffffu), x3); hh[1] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0x7fffffffu), y3);
+        hh[2] = ps_op(&ps, PS_BVSLE, z3, z32); hh[3] = ps_op(&ps, PS_BVSLE, ps_op(&ps, PS_BVADD, x3, y3), z3);
+        expect(&failures, "circular no-wrap", ps_valid_int(s, &ps, hh, 4, ult(&ps, x3, x3), 10000000), PS_INVALID);
+#undef SX
+    }
 
     /* wrap: x < x + 1 is false at the top, and the Int tier must not say otherwise */
     k = ult(&ps, x, ps_op(&ps, PS_BVADD, x, one));
     expect(&failures, "x < x + 1 in bit-vectors", ps_valid(s, &ps, NULL, 0, k, 0), PS_INVALID);
-    expect(&failures, "x < x + 1 by Int", ps_valid_int(s, &ps, NULL, 0, k, 400000), PS_UNKNOWN);
+    expect(&failures, "x < x + 1 by Int", ps_valid_int(s, &ps, NULL, 0, k, 10000000), PS_UNKNOWN);
 
     /* arrays and a quantifier: copied below i, so equal at 0 if 0 < i */
     {
@@ -587,7 +806,7 @@ int prove_selftest(void)
         expect(&failures, "16-bit select is not 8-bit", ps_valid(s, &ps, NULL, 0,
                ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, a16, zero), ps_bvc(&ps, 16, 7)), 0), PS_INVALID);
         /* the Int tier does not apply to the new operations */
-        expect(&failures, "Int tier declines bvsub", ps_valid_int(s, &ps, NULL, 0, ule(&ps, ps_op(&ps, PS_BVSUB, n, i), n), 400000), PS_UNKNOWN);
+        expect(&failures, "Int tier declines bvsub", ps_valid_int(s, &ps, NULL, 0, ule(&ps, ps_op(&ps, PS_BVSUB, n, i), n), 10000000), PS_UNKNOWN);
     }
     ps_close(s);
     ps_free(&ps);

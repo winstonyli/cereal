@@ -23,7 +23,7 @@ enum {
     PS_BVADD, PS_BVMUL, PS_BVNOT, PS_BVULT, PS_BVULE,
     PS_BVSUB, PS_BVSLT, PS_BVSLE,
     PS_RESIZE,                          /* a: the operand; k: target width, | PS_SIGNED to sign-extend (truncates when narrower) */
-    PS_IADD, PS_IMUL, PS_ILT, PS_ILE,
+    PS_IADD, PS_IMUL, PS_ISUB, PS_ILT, PS_ILE,
     PS_EQ, PS_AND, PS_OR, PS_NOT, PS_IMP,
     PS_SEL, PS_STORE,                   /* array a, index b [, element c] */
     PS_FORALL                           /* a: the bound variable, b: the body */
@@ -66,17 +66,6 @@ bool ps_has(const Ps *ps, PsT t, int op);                     /* some node of t 
  * (or resize of one) has its width's. */
 bool ps_range(const Ps *ps, PsT t, int64_t *lo, int64_t *hi);
 
-/* What the rewrite of bit-vector terms to Int owes: Bool terms that must hold for it to mean what the original meant. */
-typedef struct PsInt {
-    VEC(PsT) wrapbv;                    /* an add with no multiply under it does not wrap: a <=u ~b, over the original operands */
-    VEC(PsT) wrapint;                   /* a multiply, or an add over one, stays below 2^64, as an Int fact */
-    VEC(PsT) nonneg;                    /* the facts 0 <= x for the Int variables made */
-} PsInt;
-/* t as an Int-sorted (or Bool) term, 0 if it has something Int cannot say (arrays, bit-wise operations, quantifiers,
- * 8-bit values); the obligations are appended to obl. */
-PsT ps_to_int(Ps *ps, PsT t, PsInt *obl);
-void psint_free(PsInt *o);
-
 void ps_print(const Ps *ps, PsT t, StrBuf *sb);
 
 /* ---- the solver ---- */
@@ -89,9 +78,11 @@ void ps_close(PsSolver *s);
 /* Is goal true whenever all n hyps are?  One pipe serves many queries: variables are declared once, each
  * query lives in a push/pop.  rlimit is z3's deterministic budget (0: none). */
 int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
-/* The same, by the Int tier (docs/PROVER_DESIGN.md S7): needs a goal without a quantifier; hypotheses with one are
- * left out.  The rewrite is used only after proving that no add or multiply in it wraps, the bit-vector facts for
- * the linear ones and Int ones for those over a multiply, from the multiply-free hypotheses alone. */
+/* The same, by the Int tier (docs/PROVER_DESIGN.md S7, docs/NARROW_INT_PLAN.md): bit-vectors of any width become Int values
+ * in a signed or unsigned view; each add, subtract or multiply owes that its result stays in its width's range, proved from
+ * the hypotheses whose own obligations were proved (a fixpoint).  A hypothesis the tier cannot say, or cannot trust, is
+ * left out, so only PS_VALID is a proof.  The goal's conjuncts are tried one by one and an implication's antecedent counts as
+ * hypotheses.  A goal with a quantifier or an array is PS_UNKNOWN. */
 int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
 
 int prove_selftest(void);
