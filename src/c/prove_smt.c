@@ -165,7 +165,14 @@ static PsT in_range(Ps *ps, PsT r, unsigned w, int view)
     return ps_op(ps, PS_AND, icmp(ps, PS_ILE, lo, r), icmp(ps, PS_ILT, r, hi));
 }
 
-/* v, read in view from at width w, as the value read in view to (a fresh variable, defined, when the views differ) */
+/* an Int variable of the tier's own naming; 0 when ps_var (which matches by name alone) returns a variable of another sort */
+static PsT int_var(Ps *ps, const char *nm)
+{
+    PsT t = ps_var(ps, nm, PS_INT, 0);
+    return ps_at(ps, t)->sort == PS_INT ? t : 0;
+}
+
+/* v, read in view from at width w, as the value read in view to (a fresh variable, defined, when the views differ; 0 on a name clash) */
 static PsT view_change(PsImg *c, PsT v, unsigned w, int from, int to)
 {
     Ps *ps = c->ps;
@@ -173,7 +180,7 @@ static PsT view_change(PsImg *c, PsT v, unsigned w, int from, int to)
     PsT u, zero = ps_intc(ps, 0), keep, wrap;
     if (from == to) return v;
     snprintf(nm, sizeof nm, "_n%u", c->fresh++);
-    u = ps_var(ps, nm, PS_INT, 0);
+    if (!(u = int_var(ps, nm))) return 0;
     if (from == V_S) {          /* v >= 0: u = v, else u = v + 2^w */
         keep = ps_op(ps, PS_AND, icmp(ps, PS_ILE, zero, v), ps_op(ps, PS_EQ, u, v));
         wrap = ps_op(ps, PS_AND, icmp(ps, PS_ILT, v, zero), ps_op(ps, PS_EQ, u, ps_op(ps, PS_IADD, v, pw2(ps, w))));
@@ -197,7 +204,7 @@ static bool img_pair(PsImg *c, PsT x, PsT y, unsigned w, int hint, PsT *ta, PsT 
     } else {
         if (!(*ta = img_bv(c, x, hint, &va)) || !(*tb = img_bv(c, y, va, &vb))) return false;
     }
-    *tb = view_change(c, *tb, w, vb, va);
+    if (!(*tb = view_change(c, *tb, w, vb, va))) return false;
     *view = va;
     return true;
 }
@@ -217,7 +224,7 @@ static PsT img_bv(PsImg *c, PsT t, int hint, int *view)
         char nm[48];
         if (n.sort != PS_BV || strlen(ps->v.data[n.k].name) + 2 >= sizeof ((PsVar *)0)->name) return 0;
         snprintf(nm, sizeof nm, "%s.i", ps->v.data[n.k].name);
-        a = ps_var(ps, nm, PS_INT, 0);
+        if (!(a = int_var(ps, nm))) return 0;
         while (c->lv.len <= n.k) vec_push(&c->lv, V_NONE);
         if (c->lv.data[n.k] == V_NONE) {            /* the first consumer picks the view; the range is a fact of the leaf */
             c->lv.data[n.k] = (uint8_t)hint;
@@ -263,8 +270,7 @@ static PsT img_fm(PsImg *c, PsT t)
         int want = n.op == PS_BVULT || n.op == PS_BVULE ? V_U : V_S;
         unsigned w = ps_at(ps, n.a)->w;
         if (!img_pair(c, n.a, n.b, w, want, &a, &b, &v)) return 0;
-        a = view_change(c, a, w, v, want);
-        b = view_change(c, b, w, v, want);
+        if (!(a = view_change(c, a, w, v, want)) || !(b = view_change(c, b, w, v, want))) return 0;
         return ps_op(ps, n.op == PS_BVULT || n.op == PS_BVSLT ? PS_ILT : PS_ILE, a, b);
     }
     case PS_EQ:
@@ -772,6 +778,51 @@ int prove_selftest(void)
         hh[4] = ule(&ps, ps_op(&ps, PS_BVMUL, SX(r3), SX(c3)), szD);
         expect(&failures, "product goal through ps_prove", ps_prove(s, &ps, hh, 5,
                ult(&ps, ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVMUL, SX(i3), SX(c3)), SX(j3)), szD), 10000000), PS_VALID);
+        /* review gaps (T2-T3 review, 2026-11-22): views, constants, the skip rule, goal shapes, the fixpoint order */
+        {
+            PsT m3 = ps_var(&ps, "m3", PS_BV, 32), q3 = ps_var(&ps, "q3", PS_BV, 32), ci, c64 = ps_bvc(&ps, 64, UINT64_C(1) << 63),
+                bnd[5];
+            /* a name the tier makes (q3.i) already taken by a bit-vector: the tier does not apply */
+            (void)ps_var(&ps, "q3.i", PS_BV, 32);
+            expect(&failures, "name clash with an image", ps_valid_int(s, &ps, NULL, 0, ule(&ps, q3, q3), 10000000), PS_UNKNOWN);
+            /* a negative constant in the signed view: -2 < m3 < 0 means m3 = -1 */
+            hh[0] = ps_op(&ps, PS_BVSLT, ps_bvc(&ps, 32, 0xfffffffeu), m3); hh[1] = ps_op(&ps, PS_BVSLT, m3, z32);
+            expect(&failures, "m3 == -1", ps_valid_int(s, &ps, hh, 2, ps_op(&ps, PS_EQ, m3, ps_bvc(&ps, 32, 0xffffffffu)), 10000000), PS_VALID);
+            expect(&failures, "m3 == 1 is not", ps_valid_int(s, &ps, hh, 2, ps_op(&ps, PS_EQ, m3, ps_bvc(&ps, 32, 1)), 10000000), PS_INVALID);
+            expect(&failures, "m3 + 1 == 0", ps_valid_int(s, &ps, hh, 2, ps_op(&ps, PS_EQ, ps_op(&ps, PS_BVADD, m3, ps_bvc(&ps, 32, 1)), z32), 10000000), PS_VALID);
+            /* a 64-bit constant above INT64_MAX: signed it is the most negative, and 2^64 - 1 + 1 wraps */
+            expect(&failures, "2^63 <s 0", ps_valid_int(s, &ps, NULL, 0, ps_op(&ps, PS_BVSLT, c64, zero), 10000000), PS_VALID);
+            expect(&failures, "max + 1 wraps", ps_valid_int(s, &ps, NULL, 0,
+                   ps_op(&ps, PS_EQ, ps_op(&ps, PS_BVADD, ps_bvc(&ps, 64, UINT64_MAX), one), zero), 10000000), PS_UNKNOWN);
+            /* the skip rule: a signed 64-bit product of three sign-extended ints can wrap, so its range is owed */
+            hh[0] = ps_op(&ps, PS_BVSLE, z32, i3); hh[1] = ps_op(&ps, PS_BVSLE, z32, j3); hh[2] = ps_op(&ps, PS_BVSLE, z32, r3);
+            ci = ps_op(&ps, PS_BVMUL, ps_op(&ps, PS_BVMUL, SX(i3), SX(j3)), SX(r3));
+            expect(&failures, "triple product is not exact", ps_valid_int(s, &ps, hh, 3, ps_op(&ps, PS_BVSLE, zero, ci), 10000000), PS_UNKNOWN);
+            /* subtraction: signed, with both operands non-negative, stays in range; unsigned, it can go below zero */
+            hh[0] = ps_op(&ps, PS_BVSLE, z32, i3); hh[1] = ps_op(&ps, PS_BVSLE, i3, r3);
+            expect(&failures, "0 <=s r - i", ps_valid_int(s, &ps, hh, 2, ps_op(&ps, PS_BVSLE, z32, ps_op(&ps, PS_BVSUB, r3, i3)), 10000000), PS_VALID);
+            expect(&failures, "u - v <=u u unconditionally", ps_valid_int(s, &ps, NULL, 0, ule(&ps, ps_op(&ps, PS_BVSUB, u3, v3), u3), 10000000), PS_UNKNOWN);
+            /* zero-extension of a leaf first read signed: x3 <s 0 means zext x3 >= 2^31 */
+            hh[0] = ps_op(&ps, PS_BVSLT, x3, z32);
+            expect(&failures, "zext of a negative", ps_valid_int(s, &ps, hh, 1,
+                   ule(&ps, ps_bvc(&ps, 64, 0x80000000u), ps_resize(&ps, x3, 64, false)), 10000000), PS_VALID);
+            /* nested implications and a conjunct that holds only under its own antecedent */
+            hh[0] = ps_op(&ps, PS_BVSLT, i3, r3); hh[1] = ps_op(&ps, PS_BVSLE, z32, i3);
+            g = ult(&ps, SX(i3), SX(r3));
+            expect(&failures, "nested implications", ps_valid_int(s, &ps, NULL, 0,
+                   ps_op(&ps, PS_IMP, hh[0], ps_op(&ps, PS_IMP, hh[1], g)), 10000000), PS_VALID);
+            expect(&failures, "an antecedent does not leak to its sibling", ps_valid_int(s, &ps, NULL, 0,
+                   ps_op(&ps, PS_AND, ps_op(&ps, PS_IMP, hh[1], ps_op(&ps, PS_BVSLE, zero, SX(i3))),
+                         ps_op(&ps, PS_BVSLE, zero, SX(i3))), 10000000), PS_INVALID);
+            /* the fixpoint in reverse order: the sum's hypothesis is listed before the bounds that make it faithful */
+            bnd[0] = ps_op(&ps, PS_BVSLE, ps_op(&ps, PS_BVADD, x3, y3), z32);
+            bnd[1] = ps_op(&ps, PS_BVSLE, x3, ps_bvc(&ps, 32, 1000)); bnd[2] = ps_op(&ps, PS_BVSLE, y3, ps_bvc(&ps, 32, 1000));
+            bnd[3] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0xfffffc18u), x3); bnd[4] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0xfffffc18u), y3);
+            expect(&failures, "fixpoint, hypothesis first", ps_valid_int(s, &ps, bnd, 5,
+                   ps_op(&ps, PS_BVSLT, ps_op(&ps, PS_BVADD, x3, y3), ps_bvc(&ps, 32, 1)), 10000000), PS_VALID);
+            /* truncation: the tier does not apply */
+            expect(&failures, "truncation", ps_valid_int(s, &ps, NULL, 0, ult(&ps, ps_resize(&ps, x, 32, false), ps_bvc(&ps, 32, 5)), 10000000), PS_UNKNOWN);
+        }
 #undef SX
     }
 
