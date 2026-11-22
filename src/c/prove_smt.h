@@ -75,8 +75,8 @@ enum { PS_VALID, PS_INVALID, PS_UNKNOWN, PS_ERROR };
 
 PsSolver *ps_open(const char *cmd, char *err, size_t errn);   /* cmd as symx's sx_open takes it (`z3 -in -smt2`) */
 void ps_close(PsSolver *s);
-/* Is goal true whenever all n hyps are?  One pipe serves many queries: variables are declared once, each
- * query lives in a push/pop.  rlimit is z3's deterministic budget (0: none). */
+/* Is goal true whenever all n hyps are?  One pipe serves many queries; each starts from a (reset), so
+ * variables are declared again.  rlimit is z3's deterministic budget (0: none). */
 int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
 /* The same, by the Int tier (docs/PROVER_DESIGN.md S7, docs/NARROW_INT_PLAN.md): bit-vectors of any width become Int values
  * in a signed or unsigned view; each add, subtract or multiply owes that its result stays in its width's range, proved from

@@ -1,5 +1,5 @@
 ---
-status: active
+status: done
 ---
 
 # Narrow-width Int tier and spec `*`
@@ -73,7 +73,7 @@ golden contains "unknown" and invalid goals are not retried, so no existing repo
    `unknown` without that hypothesis); unsigned-to-signed (`sext` of an unsigned-view add); nested view change; "fill2 bound without
    r <= 2^31" (`:455`) stays unknown.
 3. **T3 Wiring (done 2026-11-22).** `ps_prove` in `prove_smt.c` (the policy lives beside the tiers; `prove_vc.c` calls it). Selftest that a `PS_UNKNOWN` goal becomes valid through the retry and that an `INVALID` retry is ignored; then the call.
-4. **T4 `fill2` golden.** `tests/prove/fill2.c` (+ `.expected`, + one negative per dropped `requires`), the S8 shapes. Deletes the PARKED row and
+4. **T4 `fill2` golden (done 2026-11-22).** `fill2` needed `r * c <= 2147483647` in its contract too (the 32-bit index arithmetic must not wrap; without it the write is honestly `sat`), and the inner invariant carries `0 <= i < r`; negatives `fill2_nosize`, `fill2_nomax`, `fill2_noc`. 3 s. `tests/prove/fill2.c` (+ `.expected`, + one negative per dropped `requires`), the S8 shapes. Deletes the PARKED row and
    the section 10 pointer. Fixes stale text in the same commit: `prove_smt.h` "each query lives in a push/pop" (`valid_q` resets) and the
    `PsInt` comment about 8-bit values.
 

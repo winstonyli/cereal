@@ -1,0 +1,8 @@
+fill2: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  fill2_nomax.c:7:1  proved                 invariant holds on entry
+  fill2_nomax.c:9:1  proved                 invariant holds on entry
+  fill2_nomax.c:10:14  not proved (sat)       bounds write a
+  fill2_nomax.c:9:1  proved                 invariant preserved
+  fill2_nomax.c:7:1  proved                 invariant preserved
+fill2: 4 proved, 1 not proved, 0 unsupported
+exit 1
