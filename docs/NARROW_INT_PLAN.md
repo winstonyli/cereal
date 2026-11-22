@@ -92,3 +92,18 @@ Round 2 (Sonnet, 2026-11-21): `mag` cannot reach the Int tier and mishandles cas
 (now bottom-up); unsigned-to-signed and unsigned sub missing; fresh-name collisions and no memo; stratification is a fixpoint; an `INVALID`
 retry must be ignored; the bvsub selftest does not flip as first written; retry cost; cut the `x + 0` fold and the separate wrap predicates.
 Size estimate: roughly 200-300 lines. Round 3 not run.
+
+Round 3 (Sonnet, 2026-11-21): core sound (fixpoint is an induction; dropping a hypothesis only weakens; view facts always satisfiable). Folded into
+T2/T3 below; T1 as built (`2051680`) needs no change (its `ps_range` uses checked builtins, refuses truncation and 64-bit leaves, and reads a
+resize operand's raw width, so a wrapped narrow node under `sext` is safe).
+- **Goal antecedent.** `add_goal` (`prove_vc.c:287-301`) builds `IMP(pc, g)`, so the loop test (`j < c`) is in the goal, not the hypotheses.
+  `ps_valid_int` takes the top-level `IMP` antecedent conjuncts as extra hypotheses through the same fixpoint (several `IMP`s ANDed per label each
+  use their own), splits top-level `AND` hypotheses (one failing conjunct must not drop the rest), and drops untranslatable ones. Without this the
+  "invariant preserved" goals (`j + 1` no-wrap needs `j < c`) fall back to bit-vectors. Belongs to T2.
+- **Leaf views.** `PsVar` has no signedness and `ps_var` makes a new node per call, so the Int image is per variable index `k`, with views as edge
+  conversions: a leaf's image is signed when its first consumer (in term order) is signed, else unsigned. A signed default makes unsigned narrow
+  `n - i` incomplete (`i <=u n`, `n = 2^31`), never unsound; a golden for it is not planned.
+- **Constants.** `ps_intc` takes sign and magnitude (`2^63`, `2^64` bounds and unsigned 64-bit constants above `INT64_MAX` must stay printable).
+  Fresh names come from a counter with a length check (`PsVar.name[40]`, and `ps_var` matches by name).
+- **Cost.** Cache failed obligations across fixpoint rounds and goals; an Int attempt that ends `unknown` spends a full `rlimit` before the
+  bit-vector retry spends another, so the Int-first order applies only when a non-constant multiply is present.
