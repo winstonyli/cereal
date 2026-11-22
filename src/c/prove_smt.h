@@ -61,6 +61,10 @@ PsT ps_forall(Ps *ps, PsT var, PsT body);
 
 PsT ps_subst(Ps *ps, PsT t, PsT var, PsT repl);               /* t with variable var replaced */
 bool ps_has(const Ps *ps, PsT t, int op);                     /* some node of t is op */
+/* The values the 64-bit bit-vector term t can take, read as signed Int: true with [*lo, *hi] when every one of them is exact
+ * (no operation wraps, no unknown leaf), false otherwise.  Variables and 64-bit leaves have no such range; a narrow variable
+ * (or resize of one) has its width's. */
+bool ps_range(const Ps *ps, PsT t, int64_t *lo, int64_t *hi);
 
 /* What the rewrite of bit-vector terms to Int owes: Bool terms that must hold for it to mean what the original meant. */
 typedef struct PsInt {

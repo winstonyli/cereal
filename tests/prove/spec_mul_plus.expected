@@ -1,0 +1,4 @@
+area: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  spec_mul_plus.c:5:1  proved                 ensures
+area: 1 proved, 0 not proved, 0 unsupported
+exit 0

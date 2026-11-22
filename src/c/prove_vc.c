@@ -19,7 +19,7 @@
 enum { V_BV, V_BOOL, V_PTR };
 
 typedef struct Val {
-    uint8_t k, w, ops;      /* ops: arithmetic operations under a spec value (spec arithmetic is exact, at most 3) */
+    uint8_t k, w;
     bool sgn;
     int al;                 /* V_PTR: the allocation */
     PsT t;                  /* V_PTR: the offset in elements, 64 bits */
@@ -389,14 +389,11 @@ static Val ev_arith(Ctx *x, int pun, Val a, Val b, TypeId ty)
     int op = pun == P_PLUS ? PS_BVADD : pun == P_MINUS ? PS_BVSUB : PS_BVMUL;
     a = bv(x, a);
     b = bv(x, b);
-    if (x->inspec) {                        /* exact: widen to signed 64 bits, at most three operations deep */
-        Val r;
-        if (pun == P_STAR)
-            return unsup(x, "a multiplication in a spec");
-        if ((a.w > 32 && !a.ops) || (b.w > 32 && !b.ops) || a.ops + b.ops + 1 > 3)
-            return unsup(x, "spec arithmetic on 64-bit values or more than three operations deep");
-        r = mkv(V_BV, op2(x, op, ext64(x, a), ext64(x, b)), 64, true);
-        r.ops = (uint8_t)(a.ops + b.ops + 1);
+    if (x->inspec) {                        /* exact: widen to signed 64 bits, refused unless no value can wrap */
+        Val r = mkv(V_BV, op2(x, op, ext64(x, a), ext64(x, b)), 64, true);
+        int64_t lo, hi;
+        if (!ps_range(&x->ps, r.t, &lo, &hi))
+            return unsup(x, "spec arithmetic that may exceed 64 bits");
         return r;
     }
     if (!int_ty(x, ty, &w, &sg) || a.w != w || b.w != w)
@@ -518,8 +515,6 @@ static Val ev(Ctx *x, St *s, uint32_t n)
         if (!int_ty(x, t->ty, &w, &sg))
             return unsup(x, "a cast to a type outside the subset");
         a = bv(x, a);
-        if (a.ops)
-            return unsup(x, "a cast of spec arithmetic");
         if (w != a.w)
             a.t = ps_resize(&x->ps, a.t, w, a.sgn);
         a.w = (uint8_t)w;
@@ -533,8 +528,12 @@ static Val ev(Ctx *x, St *s, uint32_t n)
         a = bv(x, a);
         if (t->pun == P_PLUS)
             return a;
-        if (t->pun == P_MINUS && !a.ops) {
+        if (t->pun == P_MINUS) {
+            int64_t lo, hi;
+            bool exact = x->inspec && ps_range(&x->ps, a.t, &lo, &hi);     /* spec arithmetic stays exact */
             a.t = op2(x, PS_BVSUB, ps_bvc(&x->ps, a.w, 0), a.t);
+            if (exact && !ps_range(&x->ps, a.t, &lo, &hi))
+                return unsup(x, "spec arithmetic that may exceed 64 bits");
             return a;
         }
         return unsup(x, "the unary operator %s", punct_spelling[t->pun]);

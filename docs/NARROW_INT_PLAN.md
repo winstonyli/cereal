@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 ---
 
 # Narrow-width Int tier and spec `*`
@@ -65,7 +65,7 @@ golden contains "unknown" and invalid goals are not retried, so no existing repo
 
 0. **T0 Spike (done 2026-11-21).** Nine queries, about 0.3 s each, answers as S8. Covers signed-to-unsigned at 64 bits and a `2^62` product only;
    unsigned-to-signed and narrow widths are T2's.
-1. **T1 `ps_range` and spec `*`.** `tests/prove/spec_mul.c`/`.expected` first: `requires r * c <= $len(d)` over `int` accepted (the goal stays
+1. **T1 `ps_range` and spec `*` (done 2026-11-21).** `tests/prove/spec_mul.c`/`.expected` first: `requires r * c <= $len(d)` over `int` accepted (the goal stays
    `unknown` until T3), over `unsigned long` refused with the reason line; a `selftest prove` case for `ps_range`; then delete `Val.ops`.
 2. **T2 Narrow images and the fixpoint (d1 settled).** `selftest prove` cases first (a timeout is a failure, which replaces a separate guard): the S8
    goal valid; dropped `r*c <= len` invalid; dropped `r*c <= INT_MAX` unknown; the `x + y <= z` circularity case unknown; `BVULT(sext a8, c32)`
@@ -79,9 +79,9 @@ golden contains "unknown" and invalid goals are not retried, so no existing repo
 
 ## Decide
 
-- d1 **Sub in Int** (before T2): `PS_ISUB` (recommended: a multiply rewrite would count every sub as multiplied in `ps_has(t, PS_BVMUL)` and move
+- d1 **Sub in Int** (settled 2026-11-21: `PS_ISUB`): `PS_ISUB` (recommended: a multiply rewrite would count every sub as multiplied in `ps_has(t, PS_BVMUL)` and move
   it to the slow stratum) or `a + (-1) * b`.
-- d2 **Range source** (before T1): `ps_range` over terms (recommended: one function for both sides, exact for `r*c + 1`) or a `Val.mag` field
+- d2 **Range source** (settled 2026-11-21: `ps_range`): `ps_range` over terms (recommended: one function for both sides, exact for `r*c + 1`) or a `Val.mag` field
   (the first draft: needs a `TO_CAST` fix, cannot reach the Int tier, over-refuses).
 
 ## Review

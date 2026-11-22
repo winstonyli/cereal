@@ -88,6 +88,55 @@ bool ps_has(const Ps *ps, PsT t, int op)
     return (n->a && ps_has(ps, n->a, op)) || (n->b && ps_has(ps, n->b, op)) || (n->c && ps_has(ps, n->c, op));
 }
 
+/* ---- value ranges ---- */
+
+bool ps_range(const Ps *ps, PsT t, int64_t *lo, int64_t *hi)
+{
+    const PsNode *n = ps_at(ps, t);
+    int64_t al, ah, bl, bh, c[4];
+    unsigned i, wo;
+    if (n->sort != PS_BV)
+        return false;
+    switch (n->op) {
+    case PS_BVC:
+        if (n->w == 64 && n->k > (uint64_t)INT64_MAX) return false;
+        *lo = *hi = (int64_t)n->k;
+        return true;
+    case PS_VAR:
+        if (n->w >= 64) return false;
+        *lo = 0; *hi = (int64_t)((UINT64_C(1) << n->w) - 1);
+        return true;
+    case PS_RESIZE: {                       /* the operand's bits, read signed or unsigned: its own range does not matter */
+        const PsNode *o = ps_at(ps, n->a);
+        bool sg = (n->k & PS_SIGNED) != 0;
+        wo = o->w;
+        if (wo >= n->w || wo >= 64) return false;           /* truncation, or no narrower operand */
+        if (o->op == PS_BVC) {
+            *lo = *hi = sg && (o->k >> (wo - 1) & 1) ? (int64_t)(o->k - (UINT64_C(1) << wo)) : (int64_t)o->k;
+            return true;
+        }
+        if (sg) { *lo = -(int64_t)(UINT64_C(1) << (wo - 1)); *hi = (int64_t)(UINT64_C(1) << (wo - 1)) - 1; }
+        else { *lo = 0; *hi = (int64_t)((UINT64_C(1) << wo) - 1); }
+        return true;
+    }
+    case PS_BVADD: case PS_BVSUB: case PS_BVMUL:
+        if (n->w != 64 || !ps_range(ps, n->a, &al, &ah) || !ps_range(ps, n->b, &bl, &bh))
+            return false;
+        if (n->op == PS_BVADD)
+            return !__builtin_add_overflow(al, bl, lo) && !__builtin_add_overflow(ah, bh, hi);
+        if (n->op == PS_BVSUB)
+            return !__builtin_sub_overflow(al, bh, lo) && !__builtin_sub_overflow(ah, bl, hi);
+        if (__builtin_mul_overflow(al, bl, &c[0]) || __builtin_mul_overflow(al, bh, &c[1]) ||
+            __builtin_mul_overflow(ah, bl, &c[2]) || __builtin_mul_overflow(ah, bh, &c[3]))
+            return false;
+        *lo = *hi = c[0];
+        for (i = 1; i < 4; i++) { if (c[i] < *lo) *lo = c[i]; if (c[i] > *hi) *hi = c[i]; }
+        return true;
+    default:
+        return false;
+    }
+}
+
 /* ---- bit-vectors to Int ---- */
 
 void psint_free(PsInt *o) { vec_free(&o->wrapbv); vec_free(&o->wrapint); vec_free(&o->nonneg); }
@@ -440,6 +489,24 @@ int prove_selftest(void)
     ps_print(&ps, ps_subst(&ps, ps_op(&ps, PS_BVADD, x, i), x, ps_bvc(&ps, 64, 3)), &sb);
     if (strcmp(sb_cstr(&sb), "(bvadd (_ bv3 64) i)")) { fprintf(stderr, "prove selftest: subst: %s\n", sb_cstr(&sb)); failures++; }
     sb_free(&sb);
+
+    /* value ranges: a narrow variable's width, signed or unsigned; a product of two int-ranged values fits, a third factor
+     * or a 64-bit leaf does not */
+    {
+        PsT r32 = ps_var(&ps, "r32", PS_BV, 32), c32 = ps_var(&ps, "c32", PS_BV, 32), p;
+        int64_t lo, hi;
+        p = ps_op(&ps, PS_BVMUL, ps_resize(&ps, r32, 64, true), ps_resize(&ps, c32, 64, true));
+        if (!ps_range(&ps, p, &lo, &hi) || lo != -2147483647LL * 2147483648LL || hi != 2147483648LL * 2147483648LL)
+            { fprintf(stderr, "prove selftest: range of r*c: %d [%lld, %lld]\n", 0, (long long)lo, (long long)hi); failures++; }
+        if (!ps_range(&ps, ps_op(&ps, PS_BVADD, p, one), &lo, &hi) || hi != 2147483648LL * 2147483648LL + 1)
+            { fprintf(stderr, "prove selftest: range of r*c+1\n"); failures++; }
+        if (ps_range(&ps, ps_op(&ps, PS_BVMUL, p, ps_resize(&ps, c32, 64, true)), &lo, &hi))
+            { fprintf(stderr, "prove selftest: r*c*c fits\n"); failures++; }
+        if (ps_range(&ps, n, &lo, &hi))
+            { fprintf(stderr, "prove selftest: a 64-bit leaf has a range\n"); failures++; }
+        if (!ps_range(&ps, ps_resize(&ps, r32, 64, false), &lo, &hi) || lo != 0 || hi != 4294967295LL)
+            { fprintf(stderr, "prove selftest: range of zext\n"); failures++; }
+    }
 
     /* the copy loop's write bound, and it with the size fact dropped */
     h[0] = ule(&ps, n, szD); h[1] = ult(&ps, i, n);
