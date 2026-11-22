@@ -72,7 +72,7 @@ golden contains "unknown" and invalid goals are not retried, so no existing repo
    not proved; `BVULE(BVSUB(n, i), n)` with `i <=u n` valid (replaces the "Int tier declines bvsub" case at `prove_smt.c:523`, which stays
    `unknown` without that hypothesis); unsigned-to-signed (`sext` of an unsigned-view add); nested view change; "fill2 bound without
    r <= 2^31" (`:455`) stays unknown.
-3. **T3 Wiring.** Selftest that a `PS_UNKNOWN` goal becomes valid through the retry and that an `INVALID` retry is ignored; then the call.
+3. **T3 Wiring (done 2026-11-22).** `ps_prove` in `prove_smt.c` (the policy lives beside the tiers; `prove_vc.c` calls it). Selftest that a `PS_UNKNOWN` goal becomes valid through the retry and that an `INVALID` retry is ignored; then the call.
 4. **T4 `fill2` golden.** `tests/prove/fill2.c` (+ `.expected`, + one negative per dropped `requires`), the S8 shapes. Deletes the PARKED row and
    the section 10 pointer. Fixes stale text in the same commit: `prove_smt.h` "each query lives in a push/pop" (`valid_q` resets) and the
    `PsInt` comment about 8-bit values.

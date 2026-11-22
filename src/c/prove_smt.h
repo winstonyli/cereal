@@ -85,6 +85,10 @@ int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned 
  * hypotheses.  A goal with a quantifier or an array is PS_UNKNOWN. */
 int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
 
+/* ps_valid, with the Int tier (ps_valid_int) tried first over a non-constant multiply and after an `unknown` otherwise; only a
+ * proof is taken from it. */
+int ps_prove(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
+
 int prove_selftest(void);
 
 #endif

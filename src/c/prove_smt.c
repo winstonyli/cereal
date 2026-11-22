@@ -633,6 +633,28 @@ int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsig
     return r;
 }
 
+/* Does t multiply two things neither of which is a constant?  Those are the goals bit-vectors cannot answer (S8). */
+static bool var_mul(const Ps *ps, PsT t)
+{
+    const PsNode *n = ps_at(ps, t);
+    if (n->op == PS_BVMUL && ps_at(ps, n->a)->op != PS_BVC && ps_at(ps, n->b)->op != PS_BVC) return true;
+    return (n->a && var_mul(ps, n->a)) || (n->b && var_mul(ps, n->b)) || (n->c && var_mul(ps, n->c));
+}
+
+int ps_prove(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+{
+    bool mul = var_mul(ps, goal);
+    size_t i;
+    int r;
+    for (i = 0; i < n && !mul; i++) mul = var_mul(ps, hyps[i]);
+    /* Over a multiply the bit-vector query spends its whole budget to no answer, so the Int tier goes first. */
+    if (mul && ps_valid_int(s, ps, hyps, n, goal, rlimit) == PS_VALID) return PS_VALID;
+    r = ps_valid(s, ps, hyps, n, goal, rlimit);
+    /* Only a proof is taken from the Int tier: with a hypothesis left out, its `sat` proves nothing. */
+    if (!mul && r == PS_UNKNOWN && ps_valid_int(s, ps, hyps, n, goal, rlimit) == PS_VALID) return PS_VALID;
+    return r;
+}
+
 /* ---- self-test ---- */
 
 static void expect(int *failures, const char *what, int got, int want)
@@ -737,6 +759,19 @@ int prove_selftest(void)
         hh[0] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0x7fffffffu), x3); hh[1] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0x7fffffffu), y3);
         hh[2] = ps_op(&ps, PS_BVSLE, z3, z32); hh[3] = ps_op(&ps, PS_BVSLE, ps_op(&ps, PS_BVADD, x3, y3), z3);
         expect(&failures, "circular no-wrap", ps_valid_int(s, &ps, hh, 4, ult(&ps, x3, x3), 10000000), PS_INVALID);
+        /* the policy: a proof from the Int tier is taken, its other answers are not.  Here the Int tier drops the wrapping
+         * hypothesis and cannot prove the goal; bit-vectors prove it from that hypothesis. */
+        g = ps_op(&ps, PS_BVSLE, ps_op(&ps, PS_BVADD, x3, y3), z32);
+        expect(&failures, "bit-vector proof kept", ps_prove(s, &ps, hh, 4, g, 10000000), PS_VALID);
+        expect(&failures, "Int tier alone has no proof there", ps_valid_int(s, &ps, hh, 4, g, 10000000), PS_UNKNOWN);
+        /* and the Int tier's `sat` is ignored: the goal x3 <u x3 is false in bit-vectors too, so INVALID stands */
+        expect(&failures, "bit-vector answer kept", ps_prove(s, &ps, hh, 4, ult(&ps, x3, x3), 10000000), PS_INVALID);
+        /* over a product the Int tier goes first: this goal has no bit-vector answer in the budget */
+        hh[0] = ps_op(&ps, PS_BVSLE, z32, i3); hh[1] = ps_op(&ps, PS_BVSLT, i3, r3);
+        hh[2] = ps_op(&ps, PS_BVSLE, z32, j3); hh[3] = ps_op(&ps, PS_BVSLT, j3, c3);
+        hh[4] = ule(&ps, ps_op(&ps, PS_BVMUL, SX(r3), SX(c3)), szD);
+        expect(&failures, "product goal through ps_prove", ps_prove(s, &ps, hh, 5,
+               ult(&ps, ps_op(&ps, PS_BVADD, ps_op(&ps, PS_BVMUL, SX(i3), SX(c3)), SX(j3)), szD), 10000000), PS_VALID);
 #undef SX
     }
 

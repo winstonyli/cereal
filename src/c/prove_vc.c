@@ -833,7 +833,7 @@ static void analyse(Ctx *x, PsSolver *sv, FILE *out)
             run_block(x, s, x->regs.data[r].blk);
         for (k = g0; k < x->goals.len; k++) {
             const Goal *g = &x->goals.data[k];
-            int res = ps_valid(sv, &x->ps, x->base.data, x->base.len, g->conj, RLIMIT);
+            int res = ps_prove(sv, &x->ps, x->base.data, x->base.len, g->conj, RLIMIT);
             const char *st = res == PS_VALID ? "proved" : res == PS_INVALID ? "not proved (sat)"
                            : res == PS_UNKNOWN ? "not proved (unknown)" : "not proved (solver error)";
             fputs("  ", out);
