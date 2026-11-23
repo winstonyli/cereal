@@ -1,2 +1,2 @@
-area: unsupported: spec arithmetic that may exceed 64 bits
+area: unsupported: a conversion of an exact spec value beyond 64 bits
 exit 1

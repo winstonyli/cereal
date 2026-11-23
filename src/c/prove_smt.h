@@ -26,7 +26,8 @@ enum {
     PS_IADD, PS_IMUL, PS_ISUB, PS_ILT, PS_ILE,
     PS_EQ, PS_AND, PS_OR, PS_NOT, PS_IMP,
     PS_SEL, PS_STORE,                   /* array a, index b [, element c] */
-    PS_FORALL                           /* a: the bound variable, b: the body */
+    PS_FORALL,                          /* a: the bound variable, b: the body */
+    PS_B2I                              /* the Int a bit-vector a means: k = PS_SIGNED for the signed reading, else unsigned */
 };
 
 #define PS_SIGNED 0x100                 /* in a PS_RESIZE's k */
@@ -56,6 +57,7 @@ PsT ps_intc(Ps *ps, uint64_t v);
 PsT ps_var(Ps *ps, const char *name, int sort, unsigned w);   /* the same name, the same variable */
 PsT ps_op(Ps *ps, int op, PsT a, PsT b);                      /* the binary and unary operations (b: 0 for PS_BVNOT, PS_NOT) */
 PsT ps_resize(Ps *ps, PsT a, unsigned w, bool sign);          /* a bit-vector as w bits: zero- or sign-extended, or truncated */
+PsT ps_b2i(Ps *ps, PsT a, bool sign);                         /* the number a bit-vector's bits mean (exact arithmetic over it is Int) */
 PsT ps_store(Ps *ps, PsT arr, PsT idx, PsT val);
 PsT ps_forall(Ps *ps, PsT var, PsT body);
 
@@ -76,7 +78,8 @@ enum { PS_VALID, PS_INVALID, PS_UNKNOWN, PS_ERROR };
 PsSolver *ps_open(const char *cmd, char *err, size_t errn);   /* cmd as symx's sx_open takes it (`z3 -in -smt2`) */
 void ps_close(PsSolver *s);
 /* Is goal true whenever all n hyps are?  One pipe serves many queries; each starts from a (reset), so
- * variables are declared again.  rlimit is z3's deterministic budget (0: none). */
+ * variables are declared again.  rlimit is z3's deterministic budget (0: none).  A term with PS_B2I (a spec's exact arithmetic)
+ * is PS_UNKNOWN here: only the Int tier reads it. */
 int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
 /* The same, by the Int tier (docs/PROVER_DESIGN.md S7, docs/NARROW_INT_PLAN.md): bit-vectors of any width become Int values
  * in a signed or unsigned view; each add, subtract or multiply owes that its result stays in its width's range, proved from

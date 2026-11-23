@@ -1,2 +1,8 @@
-fill: unsupported: spec arithmetic that may exceed 64 bits
-exit 1
+fill: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  idx_sizet_2d.c:7:1  proved                 invariant holds on entry
+  idx_sizet_2d.c:9:1  proved                 invariant holds on entry
+  idx_sizet_2d.c:10:14  proved                 bounds write a
+  idx_sizet_2d.c:9:1  proved                 invariant preserved
+  idx_sizet_2d.c:7:1  proved                 invariant preserved
+fill: 5 proved, 0 not proved, 0 unsupported
+exit 0

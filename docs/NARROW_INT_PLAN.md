@@ -5,6 +5,8 @@ status: done
 # Narrow-width Int tier and spec `*`
 
 > As built: `ps_to_int` below is the pre-build function; it is gone, replaced by `img_bv`/`img_fm` (the Int image) and `ps_valid_int` over one `PsQ` hypothesis stack per goal (`prove_smt.c`), with `ps_prove` the policy. Section text is the design as argued.
+>
+> As built (2026-11-22, spec values beyond 64 bits): `ps_range` is now only the fast path. Where it fails (a product with a 64-bit leaf, a chain past signed 64 bits) `ev_arith`/unary minus in a spec yield a `V_INT` value, an Int term over `PS_B2I` (a bit-vector read signed or unsigned); a comparison with a `V_INT` side is `ILT/ILE/EQ` over both sides as Ints. `img_int`/`img_fm` give such atoms no obligations (they cannot wrap), so only the Int tier proves them: `ps_valid` answers `unknown` for a term with `PS_B2I` (z3 4.13 rejects some `bv2nat` equalities at parse time). A conversion of a `V_INT` is refused ("a conversion of an exact spec value beyond 64 bits", `PARKED.md`). Fuzzed by `prove_fuzz.c` (Int atoms over 8/16-bit readings). Quantifier-free, array-free queries run `(check-sat-using smt)`: z3's default tactic for ALL took ~1.5 s on a nonlinear goal the smt core does in 0.05 s (idx_transpose 4.6 s to 0.24 s).
 
 Closes the PARKED rows "Narrow-width index arithmetic gets no Int tier" and the spec `*` gap (`PARKED.md`, `--prove` slice 4a
 leftovers). Route chosen 2026-11-21 (n1): keep narrow arithmetic in the Int tier and convert at the edges. Evidence: spike S8

@@ -1,0 +1,8 @@
+fill: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  idx_sizet_2d_bad.c:7:1  proved                 invariant holds on entry
+  idx_sizet_2d_bad.c:9:1  proved                 invariant holds on entry
+  idx_sizet_2d_bad.c:10:14  not proved (unknown)   bounds write a
+  idx_sizet_2d_bad.c:9:1  proved                 invariant preserved
+  idx_sizet_2d_bad.c:7:1  proved                 invariant preserved
+fill: 4 proved, 1 not proved, 0 unsupported
+exit 1

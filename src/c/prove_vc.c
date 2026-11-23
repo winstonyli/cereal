@@ -16,13 +16,13 @@
 #define MAX_PATHS 256
 #define RLIMIT 100000000UL
 
-enum { V_BV, V_BOOL, V_PTR };
+enum { V_BV, V_BOOL, V_PTR, V_INT };
 
 typedef struct Val {
     uint8_t k, w;
     bool sgn;
     int al;                 /* V_PTR: the allocation */
-    PsT t;                  /* V_PTR: the offset in elements, 64 bits */
+    PsT t;                  /* V_PTR: the offset in elements, 64 bits; V_INT: an Int term (a spec value that left 64 bits) */
 } Val;
 
 typedef struct Slot { uint32_t sym; uint8_t w; bool sgn, param; } Slot;
@@ -310,14 +310,26 @@ static PsT cnd(Ctx *x, Val v)
         return v.t;
     if (v.k == V_PTR)
         unsup(x, "a pointer used as a condition");
+    if (v.k == V_INT)
+        return notq(x, op2(x, PS_EQ, v.t, ps_intc(&x->ps, 0)));
     return notq(x, op2(x, PS_EQ, v.t, ps_bvc(&x->ps, v.w, 0)));
 }
 
 static Val bv(Ctx *x, Val v)
 {
+    if (v.k == V_INT)
+        return unsup(x, "an exact spec value beyond 64 bits where a bit-vector is expected");
     if (v.k != V_BV)
         return unsup(x, "a comparison or pointer used as a value");
     return v;
+}
+
+/* A spec number (a bit-vector Val or an exact Int one) as an Int term: the value its bits mean. */
+static PsT ival(Ctx *x, Val v)
+{
+    if (v.k == V_INT)
+        return v.t;
+    return ps_b2i(&x->ps, bv(x, v).t, v.sgn);
 }
 
 static PsT ext64(Ctx *x, Val v) { return v.w == 64 ? v.t : ps_resize(&x->ps, v.t, 64, v.sgn); }
@@ -387,15 +399,20 @@ static Val ev_arith(Ctx *x, int pun, Val a, Val b, TypeId ty)
     unsigned w;
     bool sg;
     int op = pun == P_PLUS ? PS_BVADD : pun == P_MINUS ? PS_BVSUB : PS_BVMUL;
+    if (x->inspec) {                        /* exact: signed 64 bits where no value can wrap, else an Int */
+        if (a.k != V_INT && b.k != V_INT) {
+            Val r;
+            int64_t lo, hi;
+            a = bv(x, a);
+            b = bv(x, b);
+            r = mkv(V_BV, op2(x, op, ext64(x, a), ext64(x, b)), 64, true);
+            if (ps_range(&x->ps, r.t, &lo, &hi))
+                return r;
+        }
+        return mkv(V_INT, op2(x, pun == P_PLUS ? PS_IADD : pun == P_MINUS ? PS_ISUB : PS_IMUL, ival(x, a), ival(x, b)), 0, true);
+    }
     a = bv(x, a);
     b = bv(x, b);
-    if (x->inspec) {                        /* exact: widen to signed 64 bits, refused unless no value can wrap */
-        Val r = mkv(V_BV, op2(x, op, ext64(x, a), ext64(x, b)), 64, true);
-        int64_t lo, hi;
-        if (!ps_range(&x->ps, r.t, &lo, &hi))
-            return unsup(x, "spec arithmetic that may exceed 64 bits");
-        return r;
-    }
     if (!int_ty(x, ty, &w, &sg) || a.w != w || b.w != w)
         return unsup(x, "arithmetic on mixed or unsupported widths");
     return mkv(V_BV, op2(x, op, a.t, b.t), w, sg);
@@ -405,6 +422,18 @@ static Val ev_cmp(Ctx *x, int pun, Val a, Val b)
 {
     bool sg;
     PsT r;
+    if (a.k == V_INT || b.k == V_INT) {     /* an exact Int value: both sides as Ints, so the signs cannot disagree */
+        PsT ia = ival(x, a), ib = ival(x, b);
+        switch (pun) {
+        case P_EQEQ: r = op2(x, PS_EQ, ia, ib); break;
+        case P_NE: r = notq(x, op2(x, PS_EQ, ia, ib)); break;
+        case P_LT: r = op2(x, PS_ILT, ia, ib); break;
+        case P_LE: r = op2(x, PS_ILE, ia, ib); break;
+        case P_GT: r = op2(x, PS_ILT, ib, ia); break;
+        default: r = op2(x, PS_ILE, ib, ia); break;
+        }
+        return mkv(V_BOOL, r, 0, false);
+    }
     a = bv(x, a);
     b = bv(x, b);
     widen2(x, &a, &b);
@@ -514,6 +543,8 @@ static Val ev(Ctx *x, St *s, uint32_t n)
         }
         if (!int_ty(x, t->ty, &w, &sg))
             return unsup(x, "a cast to a type outside the subset");
+        if (a.k == V_INT)               /* a conversion (modular in C) of an exact Int has no image: the usual arithmetic conversions land here */
+            return unsup(x, "a conversion of an exact spec value beyond 64 bits");
         a = bv(x, a);
         if (w != a.w)
             a.t = ps_resize(&x->ps, a.t, w, a.sgn);
@@ -525,16 +556,22 @@ static Val ev(Ctx *x, St *s, uint32_t n)
         Val a = ev(x, s, kid(L, n, 0));
         if (t->pun == P_BANG)
             return mkv(V_BOOL, notq(x, cnd(x, a)), 0, false);
+        if (x->inspec && a.k == V_INT) {
+            if (t->pun == P_PLUS)
+                return a;
+            if (t->pun == P_MINUS)
+                return mkv(V_INT, op2(x, PS_ISUB, ps_intc(&x->ps, 0), a.t), 0, true);
+        }
         a = bv(x, a);
         if (t->pun == P_PLUS)
             return a;
         if (t->pun == P_MINUS) {
-            if (x->inspec) {                /* exact, as ev_arith: 0 - a over signed 64 bits, refused unless it cannot wrap */
+            if (x->inspec) {                /* exact, as ev_arith: 0 - a over signed 64 bits where it cannot wrap, else an Int */
                 Val r = mkv(V_BV, op2(x, PS_BVSUB, ps_bvc(&x->ps, 64, 0), ext64(x, a)), 64, true);
                 int64_t lo, hi;
-                if (!ps_range(&x->ps, r.t, &lo, &hi))
-                    return unsup(x, "spec arithmetic that may exceed 64 bits");
-                return r;
+                if (ps_range(&x->ps, r.t, &lo, &hi))
+                    return r;
+                return mkv(V_INT, op2(x, PS_ISUB, ps_intc(&x->ps, 0), ival(x, a)), 0, true);
             }
             a.t = op2(x, PS_BVSUB, ps_bvc(&x->ps, a.w, 0), a.t);
             return a;

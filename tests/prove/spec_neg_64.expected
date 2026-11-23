@@ -1,2 +1,4 @@
-area: unsupported: spec arithmetic that may exceed 64 bits
-exit 1
+negate: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  spec_neg_64.c:5:1  proved                 ensures
+negate: 1 proved, 0 not proved, 0 unsupported
+exit 0

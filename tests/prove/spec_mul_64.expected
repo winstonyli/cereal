@@ -1,2 +1,4 @@
-area: unsupported: spec arithmetic that may exceed 64 bits
-exit 1
+area: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  spec_mul_64.c:5:6  proved                 bounds write a
+area: 1 proved, 0 not proved, 0 unsupported
+exit 0

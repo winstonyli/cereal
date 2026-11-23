@@ -53,6 +53,7 @@ PsT ps_op(Ps *ps, int op, PsT a, PsT b)
 }
 
 PsT ps_resize(Ps *ps, PsT a, unsigned w, bool sign) { return mk(ps, PS_RESIZE, PS_BV, w, a, 0, 0, w | (sign ? PS_SIGNED : 0)); }
+PsT ps_b2i(Ps *ps, PsT a, bool sign) { return mk(ps, PS_B2I, PS_INT, 0, a, 0, 0, sign ? PS_SIGNED : 0); }
 PsT ps_store(Ps *ps, PsT arr, PsT idx, PsT val) { return mk(ps, PS_STORE, PS_ARR, ps_at(ps, arr)->w, arr, idx, val, 0); }
 PsT ps_forall(Ps *ps, PsT var, PsT body) { return mk(ps, PS_FORALL, PS_BOOL, 0, var, body, 0, 0); }
 
@@ -256,6 +257,28 @@ static PsT img_bv(PsImg *c, PsT t, int hint, int *view)
     }
 }
 
+/* an Int-sorted term of the spec's exact arithmetic: no obligations, since it never wraps; a PS_B2I reads its operand's image
+ * in the view it asks for; 0 when the tier does not apply */
+static PsT img_int(PsImg *c, PsT t)
+{
+    Ps *ps = c->ps;
+    PsNode n = *ps_at(ps, t);
+    PsT a, b;
+    int v, want;
+    switch (n.op) {
+    case PS_INTC: case PS_P64: return t;
+    case PS_B2I:
+        want = n.k & PS_SIGNED ? V_S : V_U;
+        if (!(a = img_bv(c, n.a, want, &v))) return 0;
+        return view_change(c, a, ps_at(ps, n.a)->w, v, want);
+    case PS_IADD: case PS_ISUB: case PS_IMUL:
+        if (!(a = img_int(c, n.a)) || !(b = img_int(c, n.b))) return 0;
+        return ps_op(ps, n.op, a, b);
+    default:
+        return 0;
+    }
+}
+
 /* a formula's Int image; 0 when the tier does not apply */
 static PsT img_fm(PsImg *c, PsT t)
 {
@@ -264,6 +287,9 @@ static PsT img_fm(PsImg *c, PsT t)
     PsT a, b;
     int v;
     switch (n.op) {
+    case PS_ILT: case PS_ILE:
+        if (!(a = img_int(c, n.a)) || !(b = img_int(c, n.b))) return 0;
+        return ps_op(ps, n.op, a, b);
     case PS_TRUE: case PS_FALSE: return t;
     case PS_VAR: return n.sort == PS_BOOL ? t : 0;
     case PS_BVULT: case PS_BVULE: case PS_BVSLT: case PS_BVSLE: {
@@ -276,6 +302,10 @@ static PsT img_fm(PsImg *c, PsT t)
     case PS_EQ:
         if (ps_at(ps, n.a)->sort == PS_BV) {
             if (!img_pair(c, n.a, n.b, ps_at(ps, n.a)->w, V_U, &a, &b, &v)) return 0;
+            return ps_op(ps, PS_EQ, a, b);
+        }
+        if (ps_at(ps, n.a)->sort == PS_INT) {
+            if (!(a = img_int(c, n.a)) || !(b = img_int(c, n.b))) return 0;
             return ps_op(ps, PS_EQ, a, b);
         }
         if (ps_at(ps, n.a)->sort != PS_BOOL) return 0;
@@ -327,6 +357,11 @@ void ps_print(const Ps *ps, PsT t, StrBuf *sb)
         put_sort(sb, ps_at(ps, n->a)->sort, ps_at(ps, n->a)->w);
         sb_puts(sb, ")) ");
         ps_print(ps, n->b, sb);
+        sb_putc(sb, ')');
+        return;
+    case PS_B2I:                    /* not SMT-LIB: only the Int tier reads it (ps_valid answers `unknown`) */
+        sb_puts(sb, n->k & PS_SIGNED ? "(b2i_s " : "(b2i_u ");
+        ps_print(ps, n->a, sb);
         sb_putc(sb, ')');
         return;
     case PS_RESIZE: {
@@ -487,7 +522,7 @@ static bool beyond_abv(const Ps *ps, PsT t)
 static int valid_q(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
 {
     StrBuf q = {0};
-    bool full;
+    bool full, pure_int;
     const char *a;
     size_t i;
     int r;
@@ -514,7 +549,12 @@ static int valid_q(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, uns
     }
     sb_puts(&q, "(assert (not ");
     ps_print(ps, goal, &q);
-    sb_puts(&q, "))\n(check-sat)\n");
+    /* Over Int alone (the Int tier's queries) z3's default tactic for ALL spends ~1.5 s on a nonlinear goal that its plain
+     * smt core answers in 0.05 s (r*c <= len, i < r, j < c |- i*c + j < len; z3 4.13); arrays and quantifiers keep the default. */
+    pure_int = full;
+    for (i = 0; i < n && pure_int; i++) pure_int = !ps_has(ps, hyps[i], PS_FORALL) && !ps_has(ps, hyps[i], PS_SEL) && !ps_has(ps, hyps[i], PS_STORE);
+    pure_int = pure_int && !ps_has(ps, goal, PS_FORALL) && !ps_has(ps, goal, PS_SEL) && !ps_has(ps, goal, PS_STORE);
+    sb_puts(&q, pure_int ? "))\n(check-sat-using smt)\n" : "))\n(check-sat)\n");
     a = sx_raw(s->sx, sb_cstr(&q));
     sb_free(&q);
     if (!a || strstr(a, "(error")) return PS_ERROR;
@@ -525,9 +565,13 @@ static int valid_q(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, uns
 
 int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
 {
-    bool q = ps_has(ps, goal, PS_FORALL);
+    bool q = ps_has(ps, goal, PS_FORALL), b2i = ps_has(ps, goal, PS_B2I);
     size_t i;
     for (i = 0; i < n && !q; i++) q = ps_has(ps, hyps[i], PS_FORALL);
+    for (i = 0; i < n && !b2i; i++) b2i = ps_has(ps, hyps[i], PS_B2I);
+    /* A spec's exact arithmetic (PS_B2I) is for the Int tier: z3's bv2nat has no sound, stable spelling here (an equality of two
+     * bv2nat terms of different widths is rejected at parse time, z3 4.13). */
+    if (b2i) return PS_UNKNOWN;
     /* The instantiation tier proves or says nothing, and gets a tenth of the budget: the copy loops' goals need
      * between 1M and 3.3M of the 100M (measured), while the nodstlen golden's "preserved" goal ran 25 s to
      * `unknown` at the full budget and the full query proved it in 0.7 s. */
@@ -675,7 +719,8 @@ int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsig
 static bool var_mul(const Ps *ps, PsT t)
 {
     const PsNode *n = ps_at(ps, t);
-    if (n->op == PS_BVMUL && ps_at(ps, n->a)->op != PS_BVC && ps_at(ps, n->b)->op != PS_BVC) return true;
+    if ((n->op == PS_BVMUL && ps_at(ps, n->a)->op != PS_BVC && ps_at(ps, n->b)->op != PS_BVC) ||
+        (n->op == PS_IMUL && ps_at(ps, n->a)->op != PS_INTC && ps_at(ps, n->b)->op != PS_INTC)) return true;
     return (n->a && var_mul(ps, n->a)) || (n->b && var_mul(ps, n->b)) || (n->c && var_mul(ps, n->c));
 }
 
@@ -960,6 +1005,29 @@ int prove_selftest(void)
                ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, a16, zero), ps_bvc(&ps, 16, 7)), 0), PS_INVALID);
         /* an unsigned difference can wrap without i <=u n: the obligation fails and the tier says nothing */
         expect(&failures, "bvsub without i <=u n", ps_valid_int(s, &ps, NULL, 0, ule(&ps, ps_op(&ps, PS_BVSUB, n, i), n), 10000000), PS_UNKNOWN);
+    }
+
+    /* a spec's exact arithmetic (PS_B2I): Int terms over bit-vector readings, proved by the Int tier alone */
+    {
+        PsT ru = ps_b2i(&ps, r, false), cu = ps_b2i(&ps, c, false), du = ps_b2i(&ps, szD, false);
+        PsT hb[3], goal, m1 = ps_bvc(&ps, 64, UINT64_MAX), two64 = pw2(&ps, 64);
+        hb[0] = ps_op(&ps, PS_ILE, ps_op(&ps, PS_IMUL, ru, cu), du);                      /* r * c <= len, over Int: no wrap */
+        hb[1] = ult(&ps, i, r);
+        hb[2] = ult(&ps, j, c);
+        goal = ps_op(&ps, PS_ILT, ps_op(&ps, PS_IADD, ps_op(&ps, PS_IMUL, ps_b2i(&ps, i, false), cu), ps_b2i(&ps, j, false)), du);
+        expect(&failures, "i*c + j < len from r*c <= len (Int tier)", ps_valid_int(s, &ps, hb, 3, goal, 10000000), PS_VALID);
+        expect(&failures, "the same through ps_prove", ps_prove(s, &ps, hb, 3, goal, 10000000), PS_VALID);
+        expect(&failures, "the same without r*c <= len", ps_valid_int(s, &ps, hb + 1, 2, goal, 10000000), PS_INVALID);
+        expect(&failures, "bit-vectors have no Int terms", ps_valid(s, &ps, hb, 3, goal, 10000000), PS_UNKNOWN);
+        /* a leaf's signed and unsigned readings differ: all ones is -1 or 2^64 - 1 */
+        expect(&failures, "signed all-ones + 1 == 0", ps_valid_int(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_op(&ps, PS_IADD, ps_b2i(&ps, m1, true), ps_intc(&ps, 1)), ps_intc(&ps, 0)), 10000000), PS_VALID);
+        expect(&failures, "unsigned all-ones + 1 == 0", ps_valid_int(s, &ps, NULL, 0,
+               ps_op(&ps, PS_EQ, ps_op(&ps, PS_IADD, ps_b2i(&ps, m1, false), ps_intc(&ps, 1)), ps_intc(&ps, 0)), 10000000), PS_INVALID);
+        /* the arithmetic does not wrap: a 64-bit square can pass 2^64 */
+        expect(&failures, "r*r < 2^64 is not valid", ps_valid_int(s, &ps, NULL, 0, ps_op(&ps, PS_ILT, ps_op(&ps, PS_IMUL, ru, ru), two64), 10000000), PS_INVALID);
+        expect(&failures, "r*r < 2^64 from r < 2^32", ps_valid_int(s, &ps, (PsT[]){ult(&ps, r, ps_bvc(&ps, 64, UINT64_C(1) << 32))}, 1,
+               ps_op(&ps, PS_ILT, ps_op(&ps, PS_IMUL, ru, ru), two64), 10000000), PS_VALID);
     }
     ps_close(s);
     ps_free(&ps);
