@@ -529,11 +529,14 @@ static Val ev(Ctx *x, St *s, uint32_t n)
         if (t->pun == P_PLUS)
             return a;
         if (t->pun == P_MINUS) {
-            int64_t lo, hi;
-            bool exact = x->inspec && ps_range(&x->ps, a.t, &lo, &hi);     /* spec arithmetic stays exact */
+            if (x->inspec) {                /* exact, as ev_arith: 0 - a over signed 64 bits, refused unless it cannot wrap */
+                Val r = mkv(V_BV, op2(x, PS_BVSUB, ps_bvc(&x->ps, 64, 0), ext64(x, a)), 64, true);
+                int64_t lo, hi;
+                if (!ps_range(&x->ps, r.t, &lo, &hi))
+                    return unsup(x, "spec arithmetic that may exceed 64 bits");
+                return r;
+            }
             a.t = op2(x, PS_BVSUB, ps_bvc(&x->ps, a.w, 0), a.t);
-            if (exact && !ps_range(&x->ps, a.t, &lo, &hi))
-                return unsup(x, "spec arithmetic that may exceed 64 bits");
             return a;
         }
         return unsup(x, "the unary operator %s", punct_spelling[t->pun]);

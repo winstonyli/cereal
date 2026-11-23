@@ -559,18 +559,22 @@ typedef struct PsQ {
 
 static void pq_sync(PsQ *q)            /* proved and failed track the obligations, new ones empty */
 {
-    q->proved.len = q->failed.len = q->c.obl.len < q->proved.len ? q->c.obl.len : q->proved.len;
     while (q->proved.len < q->c.obl.len) { vec_push(&q->proved, 0); vec_push(&q->failed, 0); }
+}
+
+static void pq_args(PsQ *q)            /* the facts and the joined set, as a query's hypotheses */
+{
+    size_t i;
+    q->args.len = 0;
+    for (i = 0; i < q->c.facts.len; i++) vec_push(&q->args, q->c.facts.data[i]);
+    for (i = 0; i < q->set.len; i++) vec_push(&q->args, q->set.data[i]);
 }
 
 static bool pq_hold(PsQ *q, size_t k)
 {
-    size_t i;
     if (q->proved.data[k]) return true;
     if (q->failed.data[k] == q->set.len + 1) return false;
-    q->args.len = 0;
-    for (i = 0; i < q->c.facts.len; i++) vec_push(&q->args, q->c.facts.data[i]);
-    for (i = 0; i < q->set.len; i++) vec_push(&q->args, q->set.data[i]);
+    pq_args(q);
     if (ps_valid(q->s, q->c.ps, q->args.data, q->args.len, q->c.obl.data[k], q->rlimit) == PS_VALID) q->proved.data[k] = q->set.len + 1;
     else q->failed.data[k] = q->set.len + 1;
     return q->proved.data[k] != 0;
@@ -579,8 +583,7 @@ static bool pq_hold(PsQ *q, size_t k)
 static void pq_push(PsQ *q, PsT hyp)
 {
     size_t m = q->c.obl.len;
-    PsT h = img_fm(&q->c, hyp);
-    if (!h) q->c.obl.len = m;
+    PsT h = img_fm(&q->c, hyp);         /* a hypothesis that fails to translate leaves orphan obligations; it never joins */
     pq_sync(q);
     vec_push(&q->himg, h); vec_push(&q->o0, m); vec_push(&q->o1, q->c.obl.len); vec_push(&q->in, 0);
 }
@@ -643,14 +646,11 @@ static int valid_int_goal(PsQ *q, PsT goal)
     }
     m = q->c.obl.len;
     g = img_fm(&q->c, goal);
-    if (!g) q->c.obl.len = m;
     pq_sync(q);
     if (!g) return PS_UNKNOWN;
     for (i = m; i < q->c.obl.len; i++)
         if (!pq_hold(q, i)) return PS_UNKNOWN;
-    q->args.len = 0;
-    for (i = 0; i < q->c.facts.len; i++) vec_push(&q->args, q->c.facts.data[i]);
-    for (i = 0; i < q->set.len; i++) vec_push(&q->args, q->set.data[i]);
+    pq_args(q);
     return ps_valid(q->s, q->c.ps, q->args.data, q->args.len, g, q->rlimit);
 }
 
@@ -739,6 +739,13 @@ int prove_selftest(void)
             { fprintf(stderr, "prove selftest: a 64-bit leaf has a range\n"); failures++; }
         if (!ps_range(&ps, ps_resize(&ps, r32, 64, false), &lo, &hi) || lo != 0 || hi != 4294967295LL)
             { fprintf(stderr, "prove selftest: range of zext\n"); failures++; }
+        if (!ps_range(&ps, ps_op(&ps, PS_BVSUB, ps_resize(&ps, r32, 64, true), ps_resize(&ps, c32, 64, true)), &lo, &hi) ||
+            lo != -4294967295LL || hi != 4294967295LL)
+            { fprintf(stderr, "prove selftest: range of a difference\n"); failures++; }
+        if (ps_range(&ps, ps_bvc(&ps, 64, UINT64_C(1) << 63), &lo, &hi))
+            { fprintf(stderr, "prove selftest: a 64-bit constant above INT64_MAX has a range\n"); failures++; }
+        if (!ps_range(&ps, ps_resize(&ps, ps_bvc(&ps, 8, 0x80), 64, true), &lo, &hi) || lo != -128 || hi != -128)
+            { fprintf(stderr, "prove selftest: range of a negative narrow constant\n"); failures++; }
     }
 
     /* the copy loop's write bound, and it with the size fact dropped */
@@ -868,6 +875,9 @@ int prove_selftest(void)
                 expect(&failures, "a proof from the antecedent's set leaves with it", ps_valid_int(s, &ps, hs, 2,
                        ps_op(&ps, PS_AND, ps_op(&ps, PS_IMP, bb, xz), ps_op(&ps, PS_IMP, ps_op(&ps, PS_BVSLE, z3, z3), xz)), 10000000), PS_INVALID);
                 expect(&failures, "x <= 0 under the bounds", ps_valid_int(s, &ps, hs, 2, ps_op(&ps, PS_IMP, bb, xz), 10000000), PS_VALID);
+                /* what joined under the outer antecedent survives an inner implication's pop */
+                expect(&failures, "outer join survives the inner pop", ps_valid_int(s, &ps, hs, 2,
+                       ps_op(&ps, PS_IMP, bb, ps_op(&ps, PS_AND, ps_op(&ps, PS_IMP, ps_op(&ps, PS_BVSLE, z3, z3), xz), xz)), 10000000), PS_VALID);
                 expect(&failures, "and joins under it", ps_valid_int(s, &ps, bnd, 1, ps_op(&ps, PS_IMP, bb, sum1), 10000000), PS_VALID);
             }
             /* the retry: no multiply, so bit-vectors go first, and at a budget (z3's deterministic rlimit, measured 2026-11-22:
@@ -948,8 +958,8 @@ int prove_selftest(void)
                ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, st, zero), ps_bvc(&ps, 32, 7)), 0), PS_VALID);
         expect(&failures, "16-bit select is not 8-bit", ps_valid(s, &ps, NULL, 0,
                ps_op(&ps, PS_EQ, ps_op(&ps, PS_SEL, a16, zero), ps_bvc(&ps, 16, 7)), 0), PS_INVALID);
-        /* the Int tier does not apply to the new operations */
-        expect(&failures, "Int tier declines bvsub", ps_valid_int(s, &ps, NULL, 0, ule(&ps, ps_op(&ps, PS_BVSUB, n, i), n), 10000000), PS_UNKNOWN);
+        /* an unsigned difference can wrap without i <=u n: the obligation fails and the tier says nothing */
+        expect(&failures, "bvsub without i <=u n", ps_valid_int(s, &ps, NULL, 0, ule(&ps, ps_op(&ps, PS_BVSUB, n, i), n), 10000000), PS_UNKNOWN);
     }
     ps_close(s);
     ps_free(&ps);

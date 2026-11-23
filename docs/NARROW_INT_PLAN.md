@@ -4,6 +4,8 @@ status: done
 
 # Narrow-width Int tier and spec `*`
 
+> As built: `ps_to_int` below is the pre-build function; it is gone, replaced by `img_bv`/`img_fm` (the Int image) and `ps_valid_int` over one `PsQ` hypothesis stack per goal (`prove_smt.c`), with `ps_prove` the policy. Section text is the design as argued.
+
 Closes the PARKED rows "Narrow-width index arithmetic gets no Int tier" and the spec `*` gap (`PARKED.md`, `--prove` slice 4a
 leftovers). Route chosen 2026-11-21 (n1): keep narrow arithmetic in the Int tier and convert at the edges. Evidence: spike S8
 (`docs/spikes/prover/README.md`): the Int encoding answers `fill2` over `int` in 0.3 s per query, bit-vectors give no answer in 90 s; spike L1:
@@ -94,7 +96,7 @@ retry must be ignored; the bvsub selftest does not flip as first written; retry 
 Size estimate: roughly 200-300 lines. Round 3 not run.
 
 Round 3 (Sonnet, 2026-11-21): core sound (fixpoint is an induction; dropping a hypothesis only weakens; view facts always satisfiable). Folded into
-T2/T3 below; T1 as built (`2051680`) needs no change (its `ps_range` uses checked builtins, refuses truncation and 64-bit leaves, and reads a
+T2/T3 above; T1 as built (`2051680`) needs no change (its `ps_range` uses checked builtins, refuses truncation and 64-bit leaves, and reads a
 resize operand's raw width, so a wrapped narrow node under `sext` is safe).
 - **Goal antecedent.** `add_goal` (`prove_vc.c:287-301`) builds `IMP(pc, g)`, so the loop test (`j < c`) is in the goal, not the hypotheses.
   `ps_valid_int` takes the top-level `IMP` antecedent conjuncts as extra hypotheses through the same fixpoint (several `IMP`s ANDed per label each

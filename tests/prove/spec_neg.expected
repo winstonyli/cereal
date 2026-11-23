@@ -1,0 +1,4 @@
+neg: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  spec_neg.c:5:1  proved                 ensures
+neg: 1 proved, 0 not proved, 0 unsupported
+exit 0
