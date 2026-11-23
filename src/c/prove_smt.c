@@ -870,6 +870,13 @@ int prove_selftest(void)
                 expect(&failures, "x <= 0 under the bounds", ps_valid_int(s, &ps, hs, 2, ps_op(&ps, PS_IMP, bb, xz), 10000000), PS_VALID);
                 expect(&failures, "and joins under it", ps_valid_int(s, &ps, bnd, 1, ps_op(&ps, PS_IMP, bb, sum1), 10000000), PS_VALID);
             }
+            /* the retry: no multiply, so bit-vectors go first, and at a budget (z3's deterministic rlimit, measured 2026-11-22:
+             * `unknown` for bit-vectors from 100 to 10000, proved from 30000; the Int tier proves from 3000) they give no
+             * answer while the Int tier proves it, and ps_prove takes the proof */
+            hh[0] = ps_op(&ps, PS_BVSLE, z32, i3); hh[1] = ps_op(&ps, PS_BVSLT, i3, r3); hh[2] = ule(&ps, SX(r3), szD);
+            g = ult(&ps, ps_op(&ps, PS_BVADD, zero, SX(i3)), szD);
+            expect(&failures, "retry: bit-vectors alone say unknown", ps_valid(s, &ps, hh, 3, g, 6000), PS_UNKNOWN);
+            expect(&failures, "retry: unknown becomes valid", ps_prove(s, &ps, hh, 3, g, 6000), PS_VALID);
             /* truncation: the tier does not apply */
             expect(&failures, "truncation", ps_valid_int(s, &ps, NULL, 0, ult(&ps, ps_resize(&ps, x, 32, false), ps_bvc(&ps, 32, 5)), 10000000), PS_UNKNOWN);
         }
