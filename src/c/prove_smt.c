@@ -539,15 +539,29 @@ int ps_valid(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned 
  * from an unfaithful image is circular (x + y <= z with x = y = INT_MAX, z = 0 holds in bit-vectors and is false over
  * Int), so the images join a set S one at a time, each once its obligations follow from the facts and the set so far
  * (a least fixpoint).  A hypothesis that never joins, or cannot be translated, is left out: a weaker assumption, still
- * sound, though an `invalid` then means only "not from S". */
+ * sound, though an `invalid` then means only "not from S".
+ *
+ * One PsQ serves a whole goal.  Its hypotheses are a stack (the base ones, then an implication's antecedent while its
+ * consequent is proved); the facts, leaf views and obligations only grow, and an obligation proved from a set prefix
+ * stays proved while that prefix does, so the base hypotheses' obligations are proved once, not once per conjunct. */
 typedef struct PsQ {
     PsSolver *s;
     PsImg c;
     VEC(PsT) set, args;                 /* the joined images; facts + set, as one query's hypotheses */
-    VEC(uint8_t) proved;                /* per obligation: proved already (stays so as the set grows) */
-    VEC(size_t) failed;                 /* per obligation: the set size + 1 at its last failed attempt */
+    VEC(size_t) setk;                   /* per joined image: its hypothesis */
+    VEC(PsT) himg;                      /* per hypothesis: its image (0: not translatable) */
+    VEC(size_t) o0, o1;                 /* per hypothesis: its obligations are c.obl[o0, o1) */
+    VEC(uint8_t) in;                    /* per hypothesis: joined */
+    VEC(size_t) proved;                 /* per obligation: 1 + the set size it was proved from (0: not proved) */
+    VEC(size_t) failed;                 /* per obligation: 1 + the set size at its last failed attempt (0: none) */
     unsigned long rlimit;
 } PsQ;
+
+static void pq_sync(PsQ *q)            /* proved and failed track the obligations, new ones empty */
+{
+    q->proved.len = q->failed.len = q->c.obl.len < q->proved.len ? q->c.obl.len : q->proved.len;
+    while (q->proved.len < q->c.obl.len) { vec_push(&q->proved, 0); vec_push(&q->failed, 0); }
+}
 
 static bool pq_hold(PsQ *q, size_t k)
 {
@@ -557,49 +571,45 @@ static bool pq_hold(PsQ *q, size_t k)
     q->args.len = 0;
     for (i = 0; i < q->c.facts.len; i++) vec_push(&q->args, q->c.facts.data[i]);
     for (i = 0; i < q->set.len; i++) vec_push(&q->args, q->set.data[i]);
-    if (ps_valid(q->s, q->c.ps, q->args.data, q->args.len, q->c.obl.data[k], q->rlimit) == PS_VALID) q->proved.data[k] = 1;
+    if (ps_valid(q->s, q->c.ps, q->args.data, q->args.len, q->c.obl.data[k], q->rlimit) == PS_VALID) q->proved.data[k] = q->set.len + 1;
     else q->failed.data[k] = q->set.len + 1;
-    return q->proved.data[k];
+    return q->proved.data[k] != 0;
 }
 
-static int valid_int_one(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
+static void pq_push(PsQ *q, PsT hyp)
 {
-    PsQ q = {0};
-    VEC(PsT) himg = {0};
-    VEC(size_t) o0 = {0}, o1 = {0};
-    VEC(uint8_t) in = {0};
-    PsT g, h;
-    size_t i, k, g0;
+    size_t m = q->c.obl.len;
+    PsT h = img_fm(&q->c, hyp);
+    if (!h) q->c.obl.len = m;
+    pq_sync(q);
+    vec_push(&q->himg, h); vec_push(&q->o0, m); vec_push(&q->o1, q->c.obl.len); vec_push(&q->in, 0);
+}
+
+static void pq_close(PsQ *q)           /* the least fixpoint over the current hypotheses */
+{
     bool changed, ok;
-    int r = PS_UNKNOWN;
-    q.s = s; q.c.ps = ps; q.rlimit = rlimit;
-    for (i = 0; i < n; i++) {
-        size_t m = q.c.obl.len;
-        h = img_fm(&q.c, hyps[i]);
-        if (!h) q.c.obl.len = m;
-        vec_push(&himg, h); vec_push(&o0, m); vec_push(&o1, q.c.obl.len); vec_push(&in, 0);
-    }
-    g0 = q.c.obl.len;
-    if (!(g = img_fm(&q.c, goal))) goto out;
-    for (k = 0; k < q.c.obl.len; k++) { vec_push(&q.proved, 0); vec_push(&q.failed, 0); }
+    size_t i, k;
     do {
         changed = false;
-        for (i = 0; i < n; i++) {
-            if (!himg.data[i] || in.data[i]) continue;
-            for (ok = true, k = o0.data[i]; k < o1.data[i] && ok; k++) ok = pq_hold(&q, k);
-            if (ok) { in.data[i] = 1; vec_push(&q.set, himg.data[i]); changed = true; }
+        for (i = 0; i < q->himg.len; i++) {
+            if (!q->himg.data[i] || q->in.data[i]) continue;
+            for (ok = true, k = q->o0.data[i]; k < q->o1.data[i] && ok; k++) ok = pq_hold(q, k);
+            if (ok) { q->in.data[i] = 1; vec_push(&q->set, q->himg.data[i]); vec_push(&q->setk, i); changed = true; }
         }
     } while (changed);
-    for (k = g0; k < q.c.obl.len; k++)
-        if (!pq_hold(&q, k)) goto out;
-    q.args.len = 0;
-    for (i = 0; i < q.c.facts.len; i++) vec_push(&q.args, q.c.facts.data[i]);
-    for (i = 0; i < q.set.len; i++) vec_push(&q.args, q.set.data[i]);
-    r = ps_valid(s, ps, q.args.data, q.args.len, g, rlimit);
-out:
-    vec_free(&q.c.facts); vec_free(&q.c.obl); vec_free(&q.c.lv); vec_free(&q.set); vec_free(&q.args);
-    vec_free(&q.proved); vec_free(&q.failed); vec_free(&himg); vec_free(&o0); vec_free(&o1); vec_free(&in);
-    return r;
+}
+
+/* back to nh hypotheses and a set of ns: what joined because of the removed ones leaves, and so do the proofs from it */
+static void pq_pop(PsQ *q, size_t nh, size_t ns)
+{
+    size_t k;
+    for (k = ns; k < q->set.len; k++) if (q->setk.data[k] < nh) q->in.data[q->setk.data[k]] = 0;
+    q->himg.len = q->o0.len = q->o1.len = q->in.len = nh;
+    q->set.len = q->setk.len = ns;
+    for (k = 0; k < q->proved.len; k++) {
+        if (q->proved.data[k] > ns + 1) q->proved.data[k] = 0;
+        if (q->failed.data[k] > ns + 1) q->failed.data[k] = 0;
+    }
 }
 
 static void flatten_and(const Ps *ps, PsT t, PsVec *out)
@@ -610,32 +620,54 @@ static void flatten_and(const Ps *ps, PsT t, PsVec *out)
 }
 
 /* the goal's conjuncts one by one; the antecedent of an implication (the path condition) is more hypotheses */
-static int valid_int_goal(PsSolver *s, Ps *ps, PsVec *hyps, PsT goal, unsigned long rlimit)
+static int valid_int_goal(PsQ *q, PsT goal)
 {
-    PsNode n = *ps_at(ps, goal);
-    size_t keep = hyps->len;
+    PsNode n = *ps_at(q->c.ps, goal);
+    size_t i, m;
     int r;
+    PsT g;
     if (n.op == PS_AND) {
-        r = valid_int_goal(s, ps, hyps, n.a, rlimit);
-        return r != PS_VALID ? r : valid_int_goal(s, ps, hyps, n.b, rlimit);
+        r = valid_int_goal(q, n.a);
+        return r != PS_VALID ? r : valid_int_goal(q, n.b);
     }
     if (n.op == PS_IMP) {
-        flatten_and(ps, n.a, hyps);
-        r = valid_int_goal(s, ps, hyps, n.b, rlimit);
-        hyps->len = keep;
+        PsVec ante = {0};
+        size_t nh = q->himg.len, ns = q->set.len;
+        flatten_and(q->c.ps, n.a, &ante);
+        for (i = 0; i < ante.len; i++) pq_push(q, ante.data[i]);
+        vec_free(&ante);
+        pq_close(q);
+        r = valid_int_goal(q, n.b);
+        pq_pop(q, nh, ns);
         return r;
     }
-    return valid_int_one(s, ps, hyps->data, hyps->len, goal, rlimit);
+    m = q->c.obl.len;
+    g = img_fm(&q->c, goal);
+    if (!g) q->c.obl.len = m;
+    pq_sync(q);
+    if (!g) return PS_UNKNOWN;
+    for (i = m; i < q->c.obl.len; i++)
+        if (!pq_hold(q, i)) return PS_UNKNOWN;
+    q->args.len = 0;
+    for (i = 0; i < q->c.facts.len; i++) vec_push(&q->args, q->c.facts.data[i]);
+    for (i = 0; i < q->set.len; i++) vec_push(&q->args, q->set.data[i]);
+    return ps_valid(q->s, q->c.ps, q->args.data, q->args.len, g, q->rlimit);
 }
 
 int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit)
 {
+    PsQ q = {0};
     PsVec h = {0};
     size_t i;
     int r;
+    q.s = s; q.c.ps = ps; q.rlimit = rlimit;
     for (i = 0; i < n; i++) flatten_and(ps, hyps[i], &h);
-    r = valid_int_goal(s, ps, &h, goal, rlimit);
+    for (i = 0; i < h.len; i++) pq_push(&q, h.data[i]);
+    pq_close(&q);
+    r = valid_int_goal(&q, goal);
     vec_free(&h);
+    vec_free(&q.c.facts); vec_free(&q.c.obl); vec_free(&q.c.lv); vec_free(&q.set); vec_free(&q.args); vec_free(&q.setk);
+    vec_free(&q.himg); vec_free(&q.o0); vec_free(&q.o1); vec_free(&q.in); vec_free(&q.proved); vec_free(&q.failed);
     return r;
 }
 
@@ -820,6 +852,24 @@ int prove_selftest(void)
             bnd[3] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0xfffffc18u), x3); bnd[4] = ps_op(&ps, PS_BVSLE, ps_bvc(&ps, 32, 0xfffffc18u), y3);
             expect(&failures, "fixpoint, hypothesis first", ps_valid_int(s, &ps, bnd, 5,
                    ps_op(&ps, PS_BVSLT, ps_op(&ps, PS_BVADD, x3, y3), ps_bvc(&ps, 32, 1)), 10000000), PS_VALID);
+            /* what joins the set because of an antecedent leaves with it: the sum's hypothesis is faithful only under the
+             * bounds, so the sibling conjunct, proved without them, must not see it */
+            {
+                PsT bb = ps_op(&ps, PS_AND, ps_op(&ps, PS_AND, bnd[1], bnd[2]), ps_op(&ps, PS_AND, bnd[3], bnd[4]));
+                PsT sum1 = ps_op(&ps, PS_BVSLT, ps_op(&ps, PS_BVADD, x3, y3), ps_bvc(&ps, 32, 1));
+                expect(&failures, "a joined hypothesis leaves with its antecedent", ps_valid_int(s, &ps, bnd, 1,
+                       ps_op(&ps, PS_AND, ps_op(&ps, PS_IMP, bb, sum1), sum1), 10000000), PS_UNKNOWN);
+                expect(&failures, "and joins again under the next antecedent", ps_valid_int(s, &ps, bnd, 1,
+                       ps_op(&ps, PS_AND, ps_op(&ps, PS_IMP, bb, sum1), ps_op(&ps, PS_IMP, bb, sum1)), 10000000), PS_VALID);
+                /* a proof of the sum's no-wrap made under the bounds is not a proof without them: x + y <= 0 with y >= 0
+                 * gives x <= 0 over Int only */
+                PsT hs[2], xz = ps_op(&ps, PS_BVSLE, x3, z32);
+                hs[0] = bnd[0]; hs[1] = ps_op(&ps, PS_BVSLE, z32, y3);
+                expect(&failures, "a proof from the antecedent's set leaves with it", ps_valid_int(s, &ps, hs, 2,
+                       ps_op(&ps, PS_AND, ps_op(&ps, PS_IMP, bb, xz), ps_op(&ps, PS_IMP, ps_op(&ps, PS_BVSLE, z3, z3), xz)), 10000000), PS_INVALID);
+                expect(&failures, "x <= 0 under the bounds", ps_valid_int(s, &ps, hs, 2, ps_op(&ps, PS_IMP, bb, xz), 10000000), PS_VALID);
+                expect(&failures, "and joins under it", ps_valid_int(s, &ps, bnd, 1, ps_op(&ps, PS_IMP, bb, sum1), 10000000), PS_VALID);
+            }
             /* truncation: the tier does not apply */
             expect(&failures, "truncation", ps_valid_int(s, &ps, NULL, 0, ult(&ps, ps_resize(&ps, x, 32, false), ps_bvc(&ps, 32, 5)), 10000000), PS_UNKNOWN);
         }
