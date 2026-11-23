@@ -90,5 +90,8 @@ int ps_valid_int(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsig
 int ps_prove(PsSolver *s, Ps *ps, const PsT *hyps, size_t n, PsT goal, unsigned long rlimit);
 
 int prove_selftest(void);
+/* prove_fuzz.c: random 8- and 16-bit goals decided by brute force and by the tiers; nonzero on a disagreement */
+int prove_fuzz(PsSolver *s, unsigned n, uint64_t seed);
+int prove_fuzz_main(unsigned n, uint64_t seed);       /* `cereal selftest prove-fuzz N SEED` */
 
 #endif

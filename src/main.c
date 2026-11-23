@@ -1684,6 +1684,8 @@ int main(int argc, char **argv)
         return bdd_selftest();   /* hidden: run by tests/run.sh */
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "prove"))
         return prove_selftest();
+    if (argc == 5 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "prove-fuzz"))
+        return prove_fuzz_main((unsigned)strtoul(argv[3], NULL, 10), strtoull(argv[4], NULL, 10));
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "pcq"))
         return pcq_selftest();
     if (argc == 3 && !strcmp(argv[1], "selftest") && !strcmp(argv[2], "diag"))

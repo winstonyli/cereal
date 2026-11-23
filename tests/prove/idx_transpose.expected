@@ -1,0 +1,9 @@
+transpose: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  idx_transpose.c:7:1  proved                 invariant holds on entry
+  idx_transpose.c:9:1  proved                 invariant holds on entry
+  idx_transpose.c:10:33  proved                 bounds read src
+  idx_transpose.c:10:16  proved                 bounds write dst
+  idx_transpose.c:9:1  proved                 invariant preserved
+  idx_transpose.c:7:1  proved                 invariant preserved
+transpose: 6 proved, 0 not proved, 0 unsupported
+exit 0

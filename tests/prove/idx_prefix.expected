@@ -1,0 +1,7 @@
+prefix: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  idx_prefix.c:7:1  proved                 invariant holds on entry
+  idx_prefix.c:8:17  proved                 bounds read a
+  idx_prefix.c:8:10  proved                 bounds write a
+  idx_prefix.c:7:1  proved                 invariant preserved
+prefix: 4 proved, 0 not proved, 0 unsupported
+exit 0

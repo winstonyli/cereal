@@ -1,0 +1,6 @@
+stride: assuming pointer parameters are distinct allocations; proved provided no signed arithmetic overflows
+  idx_stride.c:7:1  proved                 invariant holds on entry
+  idx_stride.c:8:10  proved                 bounds write a
+  idx_stride.c:7:1  proved                 invariant preserved
+stride: 3 proved, 0 not proved, 0 unsupported
+exit 0

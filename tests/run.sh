@@ -1074,6 +1074,8 @@ if "$CEREAL" selftest fparith </dev/null; then ok; else bad "selftest fparith"; 
 if "$CEREAL" selftest idxset </dev/null; then ok; else bad "selftest idxset"; fi
 if command -v z3 >/dev/null 2>&1; then   # the prover's term DAG and solver pipe (docs/PROVER_DESIGN.md)
     if "$CEREAL" selftest prove </dev/null; then ok; else bad "selftest prove"; fi
+    # differential soundness check of the tiers against brute force (src/c/prove_fuzz.c); 200 goals, about 15 s; sweep more seeds by hand
+    if "$CEREAL" selftest prove-fuzz 200 1 </dev/null; then ok; else bad "selftest prove-fuzz"; fi
     # --prove goldens (tests/prove): the report and exit status of `check --prove` on each file (docs/PROVE_OBLIGATIONS_DESIGN.md)
     cd "$ROOT/tests/prove"
     for f in *.c; do
